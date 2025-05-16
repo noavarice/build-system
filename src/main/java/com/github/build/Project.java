@@ -1,35 +1,56 @@
 package com.github.build;
 
+import java.nio.file.Path;
 import java.util.Objects;
 import java.util.Set;
 
 /**
  * Project to build.
  *
+ * @param id         Identifies project, so you don't need to mess with physical project location on
+ *                   disk.
+ * @param sourceSets Unmodifiable set of source sets, never null but can be empty
  * @author noavarice
  * @since 1.0.0
  */
-public interface Project {
+public record Project(
+    Id id,
+    Path path,
+    Set<SourceSet> sourceSets
+) implements Dependency {
 
-  /**
-   * Identifies project, so you don't need to mess with physical project location on disk.
-   *
-   * @return Project ID, never null
-   */
-  Id id();
+  public Project {
+    Objects.requireNonNull(id);
+    Objects.requireNonNull(path);
+    if (path.isAbsolute()) {
+      throw new IllegalArgumentException("Must be a relative path");
+    }
 
-  /**
-   * Project dependencies.
-   *
-   * @return Unmodifiable set of project dependencies, never null but can be empty
-   */
-  Set<Dependency> dependencies();
+    sourceSets = Set.copyOf(sourceSets);
+    checkSingleProdSourceSet();
+  }
 
-  /**
-   * Project ID.
-   *
-   * @param value ID string
-   */
+  private void checkSingleProdSourceSet() {
+    final long prodSetsCount = sourceSets
+        .stream()
+        .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
+        .count();
+    if (prodSetsCount == 0) {
+      throw new IllegalArgumentException("No production source sets specified");
+    }
+    if (prodSetsCount > 1) {
+      throw new IllegalArgumentException("Project can have only one production source set");
+    }
+  }
+
+  public SourceSet mainSourceSet() {
+    return sourceSets
+        .stream()
+        .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
+        .findFirst()
+        .orElseThrow();
+  }
+
   record Id(String value) {
 
     public Id {
