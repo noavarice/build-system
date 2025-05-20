@@ -27,10 +27,10 @@ public record Project(
     }
 
     sourceSets = Set.copyOf(sourceSets);
-    checkSingleProdSourceSet();
+    checkSingleProdSourceSet(sourceSets);
   }
 
-  private void checkSingleProdSourceSet() {
+  private void checkSingleProdSourceSet(final Set<SourceSet> sourceSets) {
     final long prodSetsCount = sourceSets
         .stream()
         .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
@@ -60,6 +60,11 @@ public record Project(
       }
 
       value = value.strip();
+    }
+
+    @Override
+    public String toString() {
+      return value;
     }
   }
 }
