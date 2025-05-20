@@ -1,0 +1,59 @@
+package com.github.build;
+
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
+
+import java.io.IOException;
+import java.io.UncheckedIOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.util.Set;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
+
+/**
+ * @author noavarice
+ * @since 1.0.0
+ */
+@DisplayName("Simple build tests")
+class SimpleBuildTest {
+
+  @Test
+  void buildHelloWorld(@TempDir final Path tempDir) {
+    setupHelloWorld(tempDir);
+    final var project = new Project(
+        new Project.Id("hello-world"),
+        Path.of("."),
+        Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of()))
+    );
+    assertDoesNotThrow(() -> Build.build(tempDir, project));
+  }
+
+  private void setupHelloWorld(final Path tempDir) {
+    // language=java
+    final var text = """
+        package org.example;
+                  
+        public class HelloWorld {
+          public static void main(final String[] args){
+            System.out.println("Hello, world!");
+          }
+        }
+        """;
+    final Path sourcePath;
+    try {
+      final var path = Files.createDirectories(tempDir.resolve("src/main/java/org/example"));
+      sourcePath = Files.writeString(
+          path.resolve("HelloWorld.java"),
+          text,
+          StandardOpenOption.CREATE
+      );
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    assumeTrue(Files.exists(sourcePath));
+  }
+}
