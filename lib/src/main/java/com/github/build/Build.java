@@ -85,13 +85,13 @@ public final class Build {
 
     final Path buildDirectory = workdir
         .resolve(project.path())
-        .resolve("build");
-    final Path classesDirectory = buildDirectory.resolve("classes");
+        .resolve(project.artefactStructure().rootDir());
+    final Path classesDirectory = buildDirectory.resolve(project.artefactStructure().classesDir());
     final var task = compiler.getTask(
         null,
         fileManager,
         diagnosticListener,
-        List.of("-d", classesDirectory.toString()),
+        List.of("-d", classesDirectory.resolve(prodSourceSet.name()).toString()),
         null,
         compUnits
     );

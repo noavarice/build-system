@@ -9,6 +9,8 @@ import java.util.Set;
  *
  * @param id         Identifies project, so you don't need to mess with physical project location on
  *                   disk.
+ * @param path       Path to a physical project files location on disk, relative to a working
+ *                   directory
  * @param sourceSets Unmodifiable set of source sets, never null but can be empty
  * @author noavarice
  * @since 1.0.0
@@ -16,7 +18,8 @@ import java.util.Set;
 public record Project(
     Id id,
     Path path,
-    Set<SourceSet> sourceSets
+    Set<SourceSet> sourceSets,
+    ArtefactStructure artefactStructure
 ) implements Dependency {
 
   public Project {
@@ -28,9 +31,11 @@ public record Project(
 
     sourceSets = Set.copyOf(sourceSets);
     checkSingleProdSourceSet(sourceSets);
+
+    Objects.requireNonNull(artefactStructure);
   }
 
-  private void checkSingleProdSourceSet(final Set<SourceSet> sourceSets) {
+  private static void checkSingleProdSourceSet(final Set<SourceSet> sourceSets) {
     final long prodSetsCount = sourceSets
         .stream()
         .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
@@ -65,6 +70,40 @@ public record Project(
     @Override
     public String toString() {
       return value;
+    }
+  }
+
+  /**
+   * Defines a directory structure for storing various build artifacts (class files, JARs, etc.).
+   * <p>
+   * The purpose of building software is creating various artifacts. Speaking about Java
+   * applications, these artifacts include generated sources and class files, resources, JAR files
+   * and so on. Obviously, we need to store these artifacts somewhere. This class defines a list of
+   * paths for storing artifacts, relative to a project location.
+   *
+   * @param rootDir    Path to a root directory for storing artifacts, relative to a project
+   *                   location
+   * @param classesDir Path to a directory for storing class files, relative to a {@link #rootDir}
+   */
+  record ArtefactStructure(Path rootDir, Path classesDir) {
+
+    public static ArtefactStructure DEFAULT = new ArtefactStructure(
+        Path.of("build"),
+        Path.of("classes")
+    );
+
+    public ArtefactStructure {
+      Objects.requireNonNull(rootDir);
+      if (rootDir.isAbsolute()) {
+        throw new IllegalArgumentException("Must be a relative path");
+      }
+      rootDir = rootDir.normalize();
+
+      Objects.requireNonNull(classesDir);
+      if (classesDir.isAbsolute()) {
+        throw new IllegalArgumentException("Must be a relative path");
+      }
+      classesDir = classesDir.normalize();
     }
   }
 }
