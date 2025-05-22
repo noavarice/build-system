@@ -85,8 +85,8 @@ public final class Build {
 
     final Path buildDirectory = workdir
         .resolve(project.path())
-        .resolve(project.artefactStructure().rootDir());
-    final Path classesDirectory = buildDirectory.resolve(project.artefactStructure().classesDir());
+        .resolve(project.artifactLayout().rootDir());
+    final Path classesDirectory = buildDirectory.resolve(project.artifactLayout().classesDir());
     final var task = compiler.getTask(
         null,
         fileManager,

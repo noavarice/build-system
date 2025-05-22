@@ -30,7 +30,7 @@ class SimpleBuildTest {
         new Project.Id("hello-world"),
         Path.of("."),
         Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of())),
-        Project.ArtefactStructure.DEFAULT
+        Project.ArtifactLayout.DEFAULT
     );
 
     final Path classFile = tempDir.resolve("build/classes/main/org/example/HelloWorld.class");

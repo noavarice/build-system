@@ -19,7 +19,7 @@ public record Project(
     Id id,
     Path path,
     Set<SourceSet> sourceSets,
-    ArtefactStructure artefactStructure
+    ArtifactLayout artifactLayout
 ) implements Dependency {
 
   public Project {
@@ -32,7 +32,7 @@ public record Project(
     sourceSets = Set.copyOf(sourceSets);
     checkSingleProdSourceSet(sourceSets);
 
-    Objects.requireNonNull(artefactStructure);
+    Objects.requireNonNull(artifactLayout);
   }
 
   private static void checkSingleProdSourceSet(final Set<SourceSet> sourceSets) {
@@ -85,14 +85,14 @@ public record Project(
    *                   location
    * @param classesDir Path to a directory for storing class files, relative to a {@link #rootDir}
    */
-  record ArtefactStructure(Path rootDir, Path classesDir) {
+  record ArtifactLayout(Path rootDir, Path classesDir) {
 
-    public static ArtefactStructure DEFAULT = new ArtefactStructure(
+    public static ArtifactLayout DEFAULT = new ArtifactLayout(
         Path.of("build"),
         Path.of("classes")
     );
 
-    public ArtefactStructure {
+    public ArtifactLayout {
       Objects.requireNonNull(rootDir);
       if (rootDir.isAbsolute()) {
         throw new IllegalArgumentException("Must be a relative path");
