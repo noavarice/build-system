@@ -31,12 +31,12 @@ public final class Build {
   }
 
   /**
-   * Builds specified project.
+   * Compiles specified project>
    *
    * @param workdir Working directory
    * @param project Project to build
    */
-  public static void build(final Path workdir, final Project project) {
+  public static void compile(final Path workdir, final Project project) {
     Objects.requireNonNull(workdir);
     if (!workdir.isAbsolute()) {
       throw new IllegalArgumentException("Working directory must be an absolute path");
@@ -47,10 +47,7 @@ public final class Build {
     }
 
     Objects.requireNonNull(project);
-    compile(workdir, project);
-  }
 
-  private static void compile(final Path workdir, final Project project) {
     log.info("[project={}] Compiling main source set", project.id());
     final SourceSet prodSourceSet = project.mainSourceSet();
     final Path sourcesDirectory = workdir

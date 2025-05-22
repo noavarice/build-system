@@ -23,8 +23,9 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Simple build tests")
 class SimpleBuildTest {
 
+  @DisplayName("Compiling hello world project works")
   @TestFactory
-  DynamicTest[] buildHelloWorld(@TempDir final Path tempDir) {
+  DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
     setupHelloWorld(tempDir);
     final var project = new Project(
         new Project.Id("hello-world"),
@@ -38,7 +39,7 @@ class SimpleBuildTest {
     return new DynamicTest[]{
         dynamicTest(
             "Check build succeeds",
-            () -> assertDoesNotThrow(() -> Build.build(tempDir, project))
+            () -> assertDoesNotThrow(() -> Build.compile(tempDir, project))
         ),
         dynamicTest(
             "Check class file generated",
