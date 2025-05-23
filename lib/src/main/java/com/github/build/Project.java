@@ -15,12 +15,7 @@ import java.util.Set;
  * @author noavarice
  * @since 1.0.0
  */
-public record Project(
-    Id id,
-    Path path,
-    Set<SourceSet> sourceSets,
-    ArtifactLayout artifactLayout
-) implements Dependency {
+public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayout artifactLayout) {
 
   public Project {
     Objects.requireNonNull(id);

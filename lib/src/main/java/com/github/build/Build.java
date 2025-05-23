@@ -2,6 +2,7 @@ package com.github.build;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.io.Writer;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
@@ -15,9 +16,11 @@ import java.util.Objects;
 import javax.tools.DiagnosticListener;
 import javax.tools.JavaCompiler;
 import javax.tools.JavaFileObject;
+import javax.tools.StandardLocation;
 import javax.tools.ToolProvider;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author noavarice
@@ -70,28 +73,53 @@ public final class Build {
     log.debug("[project={}] Compiling {} files: {}", project.id(), sources.size(), sources);
 
     final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    final DiagnosticListener<JavaFileObject> diagnosticListener = diagnostic -> log.info(
-        "[project={}] {}", project.id(), diagnostic
-    );
+    final DiagnosticListener<JavaFileObject> diagnosticListener = diagnostic -> {
+      final Level level = switch (diagnostic.getKind()) {
+        case ERROR -> Level.ERROR;
+        case WARNING, MANDATORY_WARNING -> Level.WARN;
+        case NOTE -> Level.INFO;
+        case OTHER -> Level.DEBUG;
+      };
+      log.atLevel(level).log("[project={}] {}", project.id(), diagnostic);
+    };
     final var fileManager = compiler.getStandardFileManager(
         diagnosticListener,
         Locale.US,
         StandardCharsets.UTF_8
     );
+
+    final List<Path> classPath = prodSourceSet.dependencies()
+        .stream()
+        .map(d -> switch (d) {
+          case Dependency.File file -> file.path();
+        })
+        .toList();
+    try {
+      final var classPathFiles = classPath
+          .stream()
+          .map(Path::toFile)
+          .toList();
+      fileManager.setLocation(StandardLocation.CLASS_PATH, classPathFiles);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
     final var compUnits = fileManager.getJavaFileObjectsFromPaths(sources);
 
     final Path buildDirectory = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir());
     final Path classesDirectory = buildDirectory.resolve(project.artifactLayout().classesDir());
+
     final var task = compiler.getTask(
-        null,
+        new LogWriter(project.id()),
         fileManager,
         diagnosticListener,
         List.of("-d", classesDirectory.resolve(prodSourceSet.name()).toString()),
         null,
         compUnits
     );
+    task.setLocale(Locale.US);
     final boolean result = task.call();
     if (result) {
       log.info("[project={}] Compilation succeeded", project.id());
@@ -115,7 +143,6 @@ public final class Build {
 
     @Override
     public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) {
-      System.out.println(file);
       if (file.getFileName().toString().endsWith(".java")) {
         sources.add(file);
       }
@@ -131,6 +158,34 @@ public final class Build {
     @Override
     public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) {
       return FileVisitResult.CONTINUE;
+    }
+  }
+
+  /**
+   * Writes compiler output to {@link Logger}.
+   */
+  private static final class LogWriter extends Writer {
+
+    private final Project.Id projectId;
+
+    private LogWriter(final Project.Id projectId) {
+      this.projectId = projectId;
+    }
+
+    @Override
+    public void write(final char[] cbuf, final int off, final int len) {
+      final var compilerMessage = new String(cbuf);
+      log.debug("[project={}] [compiler] {}", projectId, compilerMessage);
+    }
+
+    @Override
+    public void flush() {
+      // do nothing
+    }
+
+    @Override
+    public void close() {
+      // do nothing
     }
   }
 }
