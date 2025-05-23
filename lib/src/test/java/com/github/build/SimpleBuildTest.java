@@ -1,6 +1,6 @@
 package com.github.build;
 
-import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -41,7 +41,7 @@ class SimpleBuildTest {
     return new DynamicTest[]{
         dynamicTest(
             "Check build succeeds",
-            () -> assertDoesNotThrow(() -> Build.compile(tempDir, project))
+            () -> assertTrue(Build.compile(tempDir, project))
         ),
         dynamicTest(
             "Check class file generated",
@@ -93,7 +93,7 @@ class SimpleBuildTest {
     return new DynamicTest[]{
         dynamicTest(
             "Check build fails",
-            () -> assertDoesNotThrow(() -> Build.compile(tempDir, project))
+            () -> assertFalse(Build.compile(tempDir, project))
         ),
         dynamicTest(
             "Check class file not generated",
@@ -123,7 +123,7 @@ class SimpleBuildTest {
     return new DynamicTest[]{
         dynamicTest(
             "Check build succeeds",
-            () -> assertDoesNotThrow(() -> Build.compile(tempDir, project))
+            () -> assertTrue(Build.compile(tempDir, project))
         ),
         dynamicTest(
             "Check class file generated",

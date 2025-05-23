@@ -39,7 +39,7 @@ public final class Build {
    * @param workdir Working directory
    * @param project Project to build
    */
-  public static void compile(final Path workdir, final Project project) {
+  public static boolean compile(final Path workdir, final Project project) {
     Objects.requireNonNull(workdir);
     if (!workdir.isAbsolute()) {
       throw new IllegalArgumentException("Working directory must be an absolute path");
@@ -126,6 +126,8 @@ public final class Build {
     } else {
       log.error("[project={}] Compilation failed", project.id());
     }
+
+    return result;
   }
 
   /**
