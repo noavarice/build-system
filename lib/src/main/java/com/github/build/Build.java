@@ -109,13 +109,26 @@ public final class Build {
     final Path buildDirectory = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir());
-    final Path classesDirectory = buildDirectory.resolve(project.artifactLayout().classesDir());
+    final Path classesDir = buildDirectory.resolve(project.artifactLayout().classesDir());
+    final Path prodSourceSetClassesDir = classesDir
+        .resolve(prodSourceSet.name())
+        .normalize()
+        .toAbsolutePath();
+    try {
+      Files.createDirectories(prodSourceSetClassesDir);
+      fileManager.setLocation(
+          StandardLocation.CLASS_OUTPUT,
+          List.of(prodSourceSetClassesDir.toFile())
+      );
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
 
     final var task = compiler.getTask(
         new LogWriter(project.id()),
         fileManager,
         diagnosticListener,
-        List.of("-d", classesDirectory.resolve(prodSourceSet.name()).toString()),
+        null,
         null,
         compUnits
     );
