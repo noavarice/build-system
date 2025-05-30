@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -32,10 +33,16 @@ class SimpleBuildTest {
   @TestFactory
   DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
     setupHelloWorld(tempDir);
+    final var main = new SourceSet(
+        new SourceSet.Id("main"),
+        List.of(Path.of("src/main/java")),
+        SourceSet.Type.PROD,
+        Set.of()
+    );
     final var project = new Project(
         new Project.Id("hello-world"),
         Path.of("."),
-        Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of())),
+        Set.of(main),
         Project.ArtifactLayout.DEFAULT
     );
 
@@ -58,10 +65,16 @@ class SimpleBuildTest {
   DynamicTest[] compilingWithoutRequiredDependencyFails(@TempDir final Path tempDir) {
     setupHelloWorldWithPlainJarDep(tempDir, false);
 
+    final var main = new SourceSet(
+        new SourceSet.Id("main"),
+        List.of(Path.of("src/main/java")),
+        SourceSet.Type.PROD,
+        Set.of()
+    );
     final var project = new Project(
         new Project.Id("missing-required-dependency"),
         Path.of("."),
-        Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of())),
+        Set.of(main),
         Project.ArtifactLayout.DEFAULT
     );
 
@@ -88,10 +101,16 @@ class SimpleBuildTest {
         tempDir.resolve("slf4j-api.jar"),
         Dependency.Scope.COMPILE
     );
+    final var main = new SourceSet(
+        new SourceSet.Id("main"),
+        List.of(Path.of("src/main/java")),
+        SourceSet.Type.PROD,
+        Set.of(slf4jDep)
+    );
     final var project = new Project(
         new Project.Id("jar-file-dep"),
         Path.of("."),
-        Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of(slf4jDep))),
+        Set.of(main),
         Project.ArtifactLayout.DEFAULT
     );
 
@@ -162,10 +181,16 @@ class SimpleBuildTest {
   @TestFactory
   DynamicTest[] creatingJarProjectWorks(@TempDir final Path tempDir) {
     setupHelloWorld(tempDir);
+    final var main = new SourceSet(
+        new SourceSet.Id("main"),
+        List.of(Path.of("src/main/java")),
+        SourceSet.Type.PROD,
+        Set.of()
+    );
     final var project = new Project(
         new Project.Id("project-jar"),
         Path.of("."),
-        Set.of(new SourceSet("main", SourceSet.Type.PROD, Set.of())),
+        Set.of(main),
         Project.ArtifactLayout.DEFAULT
     );
 

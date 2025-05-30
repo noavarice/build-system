@@ -19,7 +19,7 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
 
   public Project {
     Objects.requireNonNull(id);
-    Objects.requireNonNull(path);
+    path = Objects.requireNonNull(path).normalize();
     if (path.isAbsolute()) {
       throw new IllegalArgumentException("Must be a relative path");
     }

@@ -1,5 +1,6 @@
 package com.github.build;
 
+import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
@@ -45,32 +46,25 @@ public final class Build {
    * @param workdir Working directory
    * @param project Project to build
    */
-  public static boolean compile(final Path workdir, final Project project) {
-    checkWorkdir(workdir);
+  public static boolean compile(Path workdir, final Project project) {
+    Objects.requireNonNull(workdir);
+    PathUtils.checkAbsolute(workdir);
+    PathUtils.checkDirectory(workdir);
+    workdir = workdir.normalize();
+
     Objects.requireNonNull(project);
 
     log.info("[project={}] Compiling main source set", project.id());
     final SourceSet prodSourceSet = project.mainSourceSet();
-    final Path sourcesDirectory = workdir
-        .resolve(project.path())
-        .resolve("src")
-        .resolve(prodSourceSet.name())
-        .resolve("java")
-        .normalize()
-        .toAbsolutePath();
+    final Path projectPath = workdir.resolve(project.path());
+    PathUtils.checkDirectory(projectPath);
 
-    final var sources = new ArrayList<Path>();
-    final var fileVisitor = new CollectingFileVisitor(
-        file -> file.getFileName().toString().endsWith(".java"),
-        sources::add
-    );
-    try {
-      // for some reason, newDirectoryStream with glob does not work as expected
-      // TODO: consider using newDirectoryStream with glob
-      Files.walkFileTree(sourcesDirectory, fileVisitor);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    final List<Path> sourceDirectories = prodSourceSet.sourceDirectories()
+        .stream()
+        .map(projectPath::resolve)
+        .peek(PathUtils::checkDirectory)
+        .toList();
+    final List<Path> sources = collectSources(project.id(), sourceDirectories);
 
     log.debug("[project={}] Compiling {} files: {}", project.id(), sources.size(), sources);
 
@@ -113,7 +107,7 @@ public final class Build {
         .resolve(project.artifactLayout().rootDir());
     final Path classesDir = buildDirectory.resolve(project.artifactLayout().classesDir());
     final Path prodSourceSetClassesDir = classesDir
-        .resolve(prodSourceSet.name())
+        .resolve(prodSourceSet.id().value())
         .normalize()
         .toAbsolutePath();
     try {
@@ -146,6 +140,45 @@ public final class Build {
   }
 
   /**
+   * Collects files ending with ".java" in the specified directories.
+   * <p>
+   * TODO: remove project ID parameter - it's only for logging. Consider using MDC
+   *
+   * @param id                Project ID for logging
+   * @param sourceDirectories Directories to search for source files in
+   * @return List of source files, never null but can be empty
+   */
+  private static List<Path> collectSources(
+      final Project.Id id,
+      final List<Path> sourceDirectories
+  ) {
+    final var sources = new ArrayList<Path>();
+    // for some reason, newDirectoryStream with glob does not work as expected
+    // TODO: consider using newDirectoryStream with glob
+    for (final Path path : sourceDirectories) {
+      final var sourcesPart = new ArrayList<Path>();
+      final var fileVisitor = new CollectingFileVisitor(
+          file -> file.getFileName().toString().endsWith(".java"),
+          sourcesPart::add
+      );
+
+      try {
+        Files.walkFileTree(path, fileVisitor);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+
+      if (sourcesPart.isEmpty()) {
+        log.debug("[project={}] {} contains no source files", id, path);
+      } else {
+        sources.addAll(sourcesPart);
+      }
+    }
+
+    return List.copyOf(sources);
+  }
+
+  /**
    * Writes compiler output to {@link Logger}.
    */
   private static final class LogWriter extends Writer {
@@ -173,8 +206,12 @@ public final class Build {
     }
   }
 
-  public static void createJar(final Path workdir, final Project project) {
-    checkWorkdir(workdir);
+  public static void createJar(Path workdir, final Project project) {
+    Objects.requireNonNull(workdir);
+    PathUtils.checkAbsolute(workdir);
+    PathUtils.checkDirectory(workdir);
+    workdir = workdir.normalize();
+
     Objects.requireNonNull(project);
     final var jarPath = workdir
         .resolve(project.artifactLayout().rootDir())
@@ -187,7 +224,7 @@ public final class Build {
         .resolve(project.artifactLayout().rootDir());
     final Path classesDir = buildDirectory.resolve(project.artifactLayout().classesDir());
     final Path prodSourceSetClassesDir = classesDir
-        .resolve(prodSourceSet.name())
+        .resolve(prodSourceSet.id().value())
         .normalize()
         .toAbsolutePath();
     // not creating directories because they should be created during project compilation
@@ -255,17 +292,6 @@ public final class Build {
       jos.closeEntry();
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    }
-  }
-
-  private static void checkWorkdir(final Path workdir) {
-    Objects.requireNonNull(workdir);
-    if (!workdir.isAbsolute()) {
-      throw new IllegalArgumentException("Working directory must be an absolute path");
-    }
-
-    if (!Files.isDirectory(workdir)) {
-      throw new IllegalArgumentException("Working directory must be an existing directory");
     }
   }
 
