@@ -1,5 +1,8 @@
 package com.github.build;
 
+import static java.util.Comparator.naturalOrder;
+import static java.util.Comparator.reverseOrder;
+
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -12,6 +15,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
@@ -290,6 +294,73 @@ public final class Build {
       jos.putNextEntry(entry);
       jos.write(bytes);
       jos.closeEntry();
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * Copies contents of the source directory recursively to a target directory.
+   *
+   * @param sourceDir Path to directory to be copied
+   * @param targetDir Path to directory to copy to
+   */
+  public static void copyDirectory(final Path sourceDir, final Path targetDir) {
+    if (!Files.isDirectory(sourceDir)) {
+      throw new IllegalArgumentException("Source path must be a directory");
+    }
+
+    if (Files.isRegularFile(targetDir)) {
+      throw new IllegalArgumentException("Target path must not be a file");
+    }
+
+    if (Files.isDirectory(targetDir)) {
+      log.debug("Target directory {} exists, removing content", targetDir);
+      removeDirectoryRecursively(targetDir);
+    }
+
+    copyToNonExistentDirectory(sourceDir, targetDir);
+  }
+
+  private static void removeDirectoryRecursively(final Path directory) {
+    final List<Path> paths = listAll(directory, reverseOrder());
+    log.debug("Files and directories to remove, in order: {}", paths);
+    for (final Path path : paths) {
+      log.trace("Removing {}", path);
+      try {
+        Files.delete(path);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
+  }
+
+  private static void copyToNonExistentDirectory(final Path sourceDir, final Path targetDir) {
+    final List<Path> content = listAll(sourceDir, naturalOrder());
+    for (final Path path : content) {
+      final Path relativePath = sourceDir.relativize(path);
+      final Path pathInsideTarget = targetDir.resolve(relativePath);
+      if (Files.isDirectory(path)) {
+        try {
+          Files.createDirectory(pathInsideTarget);
+        } catch (final IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      } else {
+        try {
+          Files.copy(path, pathInsideTarget);
+        } catch (final IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      }
+    }
+  }
+
+  private static List<Path> listAll(final Path directory, final Comparator<Path> comparator) {
+    try (final var stream = Files.walk(directory)) {
+      return stream
+          .sorted(comparator)
+          .toList();
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
     }

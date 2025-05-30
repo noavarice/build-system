@@ -1,5 +1,8 @@
 package com.github.build;
 
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -211,6 +214,148 @@ class SimpleBuildTest {
         dynamicTest(
             "Check class file generated",
             () -> assertTrue(Files.exists(jarPath))
+        ),
+    };
+  }
+
+  @DisplayName("Check copying empty directory to non-existent directory works")
+  @TestFactory
+  DynamicTest[] copyingEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
+    final Path emptyDir = Files.createDirectory(tempDir.resolve("empty"));
+    assumeThat(emptyDir).isEmptyDirectory();
+
+    final Path targetDir = tempDir.resolve("target");
+    assumeThat(targetDir).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest("Check method succeeds", () ->
+            assertThatCode(() -> Build.copyDirectory(emptyDir, targetDir))
+                .doesNotThrowAnyException()
+        ),
+        dynamicTest("Check target directory exists",
+            () -> assertThat(targetDir).isEmptyDirectory()),
+    };
+  }
+
+  @DisplayName("Check copying empty directory to existing empty directory works")
+  @TestFactory
+  DynamicTest[] copyingEmptyDirectoryToExistingDirWorks(
+      @TempDir final Path tempDir
+  ) throws IOException {
+    final Path emptyDir = Files.createDirectory(tempDir.resolve("empty"));
+    assumeThat(emptyDir).isEmptyDirectory();
+
+    final Path targetDir = Files.createDirectory(tempDir.resolve("target"));
+    assumeThat(targetDir).isEmptyDirectory();
+
+    return new DynamicTest[]{
+        dynamicTest("Check method succeeds", () ->
+            assertThatCode(() -> Build.copyDirectory(emptyDir, targetDir))
+                .doesNotThrowAnyException()
+        ),
+        dynamicTest("Check target directory exists",
+            () -> assertThat(targetDir).isEmptyDirectory()),
+    };
+  }
+
+  @DisplayName("Check copying non-empty directory to non-existing empty directory works")
+  @TestFactory
+  DynamicTest[] copyingNonEmptyDirectoryToNonExistingDirWorks(
+      @TempDir final Path tempDir
+  ) throws IOException {
+    final Path sourceDir = Files.createDirectory(tempDir.resolve("source"));
+    Files.writeString(sourceDir.resolve("greeting.txt"), "Hello, world!");
+    final Path nestedDir = Files.createDirectory(sourceDir.resolve("nested"));
+    Files.writeString(nestedDir.resolve("greeting.txt"), "Hello, world!");
+    assumeThat(sourceDir).isNotEmptyDirectory();
+
+    final Path targetDir = tempDir.resolve("target");
+    assumeThat(targetDir).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest("Check method succeeds", () ->
+            assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+                .doesNotThrowAnyException()
+        ),
+        dynamicTest("Check target directory has immediate file",
+            () -> assertThat(targetDir.resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+        dynamicTest("Check target directory has nested file",
+            () -> assertThat(targetDir.resolve("nested").resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+    };
+  }
+
+  @DisplayName("Check copying non-empty directory to existing empty directory works")
+  @TestFactory
+  DynamicTest[] copyingNonEmptyDirectoryToExistingDirWorks(
+      @TempDir final Path tempDir
+  ) throws IOException {
+    final Path sourceDir = Files.createDirectory(tempDir.resolve("source"));
+    Files.writeString(sourceDir.resolve("greeting.txt"), "Hello, world!");
+    final Path nestedDir = Files.createDirectory(sourceDir.resolve("nested"));
+    Files.writeString(nestedDir.resolve("greeting.txt"), "Hello, world!");
+    assumeThat(sourceDir).isNotEmptyDirectory();
+
+    final Path targetDir = Files.createDirectory(tempDir.resolve("target"));
+    assumeThat(targetDir).isEmptyDirectory();
+
+    return new DynamicTest[]{
+        dynamicTest("Check method succeeds", () ->
+            assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+                .doesNotThrowAnyException()
+        ),
+        dynamicTest("Check target directory has immediate file",
+            () -> assertThat(targetDir.resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+        dynamicTest("Check target directory has nested file",
+            () -> assertThat(targetDir.resolve("nested").resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+    };
+  }
+
+  @DisplayName("Check copying non-empty directory to existing non-empty directory works")
+  @TestFactory
+  DynamicTest[] copyingNonEmptyDirectoryToExistingNonEmptyDirWorks(
+      @TempDir final Path tempDir
+  ) throws IOException {
+    final Path sourceDir = Files.createDirectory(tempDir.resolve("source"));
+    Files.writeString(sourceDir.resolve("greeting.txt"), "Hello, world!");
+    final Path nestedDir = Files.createDirectory(sourceDir.resolve("nested"));
+    Files.writeString(nestedDir.resolve("greeting.txt"), "Hello, world!");
+    assumeThat(sourceDir).isNotEmptyDirectory();
+
+    final Path targetDir = Files.createDirectory(tempDir.resolve("target"));
+    Files.writeString(targetDir.resolve("existing.txt"), "Hello, world");
+    final Path someDir = Files.createDirectory(targetDir.resolve("some-dir"));
+    Files.writeString(someDir.resolve("existing.txt"), "Hello, world");
+    assumeThat(targetDir.resolve("existing.txt")).isNotEmptyFile();
+    assumeThat(targetDir.resolve("some-dir").resolve("existing.txt")).isNotEmptyFile();
+
+    return new DynamicTest[]{
+        dynamicTest("Check method succeeds", () ->
+            assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+                .doesNotThrowAnyException()
+        ),
+        dynamicTest("Check target directory has immediate file",
+            () -> assertThat(targetDir.resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+        dynamicTest("Check target directory has nested file",
+            () -> assertThat(targetDir.resolve("nested").resolve("greeting.txt"))
+                .hasContent("Hello, world!")
+        ),
+        dynamicTest("Check immediate old file does not exist",
+            () -> assertThat(targetDir.resolve("existing.txt"))
+                .doesNotExist()
+        ),
+        dynamicTest("Check nested old file does not exist",
+            () -> assertThat(targetDir.resolve("some-dir").resolve("existing.txt"))
+                .doesNotExist()
         ),
     };
   }
