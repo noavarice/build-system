@@ -36,6 +36,7 @@ class SimpleBuildTest {
     final var main = new SourceSet(
         new SourceSet.Id("main"),
         List.of(Path.of("src/main/java")),
+        List.of(),
         SourceSet.Type.PROD,
         Set.of()
     );
@@ -68,6 +69,7 @@ class SimpleBuildTest {
     final var main = new SourceSet(
         new SourceSet.Id("main"),
         List.of(Path.of("src/main/java")),
+        List.of(),
         SourceSet.Type.PROD,
         Set.of()
     );
@@ -104,6 +106,7 @@ class SimpleBuildTest {
     final var main = new SourceSet(
         new SourceSet.Id("main"),
         List.of(Path.of("src/main/java")),
+        List.of(),
         SourceSet.Type.PROD,
         Set.of(slf4jDep)
     );
@@ -184,6 +187,7 @@ class SimpleBuildTest {
     final var main = new SourceSet(
         new SourceSet.Id("main"),
         List.of(Path.of("src/main/java")),
+        List.of(),
         SourceSet.Type.PROD,
         Set.of()
     );

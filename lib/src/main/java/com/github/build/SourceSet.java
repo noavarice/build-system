@@ -13,6 +13,7 @@ import java.util.Set;
 public record SourceSet(
     Id id,
     List<Path> sourceDirectories,
+    List<Path> resourceDirectories,
     Type type,
     Set<Dependency> dependencies
 ) {
@@ -29,7 +30,15 @@ public record SourceSet(
       throw new IllegalArgumentException("Source set must have at least one sources directory");
     }
 
+    resourceDirectories = resourceDirectories
+        .stream()
+        .peek(Objects::requireNonNull)
+        .peek(PathUtils::checkRelative)
+        .map(Path::normalize)
+        .toList();
+
     Objects.requireNonNull(type);
+    dependencies = Set.copyOf(dependencies);
   }
 
   public record Id(String value) {
