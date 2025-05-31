@@ -13,6 +13,7 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
@@ -314,11 +315,6 @@ public final class Build {
       throw new IllegalArgumentException("Target path must not be a file");
     }
 
-    if (Files.isDirectory(targetDir)) {
-      log.debug("Target directory {} exists, removing content", targetDir);
-      removeDirectoryRecursively(targetDir);
-    }
-
     copyToNonExistentDirectory(sourceDir, targetDir);
   }
 
@@ -340,15 +336,28 @@ public final class Build {
     for (final Path path : content) {
       final Path relativePath = sourceDir.relativize(path);
       final Path pathInsideTarget = targetDir.resolve(relativePath);
+      if (pathInsideTarget.equals(targetDir)) {
+        if (Files.notExists(targetDir)) {
+          try {
+            Files.createDirectory(targetDir);
+          } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+          }
+        }
+        continue;
+      }
+
       if (Files.isDirectory(path)) {
-        try {
-          Files.createDirectory(pathInsideTarget);
-        } catch (final IOException e) {
-          throw new UncheckedIOException(e);
+        if (Files.notExists(pathInsideTarget)) {
+          try {
+            Files.createDirectory(pathInsideTarget);
+          } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+          }
         }
       } else {
         try {
-          Files.copy(path, pathInsideTarget);
+          Files.copy(path, pathInsideTarget, StandardCopyOption.REPLACE_EXISTING);
         } catch (final IOException e) {
           throw new UncheckedIOException(e);
         }
