@@ -318,7 +318,19 @@ public final class Build {
     copyToNonExistentDirectory(sourceDir, targetDir);
   }
 
-  private static void removeDirectoryRecursively(final Path directory) {
+  /**
+   * Deletes specified directory and all of its content recursively.
+   *
+   * @param directory Path to directory
+   */
+  public static void deleteDirectory(final Path directory) {
+    log.info("Removing directory {}", directory);
+    Objects.requireNonNull(directory);
+    if (!Files.isDirectory(directory)) {
+      log.info("{} is not a directory (it's a file or it does not exist)", directory);
+      return;
+    }
+
     final List<Path> paths = listAll(directory, reverseOrder());
     log.debug("Files and directories to remove, in order: {}", paths);
     for (final Path path : paths) {
