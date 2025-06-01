@@ -3,6 +3,7 @@ package com.github.build;
 import static java.util.Comparator.naturalOrder;
 import static java.util.Comparator.reverseOrder;
 
+import com.github.build.Project.ArtifactLayout;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -301,14 +302,60 @@ public final class Build {
   }
 
   /**
+   * Copies resources from project's main source set to a {@link ArtifactLayout#resourcesDir()}.
+   *
+   * @param workdir Working directory
+   * @param project Project info
+   */
+  public static void copyResources(Path workdir, final Project project) {
+    Objects.requireNonNull(workdir);
+    PathUtils.checkAbsolute(workdir);
+    PathUtils.checkDirectory(workdir);
+    workdir = workdir.normalize();
+
+    Objects.requireNonNull(project);
+
+    log.info("[project={}] Copying resources from main source set", project.id());
+    final SourceSet main = project.mainSourceSet();
+    final Path targetDir = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
+        .resolve(main.id().value());
+
+    if (Files.isDirectory(targetDir)) {
+      deleteDirectory(targetDir);
+    }
+
+    try {
+      // always creating directory, even if there's nothing to copy
+      Files.createDirectories(targetDir);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    for (final Path dir : main.resourceDirectories()) {
+      final var absolutePath = workdir
+          .resolve(project.path())
+          .resolve(dir);
+      copyDirectory(absolutePath, targetDir);
+    }
+  }
+
+  /**
    * Copies contents of the source directory recursively to a target directory.
    *
    * @param sourceDir Path to directory to be copied
    * @param targetDir Path to directory to copy to
    */
   public static void copyDirectory(final Path sourceDir, final Path targetDir) {
-    if (!Files.isDirectory(sourceDir)) {
-      throw new IllegalArgumentException("Source path must be a directory");
+    if (Files.isRegularFile(sourceDir)) {
+      throw new IllegalArgumentException("Source path must not be a file");
+    }
+
+    if (Files.notExists(sourceDir)) {
+      log.debug("{} does not exist, do nothing", sourceDir);
+      return;
     }
 
     if (Files.isRegularFile(targetDir)) {

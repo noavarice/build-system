@@ -76,15 +76,18 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
    * and so on. Obviously, we need to store these artifacts somewhere. This class defines a list of
    * paths for storing artifacts, relative to a project location.
    *
-   * @param rootDir    Path to a root directory for storing artifacts, relative to a project
-   *                   location
-   * @param classesDir Path to a directory for storing class files, relative to a {@link #rootDir}
+   * @param rootDir      Path to a root directory for storing artifacts, relative to a project
+   *                     location
+   * @param classesDir   Path to a directory for storing class files, relative to a
+   *                     {@link #rootDir}
+   * @param resourcesDir Path to a directory for storing resources, relative to a {@link #rootDir}
    */
-  record ArtifactLayout(Path rootDir, Path classesDir) {
+  record ArtifactLayout(Path rootDir, Path classesDir, Path resourcesDir) {
 
     public static ArtifactLayout DEFAULT = new ArtifactLayout(
         Path.of("build"),
-        Path.of("classes")
+        Path.of("classes"),
+        Path.of("resources")
     );
 
     public ArtifactLayout {
