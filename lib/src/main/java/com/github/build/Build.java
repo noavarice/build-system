@@ -92,6 +92,7 @@ public final class Build {
 
     final List<Path> classPath = prodSourceSet.dependencies()
         .stream()
+        .filter(dependency -> dependency.scope() == Dependency.Scope.COMPILE)
         .map(d -> switch (d) {
           case Dependency.File file -> file.path();
         })
