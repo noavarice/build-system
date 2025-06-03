@@ -95,6 +95,8 @@ public final class Build {
         .filter(dependency -> dependency.scope() == Dependency.Scope.COMPILE)
         .map(d -> switch (d) {
           case Dependency.File file -> file.path();
+          // TODO: resolve remote dependencies
+          case Dependency.Remote ignored -> throw new UnsupportedOperationException();
         })
         .toList();
     try {

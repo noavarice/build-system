@@ -2,6 +2,7 @@ package com.github.build;
 
 import java.nio.file.Path;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * Project dependency.
@@ -9,7 +10,7 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public sealed interface Dependency permits Dependency.File {
+public sealed interface Dependency {
 
   /**
    * Defines where this dependency is used (e.g., as part of compilation classpath).
@@ -31,12 +32,51 @@ public sealed interface Dependency permits Dependency.File {
   /**
    * Designates dependency on local file.
    *
-   * @param path File path
+   * @param path  File path
+   * @param scope Dependency scope (compilation classpath, runtime classpath, etc.)
    */
   record File(Path path, Scope scope) implements Dependency {
 
     public File {
       Objects.requireNonNull(path);
+      // not checking if file exists as its may not be present for now
+      Objects.requireNonNull(scope);
+    }
+  }
+
+  /**
+   * Designates dependency that is hosted somewhere in the remote repository.
+   *
+   * @param groupId    Group ID
+   * @param artifactId Artifact ID
+   * @param version    Optional artifact version
+   * @param scope      Dependency scope (compilation classpath, runtime classpath, etc.)
+   */
+  record Remote(
+      String groupId,
+      String artifactId,
+      @Nullable String version,
+      Scope scope
+  ) implements Dependency {
+
+    public Remote {
+      groupId = Objects.requireNonNull(groupId).strip();
+      if (groupId.isBlank()) {
+        throw new IllegalArgumentException();
+      }
+
+      artifactId = Objects.requireNonNull(artifactId).strip();
+      if (artifactId.isBlank()) {
+        throw new IllegalArgumentException();
+      }
+
+      if (version != null) {
+        version = version.strip();
+        if (version.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+      }
+
       // not checking if file exists as its may not be present for now
       Objects.requireNonNull(scope);
     }
