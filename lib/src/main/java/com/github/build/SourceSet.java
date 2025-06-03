@@ -1,5 +1,6 @@
 package com.github.build;
 
+import com.github.build.deps.Dependency;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.List;

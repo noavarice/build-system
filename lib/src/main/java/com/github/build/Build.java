@@ -4,6 +4,7 @@ import static java.util.Comparator.naturalOrder;
 import static java.util.Comparator.reverseOrder;
 
 import com.github.build.Project.ArtifactLayout;
+import com.github.build.deps.Dependency;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.OutputStream;
