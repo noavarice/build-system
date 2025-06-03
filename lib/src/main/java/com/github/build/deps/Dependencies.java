@@ -9,6 +9,7 @@ import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.repository.LocalRepository;
@@ -45,8 +46,10 @@ public final class Dependencies {
   /**
    * Resolves project remote dependencies, downloads them and puts into cache.
    *
-   * @param project Project which dependencies to be resolved
-   * @param cache   Dependency cache
+   * @param project         Project which dependencies to be resolved
+   * @param repositories    Remote repositories for resolving dependencies against
+   * @param localRepository Local repository to save downloaded artifacts to
+   * @param cache           Dependency cache
    */
   public static void resolve(
       final Project project,
@@ -76,17 +79,19 @@ public final class Dependencies {
       final var aetherDependency = Dependencies.toAetherDependency(dependency);
       final var request = new CollectRequest(aetherDependency, repositories);
       final var dependencyRequest = new DependencyRequest(request, null);
+
       final DependencyResult result;
       try {
         result = repoSystem.resolveDependencies(repoSession, dependencyRequest);
-      } catch (DependencyResolutionException e) {
-        throw new RuntimeException(e);
+      } catch (final DependencyResolutionException e) {
+        throw new IllegalStateException(e);
       }
 
       for (final ArtifactResult artifactResult : result.getArtifactResults()) {
         log.info("[project={}] Resolved {}", project.id(), artifactResult);
         final Path path = artifactResult.getArtifact().getFile().toPath().toAbsolutePath();
-        cache.put(dependency, new ResolvedRemoteDependency(path));
+        final var dep = fromAetherDependency(artifactResult.getArtifact(), dependency.scope());
+        cache.put(dep, new ResolvedRemoteDependency(path));
       }
     }
   }
@@ -102,6 +107,18 @@ public final class Dependencies {
         dependency.version()
     );
     return new org.eclipse.aether.graph.Dependency(artifact, null);
+  }
+
+  private static Dependency.Remote fromAetherDependency(
+      final Artifact artifact,
+      final Dependency.Scope scope
+  ) {
+    return new Dependency.Remote(
+        artifact.getGroupId(),
+        artifact.getArtifactId(),
+        artifact.getVersion(),
+        scope
+    );
   }
 
   private static RepositorySystemSession repoSession(
