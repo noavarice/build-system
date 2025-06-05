@@ -4,7 +4,6 @@ import static java.util.Comparator.naturalOrder;
 import static java.util.Comparator.reverseOrder;
 
 import com.github.build.Project.ArtifactLayout;
-import com.github.build.deps.Dependency;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -108,108 +107,6 @@ public final class Build {
       log.info("Compilation succeeded");
     } else {
       log.error("Compilation failed");
-    }
-
-    return result;
-  }
-
-  /**
-   * Compiles specified project.
-   *
-   * @param workdir Working directory
-   * @param project Project to build
-   */
-  public static boolean compile(Path workdir, final Project project) {
-    Objects.requireNonNull(workdir);
-    PathUtils.checkAbsolute(workdir);
-    PathUtils.checkDirectory(workdir);
-    workdir = workdir.normalize();
-
-    Objects.requireNonNull(project);
-
-    log.info("[project={}] Compiling main source set", project.id());
-    final SourceSet prodSourceSet = project.mainSourceSet();
-    final Path projectPath = workdir.resolve(project.path());
-    PathUtils.checkDirectory(projectPath);
-
-    final List<Path> sourceDirectories = prodSourceSet.sourceDirectories()
-        .stream()
-        .map(projectPath::resolve)
-        .peek(PathUtils::checkDirectory)
-        .toList();
-    final List<Path> sources = collectSources(project.id(), sourceDirectories);
-
-    log.debug("[project={}] Compiling {} files: {}", project.id(), sources.size(), sources);
-
-    final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    final DiagnosticListener<JavaFileObject> diagnosticListener = diagnostic -> {
-      final Level level = switch (diagnostic.getKind()) {
-        case ERROR -> Level.ERROR;
-        case WARNING, MANDATORY_WARNING -> Level.WARN;
-        case NOTE -> Level.INFO;
-        case OTHER -> Level.DEBUG;
-      };
-      log.atLevel(level).log("[project={}] {}", project.id(), diagnostic);
-    };
-    final var fileManager = compiler.getStandardFileManager(
-        diagnosticListener,
-        Locale.US,
-        StandardCharsets.UTF_8
-    );
-
-    final List<Path> classPath = prodSourceSet.dependencies()
-        .stream()
-        .filter(dependency -> dependency.scope() == Dependency.Scope.COMPILE)
-        .map(d -> switch (d) {
-          case Dependency.File file -> file.path();
-          // TODO: resolve remote dependencies
-          case Dependency.Remote ignored -> throw new UnsupportedOperationException();
-        })
-        .toList();
-    try {
-      final var classPathFiles = classPath
-          .stream()
-          .map(Path::toFile)
-          .toList();
-      fileManager.setLocation(StandardLocation.CLASS_PATH, classPathFiles);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    final var compUnits = fileManager.getJavaFileObjectsFromPaths(sources);
-
-    final Path buildDirectory = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir());
-    final Path classesDir = buildDirectory.resolve(project.artifactLayout().classesDir());
-    final Path prodSourceSetClassesDir = classesDir
-        .resolve(prodSourceSet.id().value())
-        .normalize()
-        .toAbsolutePath();
-    try {
-      Files.createDirectories(prodSourceSetClassesDir);
-      fileManager.setLocation(
-          StandardLocation.CLASS_OUTPUT,
-          List.of(prodSourceSetClassesDir.toFile())
-      );
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    final var task = compiler.getTask(
-        new LogWriter(),
-        fileManager,
-        diagnosticListener,
-        null,
-        null,
-        compUnits
-    );
-    task.setLocale(Locale.US);
-    final boolean result = task.call();
-    if (result) {
-      log.info("[project={}] Compilation succeeded", project.id());
-    } else {
-      log.error("[project={}] Compilation failed", project.id());
     }
 
     return result;
