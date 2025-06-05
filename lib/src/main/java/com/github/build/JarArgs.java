@@ -10,14 +10,10 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public record JarConfig(Path path, Map<Path, Content> contents) {
+public record JarArgs(Path path, Map<Path, Content> contents) {
 
-  public JarConfig {
-    Objects.requireNonNull(path);
-    if (!path.isAbsolute()) {
-      throw new IllegalArgumentException("JAR path must be absolute");
-    }
-    path = path.normalize();
+  public JarArgs {
+    path = Objects.requireNonNull(path).normalize().toAbsolutePath();
 
     Objects.requireNonNull(contents);
     contents.forEach((p, c) -> {

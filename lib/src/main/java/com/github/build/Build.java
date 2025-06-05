@@ -19,7 +19,6 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -277,55 +276,7 @@ public final class Build {
     }
   }
 
-  public static void createJar(Path workdir, final Project project) {
-    Objects.requireNonNull(workdir);
-    PathUtils.checkAbsolute(workdir);
-    PathUtils.checkDirectory(workdir);
-    workdir = workdir.normalize();
-
-    Objects.requireNonNull(project);
-    final var jarPath = workdir
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.id() + ".jar")
-        .normalize();
-    log.info("[project={}] Create jar at {}", project.id(), jarPath);
-    final var prodSourceSet = project.mainSourceSet();
-    final Path buildDirectory = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir());
-    final Path classesDir = buildDirectory.resolve(project.artifactLayout().classesDir());
-    final Path prodSourceSetClassesDir = classesDir
-        .resolve(prodSourceSet.id().value())
-        .normalize()
-        .toAbsolutePath();
-    // not creating directories because they should be created during project compilation
-
-    final var jarContents = new HashMap<Path, JarConfig.Content>();
-    final var classFileVisitor = new CollectingFileVisitor(
-        file -> file.getFileName().toString().endsWith(".class"),
-        file -> {
-          final var relativePath = prodSourceSetClassesDir.relativize(file);
-          jarContents.put(relativePath, new JarConfig.Content.File(file));
-        }
-    );
-
-    try {
-      Files.walkFileTree(prodSourceSetClassesDir, classFileVisitor);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    log.debug("[project={}] Creating jar out of {} files: {}",
-        project.id(),
-        jarContents.size(),
-        jarContents.keySet()
-    );
-
-    final var config = new JarConfig(jarPath, jarContents);
-    createJar(config);
-  }
-
-  public static void createJar(final JarConfig config) {
+  public static void createJar(final JarArgs config) {
     Objects.requireNonNull(config);
     log.debug("Creating JAR file at {}", config.path());
     try (final OutputStream os = Files.newOutputStream(config.path())) {
@@ -343,11 +294,11 @@ public final class Build {
   private static void writeJarEntry(
       final JarOutputStream jos,
       final Path path,
-      final JarConfig.Content content
+      final JarArgs.Content content
   ) {
     final byte[] bytes = switch (content) {
-      case JarConfig.Content.Bytes b -> b.value();
-      case JarConfig.Content.File f -> {
+      case JarArgs.Content.Bytes b -> b.value();
+      case JarArgs.Content.File f -> {
         try {
           yield Files.readAllBytes(f.path());
         } catch (final IOException e) {
