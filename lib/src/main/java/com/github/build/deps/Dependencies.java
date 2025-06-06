@@ -12,6 +12,7 @@ import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.artifact.DefaultArtifact;
 import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.graph.DependencyFilter;
 import org.eclipse.aether.repository.LocalRepository;
 import org.eclipse.aether.repository.RemoteRepository;
 import org.eclipse.aether.resolution.ArtifactResult;
@@ -19,6 +20,7 @@ import org.eclipse.aether.resolution.DependencyRequest;
 import org.eclipse.aether.resolution.DependencyResolutionException;
 import org.eclipse.aether.resolution.DependencyResult;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -57,6 +59,25 @@ public final class Dependencies {
       final LocalRepository localRepository,
       final Map<Dependency.Remote, ResolvedRemoteDependency> cache
   ) {
+    resolve(project, repositories, localRepository, cache, null);
+  }
+
+
+  /**
+   * Resolves project remote dependencies, downloads them and puts into cache.
+   *
+   * @param project         Project which dependencies to be resolved
+   * @param repositories    Remote repositories for resolving dependencies against
+   * @param localRepository Local repository to save downloaded artifacts to
+   * @param cache           Dependency cache
+   */
+  public static void resolve(
+      final Project project,
+      final List<RemoteRepository> repositories,
+      final LocalRepository localRepository,
+      final Map<Dependency.Remote, ResolvedRemoteDependency> cache,
+      @Nullable final DependencyFilter filter
+  ) {
     Objects.requireNonNull(project);
     if (repositories != DEFAULT_REPOS) {
       Objects.requireNonNull(repositories).forEach(Objects::requireNonNull);
@@ -78,7 +99,7 @@ public final class Dependencies {
     for (final var dependency : remoteDependencies) {
       final var aetherDependency = Dependencies.toAetherDependency(dependency);
       final var request = new CollectRequest(aetherDependency, repositories);
-      final var dependencyRequest = new DependencyRequest(request, null);
+      final var dependencyRequest = new DependencyRequest(request, filter);
 
       final DependencyResult result;
       try {
