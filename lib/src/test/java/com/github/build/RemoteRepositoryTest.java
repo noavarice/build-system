@@ -6,6 +6,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.ArtifactResolutionResult;
 import com.github.build.deps.Dependency;
+import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -26,19 +27,26 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Tests for remote repository")
 class RemoteRepositoryTest {
 
+  // TODO: setup separate Maven repository (via Testcontainers, for example)
   private final URI baseUri = URI.create("https://repo.maven.apache.org/maven2");
 
   private final HttpClient client = HttpClient.newHttpClient();
 
   private final RemoteRepository repo = new RemoteRepository(baseUri, client);
 
-  private final Dependency.RemoteExact dep = new Dependency.RemoteExact(
+  private final Dependency.RemoteExact slf4j = new Dependency.RemoteExact(
       "org.slf4j",
       "slf4j-api",
       "2.0.17"
   );
 
-  private final Dependency.RemoteExact nonExistentDep = new Dependency.RemoteExact(
+  private final Dependency.RemoteExact logbackParent = new Dependency.RemoteExact(
+      "ch.qos.logback",
+      "logback-parent",
+      "1.5.8"
+  );
+
+  private final Dependency.RemoteExact nonExistentSlf4j = new Dependency.RemoteExact(
       "org.slf4j",
       "slf4j-api",
       "1.9.0"
@@ -55,7 +63,7 @@ class RemoteRepositoryTest {
       final byte[] expectedBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
       return new DynamicTest[]{
           dynamicTest("Check method works", () ->
-              assertThatCode(() -> ref.set(repo.download(dep))).doesNotThrowAnyException()
+              assertThatCode(() -> ref.set(repo.download(slf4j))).doesNotThrowAnyException()
           ),
           dynamicTest("Check result is not empty", () -> assertThat(ref.get()).isPresent()),
           dynamicTest("Check actual JAR bytes match", () -> {
@@ -71,7 +79,66 @@ class RemoteRepositoryTest {
     @DisplayName("Check downloading non-existent dependency jar works")
     @Test
     void testDownloadingNonExistentJar() {
-      assertThat(repo.download(nonExistentDep)).isEmpty();
+      assertThat(repo.download(nonExistentSlf4j)).isEmpty();
+    }
+  }
+
+  @DisplayName("Tests for getting dependency POM")
+  @Nested
+  class GettingPom {
+
+    @DisplayName("Check downloading non-existent dependency POM works")
+    @Test
+    void testGettingPomForNonExistentDependency() {
+      assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
+    }
+
+    @DisplayName("Check downloading existing dependency POM works")
+    @TestFactory
+    DynamicTest[] testGettingPomForExistingDependencyWorks() {
+      final var ref = new AtomicReference<Optional<Pom>>();
+
+      // checking method works beforehand for simplifying actual tests
+      assertThatCode(() -> ref.set(repo.getPom(logbackParent))).doesNotThrowAnyException();
+
+      final Pom pom = ref.get().orElseThrow();
+      return new DynamicTest[]{
+          dynamicTest(
+              "Check group ID",
+              () -> assertThat(pom.groupId()).isEqualTo("ch.qos.logback")
+          ),
+          dynamicTest(
+              "Check artifactId",
+              () -> assertThat(pom.artifactId()).isEqualTo("logback-parent")
+          ),
+          dynamicTest(
+              "Check version",
+              () -> assertThat(pom.version()).isEqualTo("1.5.8")
+          ),
+          dynamicTest(
+              "Check parent",
+              () -> assertThat(pom.parent()).isNull()
+          ),
+          dynamicTest(
+              "Check property count",
+              () -> assertThat(pom.properties()).hasSize(39)
+          ),
+          dynamicTest(
+              "Check one property",
+              () -> assertThat(pom.properties().get("jdk.version")).isEqualTo("11")
+          ),
+          dynamicTest(
+              "Check dependency count",
+              () -> assertThat(pom.dependencies()).hasSize(4)
+          ),
+          dynamicTest(
+              "Check one dependency",
+              () -> assertThat(pom.dependencies().getFirst())
+                  .isEqualTo(
+                      new Pom.Dependency("org.assertj", "assertj-core", "${assertj-core.version}")
+                  )
+          ),
+      };
     }
   }
 }
