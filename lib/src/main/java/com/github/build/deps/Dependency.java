@@ -14,13 +14,6 @@ public sealed interface Dependency {
 
   /**
    * Defines where this dependency is used (e.g., as part of compilation classpath).
-   *
-   * @return Dependency scope
-   */
-  Scope scope();
-
-  /**
-   * Defines where this dependency is used (e.g., as part of compilation classpath).
    */
   enum Scope {
     /**
@@ -77,8 +70,43 @@ public sealed interface Dependency {
         }
       }
 
-      // not checking if file exists as its may not be present for now
       Objects.requireNonNull(scope);
+    }
+  }
+
+  /**
+   * Designates dependency with known version that is hosted somewhere in the remote repository.
+   *
+   * @param groupId    Group ID
+   * @param artifactId Artifact ID
+   * @param version    Artifact version
+   */
+  record RemoteExact(
+      String groupId,
+      String artifactId,
+      String version
+  ) implements Dependency {
+
+    public RemoteExact {
+      groupId = Objects.requireNonNull(groupId).strip();
+      if (groupId.isBlank()) {
+        throw new IllegalArgumentException();
+      }
+
+      artifactId = Objects.requireNonNull(artifactId).strip();
+      if (artifactId.isBlank()) {
+        throw new IllegalArgumentException();
+      }
+
+      version = Objects.requireNonNull(version).strip();
+      if (version.isBlank()) {
+        throw new IllegalArgumentException();
+      }
+    }
+
+    @Override
+    public String toString() {
+      return groupId + ':' + artifactId + ':' + version;
     }
   }
 }
