@@ -57,7 +57,7 @@ public final class Dependencies {
       final Project project,
       final List<RemoteRepository> repositories,
       final LocalRepository localRepository,
-      final Map<Dependency.Remote, ResolvedRemoteDependency> cache
+      final Map<Dependency.Remote.Lax, ResolvedRemoteDependency> cache
   ) {
     resolve(project, repositories, localRepository, cache, null);
   }
@@ -75,7 +75,7 @@ public final class Dependencies {
       final Project project,
       final List<RemoteRepository> repositories,
       final LocalRepository localRepository,
-      final Map<Dependency.Remote, ResolvedRemoteDependency> cache,
+      final Map<Dependency.Remote.Lax, ResolvedRemoteDependency> cache,
       @Nullable final DependencyFilter filter
   ) {
     Objects.requireNonNull(project);
@@ -90,10 +90,10 @@ public final class Dependencies {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final RepositorySystemSession repoSession = repoSession(repoSystem, localRepository);
 
-    final List<Dependency.Remote> remoteDependencies = project.mainSourceSet().dependencies()
+    final List<Dependency.Remote.Lax> remoteDependencies = project.mainSourceSet().dependencies()
         .stream()
-        .filter(dependency -> dependency instanceof Dependency.Remote)
-        .map(dependency -> (Dependency.Remote) dependency)
+        .filter(dependency -> dependency instanceof Dependency.Remote.Lax)
+        .map(dependency -> (Dependency.Remote.Lax) dependency)
         .toList();
 
     for (final var dependency : remoteDependencies) {
@@ -118,7 +118,7 @@ public final class Dependencies {
   }
 
   private static org.eclipse.aether.graph.Dependency toAetherDependency(
-      final Dependency.Remote dependency
+      final Dependency.Remote.Lax dependency
   ) {
     final var artifact = new DefaultArtifact(
         dependency.groupId(),
@@ -130,11 +130,11 @@ public final class Dependencies {
     return new org.eclipse.aether.graph.Dependency(artifact, null);
   }
 
-  private static Dependency.Remote fromAetherDependency(
+  private static Dependency.Remote.Lax fromAetherDependency(
       final Artifact artifact,
       final Dependency.Scope scope
   ) {
-    return new Dependency.Remote(
+    return new Dependency.Remote.Lax(
         artifact.getGroupId(),
         artifact.getArtifactId(),
         artifact.getVersion(),

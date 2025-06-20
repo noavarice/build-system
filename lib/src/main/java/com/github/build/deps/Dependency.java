@@ -37,76 +37,83 @@ public sealed interface Dependency {
     }
   }
 
-  /**
-   * Designates dependency that is hosted somewhere in the remote repository.
-   *
-   * @param groupId    Group ID
-   * @param artifactId Artifact ID
-   * @param version    Optional artifact version
-   * @param scope      Dependency scope (compilation classpath, runtime classpath, etc.)
-   */
-  record Remote(
-      String groupId,
-      String artifactId,
-      @Nullable String version,
-      Scope scope
-  ) implements Dependency {
+  sealed interface Remote extends Dependency {
 
-    public Remote {
-      groupId = Objects.requireNonNull(groupId).strip();
-      if (groupId.isBlank()) {
-        throw new IllegalArgumentException();
+    String groupId();
+
+    String artifactId();
+
+    /**
+     * Designates dependency that is hosted somewhere in the remote repository.
+     *
+     * @param groupId    Group ID
+     * @param artifactId Artifact ID
+     * @param version    Optional artifact version
+     * @param scope      Dependency scope (compilation classpath, runtime classpath, etc.)
+     */
+    record Lax(
+        String groupId,
+        String artifactId,
+        @Nullable String version,
+        Scope scope
+    ) implements Remote {
+
+      public Lax {
+        groupId = Objects.requireNonNull(groupId).strip();
+        if (groupId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        artifactId = Objects.requireNonNull(artifactId).strip();
+        if (artifactId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        if (version != null) {
+          version = version.strip();
+          if (version.isBlank()) {
+            throw new IllegalArgumentException();
+          }
+        }
+
+        Objects.requireNonNull(scope);
       }
+    }
 
-      artifactId = Objects.requireNonNull(artifactId).strip();
-      if (artifactId.isBlank()) {
-        throw new IllegalArgumentException();
-      }
+    /**
+     * Designates dependency with known version that is hosted somewhere in the remote repository.
+     *
+     * @param groupId    Group ID
+     * @param artifactId Artifact ID
+     * @param version    Artifact version
+     */
+    record Exact(
+        String groupId,
+        String artifactId,
+        String version
+    ) implements Remote {
 
-      if (version != null) {
-        version = version.strip();
+      public Exact {
+        groupId = Objects.requireNonNull(groupId).strip();
+        if (groupId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        artifactId = Objects.requireNonNull(artifactId).strip();
+        if (artifactId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        version = Objects.requireNonNull(version).strip();
         if (version.isBlank()) {
           throw new IllegalArgumentException();
         }
       }
 
-      Objects.requireNonNull(scope);
-    }
-  }
-
-  /**
-   * Designates dependency with known version that is hosted somewhere in the remote repository.
-   *
-   * @param groupId    Group ID
-   * @param artifactId Artifact ID
-   * @param version    Artifact version
-   */
-  record RemoteExact(
-      String groupId,
-      String artifactId,
-      String version
-  ) implements Dependency {
-
-    public RemoteExact {
-      groupId = Objects.requireNonNull(groupId).strip();
-      if (groupId.isBlank()) {
-        throw new IllegalArgumentException();
+      @Override
+      public String toString() {
+        return groupId + ':' + artifactId + ':' + version;
       }
-
-      artifactId = Objects.requireNonNull(artifactId).strip();
-      if (artifactId.isBlank()) {
-        throw new IllegalArgumentException();
-      }
-
-      version = Objects.requireNonNull(version).strip();
-      if (version.isBlank()) {
-        throw new IllegalArgumentException();
-      }
-    }
-
-    @Override
-    public String toString() {
-      return groupId + ':' + artifactId + ':' + version;
     }
   }
 }

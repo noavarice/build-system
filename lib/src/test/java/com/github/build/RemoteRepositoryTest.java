@@ -34,19 +34,19 @@ class RemoteRepositoryTest {
 
   private final RemoteRepository repo = new RemoteRepository(baseUri, client);
 
-  private final Dependency.RemoteExact slf4j = new Dependency.RemoteExact(
+  private final Dependency.Remote.Exact slf4j = new Dependency.Remote.Exact(
       "org.slf4j",
       "slf4j-api",
       "2.0.17"
   );
 
-  private final Dependency.RemoteExact logbackParent = new Dependency.RemoteExact(
+  private final Dependency.Remote.Exact logbackParent = new Dependency.Remote.Exact(
       "ch.qos.logback",
       "logback-parent",
       "1.5.8"
   );
 
-  private final Dependency.RemoteExact nonExistentSlf4j = new Dependency.RemoteExact(
+  private final Dependency.Remote.Exact nonExistentSlf4j = new Dependency.Remote.Exact(
       "org.slf4j",
       "slf4j-api",
       "1.9.0"

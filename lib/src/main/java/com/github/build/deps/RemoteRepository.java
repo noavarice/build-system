@@ -49,7 +49,7 @@ public final class RemoteRepository {
    * @param dependency Dependency coordinates
    * @return Resolution result, never null, empty if no dependency found
    */
-  public Optional<ArtifactResolutionResult> download(final Dependency.RemoteExact dependency) {
+  public Optional<ArtifactResolutionResult> download(final Dependency.Remote.Exact dependency) {
     final var uri = buildUri(dependency, ".jar");
     log.info("Downloading {} JAR from {}", dependency, uri);
     final var request = HttpRequest
@@ -76,7 +76,7 @@ public final class RemoteRepository {
     return Optional.of(result);
   }
 
-  public Optional<Pom> getPom(final Dependency.RemoteExact dependency) {
+  public Optional<Pom> getPom(final Dependency.Remote.Exact dependency) {
     final URI uri = buildUri(dependency, ".pom");
     log.debug("Downloading {} POM from {}", dependency, uri);
     final var request = HttpRequest
@@ -173,7 +173,7 @@ public final class RemoteRepository {
         ));
   }
 
-  private URI buildUri(final Dependency.RemoteExact dep, final String suffix) {
+  private URI buildUri(final Dependency.Remote.Exact dep, final String suffix) {
     // TODO: fragile - use dedicated URI builder
     final String result = baseUri
         + "/" + dep.groupId().replace('.', '/')

@@ -42,7 +42,7 @@ public record Pom(
     dependencies = List.copyOf(dependencies);
   }
 
-  public record Parent(String groupId, String artifactId, @Nullable String version) {
+  public record Parent(String groupId, String artifactId, String version) {
 
     public Parent {
       groupId = Objects.requireNonNull(groupId).strip();
@@ -55,11 +55,9 @@ public record Pom(
         throw new IllegalArgumentException();
       }
 
-      if (version != null) {
-        version = version.strip();
-        if (version.isBlank()) {
-          throw new IllegalArgumentException();
-        }
+      version = version.strip();
+      if (version.isBlank()) {
+        throw new IllegalArgumentException();
       }
     }
   }

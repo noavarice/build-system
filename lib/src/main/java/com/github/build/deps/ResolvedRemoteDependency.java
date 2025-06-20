@@ -5,7 +5,7 @@ import java.nio.file.Path;
 import java.util.Objects;
 
 /**
- * A {@link Dependency.Remote} that has been resolved and downloaded to a local file system.
+ * A {@link Dependency.Lax} that has been resolved and downloaded to a local file system.
  *
  * @author noavarice
  * @since 1.0.0

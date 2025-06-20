@@ -32,7 +32,7 @@ class DependencyResolutionTest {
   @DisplayName("Check resolution works")
   @TestFactory
   DynamicTest[] testResolutionWorks(@TempDir final Path tempDir) {
-    final var dependency = new Dependency.Remote(
+    final var dependency = new Dependency.Remote.Lax(
         "org.slf4j",
         "slf4j-api",
         "2.0.0",
@@ -42,7 +42,7 @@ class DependencyResolutionTest {
 
     final var localRepoPath = tempDir.resolve("local-repo");
     final var localRepo = new LocalRepository(localRepoPath.toFile());
-    final var cache = new ConcurrentHashMap<Dependency.Remote, ResolvedRemoteDependency>();
+    final var cache = new ConcurrentHashMap<Dependency.Remote.Lax, ResolvedRemoteDependency>();
 
     final var jarPath = localRepoPath.resolve("org/slf4j/slf4j-api/2.0.0/slf4j-api-2.0.0.jar");
     assumeThat(jarPath).doesNotExist();
@@ -65,43 +65,43 @@ class DependencyResolutionTest {
   @DisplayName("Check transitive dependency resolution works")
   @TestFactory
   DynamicTest[] testTransitiveDependencyResolutionWorks(@TempDir final Path tempDir) {
-    final var logbackClassic = new Dependency.Remote(
+    final var logbackClassic = new Dependency.Remote.Lax(
         "ch.qos.logback",
         "logback-classic",
         "1.5.14",
         Dependency.Scope.COMPILE
     );
-    final var logbackCore = new Dependency.Remote(
+    final var logbackCore = new Dependency.Remote.Lax(
         "ch.qos.logback",
         "logback-core",
         "1.5.14",
         Dependency.Scope.COMPILE
     );
-    final var slf4jApi = new Dependency.Remote(
+    final var slf4jApi = new Dependency.Remote.Lax(
         "org.slf4j",
         "slf4j-api",
         "2.0.15",
         Dependency.Scope.COMPILE
     );
-    final var jakartaMail = new Dependency.Remote(
+    final var jakartaMail = new Dependency.Remote.Lax(
         "jakarta.mail",
         "jakarta.mail-api",
         "2.1.0",
         Dependency.Scope.COMPILE
     );
-    final var jakartaActivation = new Dependency.Remote(
+    final var jakartaActivation = new Dependency.Remote.Lax(
         "jakarta.activation",
         "jakarta.activation-api",
         "2.1.0",
         Dependency.Scope.COMPILE
     );
-    final var janino = new Dependency.Remote(
+    final var janino = new Dependency.Remote.Lax(
         "org.codehaus.janino",
         "janino",
         "3.1.8",
         Dependency.Scope.COMPILE
     );
-    final var janinoCommonsCompiler = new Dependency.Remote(
+    final var janinoCommonsCompiler = new Dependency.Remote.Lax(
         "org.codehaus.janino",
         "commons-compiler",
         "3.1.8",
@@ -112,7 +112,7 @@ class DependencyResolutionTest {
 
     final var localRepoPath = tempDir.resolve("local-repo");
     final var localRepo = new LocalRepository(localRepoPath.toFile());
-    final var cache = new ConcurrentHashMap<Dependency.Remote, ResolvedRemoteDependency>();
+    final var cache = new ConcurrentHashMap<Dependency.Remote.Lax, ResolvedRemoteDependency>();
 
     final var slf4jApiJarPath = localRepoPath.resolve(
         "org/slf4j/slf4j-api/2.0.15/slf4j-api-2.0.15.jar"
@@ -218,43 +218,43 @@ class DependencyResolutionTest {
   @DisplayName("Check dependency resolution with filter works")
   @TestFactory
   DynamicTest[] testDependencyResolutionWithFilterWorks(@TempDir final Path tempDir) {
-    final var logbackClassic = new Dependency.Remote(
+    final var logbackClassic = new Dependency.Remote.Lax(
         "ch.qos.logback",
         "logback-classic",
         "1.5.14",
         Dependency.Scope.COMPILE
     );
-    final var logbackCore = new Dependency.Remote(
+    final var logbackCore = new Dependency.Remote.Lax(
         "ch.qos.logback",
         "logback-core",
         "1.5.14",
         Dependency.Scope.COMPILE
     );
-    final var slf4jApi = new Dependency.Remote(
+    final var slf4jApi = new Dependency.Remote.Lax(
         "org.slf4j",
         "slf4j-api",
         "2.0.15",
         Dependency.Scope.COMPILE
     );
-    final var jakartaMail = new Dependency.Remote(
+    final var jakartaMail = new Dependency.Remote.Lax(
         "jakarta.mail",
         "jakarta.mail-api",
         "2.1.0",
         Dependency.Scope.COMPILE
     );
-    final var jakartaActivation = new Dependency.Remote(
+    final var jakartaActivation = new Dependency.Remote.Lax(
         "jakarta.activation",
         "jakarta.activation-api",
         "2.1.0",
         Dependency.Scope.COMPILE
     );
-    final var janino = new Dependency.Remote(
+    final var janino = new Dependency.Remote.Lax(
         "org.codehaus.janino",
         "janino",
         "3.1.8",
         Dependency.Scope.COMPILE
     );
-    final var janinoCommonsCompiler = new Dependency.Remote(
+    final var janinoCommonsCompiler = new Dependency.Remote.Lax(
         "org.codehaus.janino",
         "commons-compiler",
         "3.1.8",
@@ -265,7 +265,7 @@ class DependencyResolutionTest {
 
     final var localRepoPath = tempDir.resolve("local-repo");
     final var localRepo = new LocalRepository(localRepoPath.toFile());
-    final var cache = new ConcurrentHashMap<Dependency.Remote, ResolvedRemoteDependency>();
+    final var cache = new ConcurrentHashMap<Dependency.Remote.Lax, ResolvedRemoteDependency>();
 
     final var slf4jApiJarPath = localRepoPath.resolve(
         "org/slf4j/slf4j-api/2.0.15/slf4j-api-2.0.15.jar"
@@ -375,7 +375,7 @@ class DependencyResolutionTest {
     };
   }
 
-  private static Project getProject(final Dependency.Remote dependency) {
+  private static Project getProject(final Dependency.Remote.Lax dependency) {
     return new Project(
         new Project.Id("test-project"),
         Path.of(""),
