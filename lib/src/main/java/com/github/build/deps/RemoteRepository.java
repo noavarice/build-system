@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import org.apache.maven.pom._4_0.DependencyManagement;
 import org.apache.maven.pom._4_0.Model;
 import org.apache.maven.pom._4_0.Parent;
 import org.slf4j.Logger;
@@ -76,7 +77,7 @@ public final class RemoteRepository {
     return Optional.of(result);
   }
 
-  public Optional<Pom> getPom(final Dependency.Remote.Exact dependency) {
+  public Optional<Pom> getPom(final Dependency.Remote.WithVersion dependency) {
     final URI uri = buildUri(dependency, ".pom");
     log.debug("Downloading {} POM from {}", dependency, uri);
     final var request = HttpRequest
@@ -125,6 +126,9 @@ public final class RemoteRepository {
   private static Pom toPom(final Model model) {
     final Pom.Parent parent = mapParent(model.getParent());
     final List<Pom.Dependency> dependencies = mapDependencies(model.getDependencies());
+    final List<Pom.Dependency> dependencyManagement = mapDependencies(
+        model.getDependencyManagement().getDependencies()
+    );
     final Map<String, String> properties = mapProperties(model.getProperties());
     return new Pom(
         model.getGroupId(),
@@ -132,6 +136,7 @@ public final class RemoteRepository {
         model.getVersion(),
         parent,
         properties,
+        dependencyManagement,
         dependencies
     );
   }
@@ -145,11 +150,18 @@ public final class RemoteRepository {
   }
 
   private static List<Pom.Dependency> mapDependencies(final Model.Dependencies container) {
-    if (container == null) {
-      return List.of();
-    }
+    return container != null ? mapDependencies(container.getDependency()) : List.of();
+  }
 
-    final var dependencies = container.getDependency();
+  private static List<Pom.Dependency> mapDependencies(
+      final DependencyManagement.Dependencies container
+  ) {
+    return container != null ? mapDependencies(container.getDependency()) : List.of();
+  }
+
+  private static List<Pom.Dependency> mapDependencies(
+      final List<org.apache.maven.pom._4_0.Dependency> dependencies
+  ) {
     if (dependencies == null || dependencies.isEmpty()) {
       return List.of();
     }
@@ -173,7 +185,7 @@ public final class RemoteRepository {
         ));
   }
 
-  private URI buildUri(final Dependency.Remote.Exact dep, final String suffix) {
+  private URI buildUri(final Dependency.Remote.WithVersion dep, final String suffix) {
     // TODO: fragile - use dedicated URI builder
     final String result = baseUri
         + "/" + dep.groupId().replace('.', '/')

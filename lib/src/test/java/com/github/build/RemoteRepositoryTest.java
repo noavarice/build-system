@@ -138,6 +138,17 @@ class RemoteRepositoryTest {
                       new Pom.Dependency("org.assertj", "assertj-core", "${assertj-core.version}")
                   )
           ),
+          dynamicTest(
+              "Check dependency management entries count",
+              () -> assertThat(pom.dependencyManagement()).hasSize(16)
+          ),
+          dynamicTest(
+              "Check one dependency management entry",
+              () -> assertThat(pom.dependencyManagement().getFirst())
+                  .isEqualTo(
+                      new Pom.Dependency("ch.qos.logback", "logback-core", "${project.version}")
+                  )
+          ),
       };
     }
   }

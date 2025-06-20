@@ -17,6 +17,7 @@ public record Pom(
     @Nullable String version,
     @Nullable Parent parent,
     Map<String, String> properties,
+    List<Dependency> dependencyManagement,
     List<Dependency> dependencies
 ) {
 

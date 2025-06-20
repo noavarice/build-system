@@ -37,11 +37,25 @@ public sealed interface Dependency {
     }
   }
 
+  /**
+   * Dependency to be resolved via {@link RemoteRepository}.
+   */
   sealed interface Remote extends Dependency {
 
     String groupId();
 
     String artifactId();
+
+    /**
+     * Remote dependency with version present.
+     * <p>
+     * This interface is handy when you need to operate upon some exact version of remote dependency
+     * (e.g., when downloading actual dependency JAR).
+     */
+    sealed interface WithVersion extends Remote permits Remote.Exact, Remote.Bom {
+
+      String version();
+    }
 
     /**
      * Designates dependency that is hosted somewhere in the remote repository.
@@ -91,9 +105,45 @@ public sealed interface Dependency {
         String groupId,
         String artifactId,
         String version
-    ) implements Remote {
+    ) implements Remote, WithVersion {
 
       public Exact {
+        groupId = Objects.requireNonNull(groupId).strip();
+        if (groupId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        artifactId = Objects.requireNonNull(artifactId).strip();
+        if (artifactId.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+
+        version = Objects.requireNonNull(version).strip();
+        if (version.isBlank()) {
+          throw new IllegalArgumentException();
+        }
+      }
+
+      @Override
+      public String toString() {
+        return groupId + ':' + artifactId + ':' + version;
+      }
+    }
+
+    /**
+     * Designates Bill of Materials dependency.
+     *
+     * @param groupId    Group ID
+     * @param artifactId Artifact ID
+     * @param version    Artifact version
+     */
+    record Bom(
+        String groupId,
+        String artifactId,
+        String version
+    ) implements Remote, WithVersion {
+
+      public Bom {
         groupId = Objects.requireNonNull(groupId).strip();
         if (groupId.isBlank()) {
           throw new IllegalArgumentException();
