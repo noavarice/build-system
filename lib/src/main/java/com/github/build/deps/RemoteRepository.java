@@ -45,6 +45,11 @@ public final class RemoteRepository {
     this.client = Objects.requireNonNull(client);
   }
 
+  @Override
+  public String toString() {
+    return baseUri.toString();
+  }
+
   /**
    * Downloads dependency JAR.
    *
