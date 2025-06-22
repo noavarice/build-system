@@ -131,15 +131,26 @@ public final class RemoteRepository {
 
   private static Pom toPom(final Model model) {
     final Pom.Parent parent = mapParent(model.getParent());
+
+    String groupId = model.getGroupId();
+    if (groupId == null) {
+      groupId = parent.groupId();
+    }
+
+    String version = model.getVersion();
+    if (version == null) {
+      version = parent.version();
+    }
+
     final List<Pom.Dependency> dependencies = mapDependencies(model.getDependencies());
     final List<Pom.Dependency> dependencyManagement = model.getDependencyManagement() != null
         ? mapDependencies(model.getDependencyManagement().getDependencies())
         : List.of();
     final Map<String, String> properties = mapProperties(model.getProperties());
     return new Pom(
-        model.getGroupId(),
+        groupId,
         model.getArtifactId(),
-        model.getVersion(),
+        version,
         parent,
         properties,
         dependencyManagement,

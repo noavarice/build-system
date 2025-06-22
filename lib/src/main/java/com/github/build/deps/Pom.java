@@ -14,7 +14,7 @@ import org.jspecify.annotations.Nullable;
 public record Pom(
     String groupId,
     String artifactId,
-    @Nullable String version,
+    String version,
     @Nullable Parent parent,
     Map<String, String> properties,
     List<Dependency> dependencyManagement,
@@ -22,14 +22,6 @@ public record Pom(
 ) {
 
   public Pom {
-    if (groupId == null) {
-      if (parent == null) {
-        throw new IllegalStateException();
-      }
-
-      groupId = parent.groupId();
-    }
-
     groupId = Objects.requireNonNull(groupId).strip();
     if (groupId.isBlank()) {
       throw new IllegalArgumentException();
@@ -40,11 +32,9 @@ public record Pom(
       throw new IllegalArgumentException();
     }
 
-    if (version != null) {
-      version = version.strip();
-      if (version.isBlank()) {
-        throw new IllegalArgumentException();
-      }
+    version = Objects.requireNonNull(version).strip();
+    if (version.isBlank()) {
+      throw new IllegalArgumentException();
     }
 
     properties = Map.copyOf(properties);
