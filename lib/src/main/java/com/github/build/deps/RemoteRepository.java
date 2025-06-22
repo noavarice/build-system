@@ -15,6 +15,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
@@ -126,9 +127,9 @@ public final class RemoteRepository {
   private static Pom toPom(final Model model) {
     final Pom.Parent parent = mapParent(model.getParent());
     final List<Pom.Dependency> dependencies = mapDependencies(model.getDependencies());
-    final List<Pom.Dependency> dependencyManagement = mapDependencies(
-        model.getDependencyManagement().getDependencies()
-    );
+    final List<Pom.Dependency> dependencyManagement = model.getDependencyManagement() != null
+        ? mapDependencies(model.getDependencyManagement().getDependencies())
+        : List.of();
     final Map<String, String> properties = mapProperties(model.getProperties());
     return new Pom(
         model.getGroupId(),
@@ -168,7 +169,19 @@ public final class RemoteRepository {
 
     return dependencies
         .stream()
-        .map(d -> new Pom.Dependency(d.getGroupId(), d.getArtifactId(), d.getVersion()))
+        .map(d -> {
+          final boolean optional = "true".equals(d.getOptional());
+          final var scope = d.getScope() == null
+              ? Pom.Dependency.Scope.COMPILE
+              : Pom.Dependency.Scope.valueOf(d.getScope().toUpperCase(Locale.US));
+          return new Pom.Dependency(
+              d.getGroupId(),
+              d.getArtifactId(),
+              d.getVersion(),
+              scope,
+              optional
+          );
+        })
         .toList();
   }
 

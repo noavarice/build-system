@@ -46,6 +46,12 @@ class RemoteRepositoryTest {
       "1.5.8"
   );
 
+  private final Dependency.Remote.Exact logbackClassic = new Dependency.Remote.Exact(
+      "ch.qos.logback",
+      "logback-classic",
+      "1.5.18"
+  );
+
   private final Dependency.Remote.Exact nonExistentSlf4j = new Dependency.Remote.Exact(
       "org.slf4j",
       "slf4j-api",
@@ -135,7 +141,13 @@ class RemoteRepositoryTest {
               "Check one dependency",
               () -> assertThat(pom.dependencies().getFirst())
                   .isEqualTo(
-                      new Pom.Dependency("org.assertj", "assertj-core", "${assertj-core.version}")
+                      new Pom.Dependency(
+                          "org.assertj",
+                          "assertj-core",
+                          "${assertj-core.version}",
+                          Pom.Dependency.Scope.TEST,
+                          false
+                      )
                   )
           ),
           dynamicTest(
@@ -146,8 +158,51 @@ class RemoteRepositoryTest {
               "Check one dependency management entry",
               () -> assertThat(pom.dependencyManagement().getFirst())
                   .isEqualTo(
-                      new Pom.Dependency("ch.qos.logback", "logback-core", "${project.version}")
+                      new Pom.Dependency(
+                          "ch.qos.logback",
+                          "logback-core",
+                          "${project.version}",
+                          Pom.Dependency.Scope.COMPILE,
+                          false
+                      )
                   )
+          ),
+      };
+    }
+
+    @DisplayName("Check optional dependencies")
+    @TestFactory
+    DynamicTest[] testOptionalDependencies() {
+      final var ref = new AtomicReference<Optional<Pom>>();
+
+      // checking method works beforehand for simplifying actual tests
+      assertThatCode(() -> ref.set(repo.getPom(logbackClassic))).doesNotThrowAnyException();
+
+      final Pom pom = ref.get().orElseThrow();
+      final var compileDependencies = pom.dependencies()
+          .stream()
+          .filter(d -> d.scope() == Pom.Dependency.Scope.COMPILE)
+          .toList();
+      return new DynamicTest[]{
+          dynamicTest(
+              "Check core dependency is required",
+              () -> assertThat(compileDependencies.getFirst().optional()).isFalse()
+          ),
+          dynamicTest(
+              "Check SLF4J dependency is required",
+              () -> assertThat(compileDependencies.get(1).optional()).isFalse()
+          ),
+          dynamicTest(
+              "Check Jakarta Mail API dependency is optional",
+              () -> assertThat(compileDependencies.get(2).optional()).isTrue()
+          ),
+          dynamicTest(
+              "Check Jakarta Activation API dependency is optional",
+              () -> assertThat(compileDependencies.get(3).optional()).isTrue()
+          ),
+          dynamicTest(
+              "Check Janino dependency is optional",
+              () -> assertThat(compileDependencies.get(4).optional()).isTrue()
           ),
       };
     }

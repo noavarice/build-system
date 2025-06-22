@@ -22,6 +22,14 @@ public record Pom(
 ) {
 
   public Pom {
+    if (groupId == null) {
+      if (parent == null) {
+        throw new IllegalStateException();
+      }
+
+      groupId = parent.groupId();
+    }
+
     groupId = Objects.requireNonNull(groupId).strip();
     if (groupId.isBlank()) {
       throw new IllegalArgumentException();
@@ -63,11 +71,30 @@ public record Pom(
     }
   }
 
-  public record Dependency(String groupId, String artifactId, @Nullable String version) {
+  public record Dependency(
+      String groupId,
+      String artifactId,
+      @Nullable String version,
+      Scope scope,
+      boolean optional
+  ) {
 
     public Dependency {
-      Objects.requireNonNull(groupId);
-      Objects.requireNonNull(artifactId);
+      groupId = Objects.requireNonNull(groupId).strip();
+      artifactId = Objects.requireNonNull(artifactId).strip();
+      if (version != null) {
+        version = version.strip();
+      }
+
+      Objects.requireNonNull(scope);
+    }
+
+    public enum Scope {
+      COMPILE,
+      RUNTIME,
+      TEST,
+      SYSTEM,
+      PROVIDED,
     }
   }
 }
