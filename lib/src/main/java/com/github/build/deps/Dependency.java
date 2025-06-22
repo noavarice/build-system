@@ -124,6 +124,10 @@ public sealed interface Dependency {
         }
       }
 
+      public Coordinates coordinates() {
+        return new Coordinates(groupId, artifactId, version);
+      }
+
       @Override
       public String toString() {
         return groupId + ':' + artifactId + ':' + version;

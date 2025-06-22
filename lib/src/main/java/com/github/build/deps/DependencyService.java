@@ -3,7 +3,9 @@ package com.github.build.deps;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
+import java.util.concurrent.ConcurrentHashMap;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -17,6 +19,8 @@ public final class DependencyService {
 
   private final List<RemoteRepository> remoteRepositories;
 
+  private final Map<Coordinates, Pom> poms = new ConcurrentHashMap<>();
+
   public DependencyService(final List<RemoteRepository> remoteRepositories) {
     this.remoteRepositories = List.copyOf(remoteRepositories);
     if (remoteRepositories.isEmpty()) {
@@ -27,35 +31,46 @@ public final class DependencyService {
   public List<Pom.Dependency> resolveTransitive(final Dependency.Remote.Exact dependency) {
     final var result = new ArrayList<Pom.Dependency>();
 
-    final var queue = new ArrayList<Dependency.Remote.Exact>();
-    queue.addLast(dependency);
+    final var queue = new ArrayList<Coordinates>();
+    queue.addLast(dependency.coordinates());
 
-    final var handled = new HashSet<Dependency.Remote.Exact>();
+    final var handled = new HashSet<Coordinates>();
 
     while (!queue.isEmpty()) {
-      final Dependency.Remote.Exact current = queue.getFirst();
+      final Coordinates current = queue.getFirst();
       if (handled.contains(current)) {
         continue;
       } else {
         handled.add(current);
       }
 
+      // resolve POM and all of its parents, so it's possible to resolve versions
+      // for transitive dependencies (e.g., when dependency version is set implicitly
+      // or explicitly but via POM property)
       final Pom pom = findPom(current);
+      poms.putIfAbsent(pom.coordinates(), pom);
+      resolveParents(pom);
+
       result.addAll(pom.dependencies());
-      pom.dependencies()
-          .stream()
-          .map(d -> new Dependency.Remote.Exact(
-              d.groupId(),
-              d.artifactId(),
-              d.version()
-          ))
-          .forEach(queue::addLast);
+      for (final Pom.Dependency transitive : pom.dependencies()) {
+        // FIXME: search for dependency version
+        throw new UnsupportedOperationException();
+      }
     }
 
     return result;
   }
 
-  private Pom findPom(final Dependency.Remote.Exact dependency) {
+  private void resolveParents(final Pom pom) {
+    Pom.Parent parent = pom.parent();
+    while (parent != null && !poms.containsKey(parent.coordinates())) {
+      final Pom parentPom = findPom(parent.coordinates());
+      poms.putIfAbsent(parentPom.coordinates(), parentPom);
+      parent = parentPom.parent();
+    }
+  }
+
+  private Pom findPom(final Coordinates dependency) {
     for (final RemoteRepository repository : remoteRepositories) {
       final Optional<Pom> pomOpt = repository.getPom(dependency);
       if (pomOpt.isPresent()) {

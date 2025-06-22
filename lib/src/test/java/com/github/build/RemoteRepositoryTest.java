@@ -96,7 +96,7 @@ class RemoteRepositoryTest {
     @DisplayName("Check downloading non-existent dependency POM works")
     @Test
     void testGettingPomForNonExistentDependency() {
-      assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
+      assertThat(repo.getPom(nonExistentSlf4j.coordinates())).isEmpty();
     }
 
     @DisplayName("Check downloading existing dependency POM works")
@@ -105,7 +105,9 @@ class RemoteRepositoryTest {
       final var ref = new AtomicReference<Optional<Pom>>();
 
       // checking method works beforehand for simplifying actual tests
-      assertThatCode(() -> ref.set(repo.getPom(logbackParent))).doesNotThrowAnyException();
+      assertThatCode(
+          () -> ref.set(repo.getPom(logbackParent.coordinates()))
+      ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();
       return new DynamicTest[]{
@@ -176,7 +178,9 @@ class RemoteRepositoryTest {
       final var ref = new AtomicReference<Optional<Pom>>();
 
       // checking method works beforehand for simplifying actual tests
-      assertThatCode(() -> ref.set(repo.getPom(logbackClassic))).doesNotThrowAnyException();
+      assertThatCode(
+          () -> ref.set(repo.getPom(logbackClassic.coordinates()))
+      ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();
       final var compileDependencies = pom.dependencies()

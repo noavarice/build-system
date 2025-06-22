@@ -41,6 +41,21 @@ public record Pom(
     dependencies = List.copyOf(dependencies);
   }
 
+  public Coordinates coordinates() {
+    return new Coordinates(groupId, artifactId, version);
+  }
+
+  @Override
+  public boolean equals(final Object obj) {
+    if (!(obj instanceof Pom other)) {
+      return false;
+    }
+
+    return groupId.equals(other.groupId)
+        && artifactId.equals(other.artifactId)
+        && version.equals(other.version);
+  }
+
   public record Parent(String groupId, String artifactId, String version) {
 
     public Parent {
@@ -58,6 +73,10 @@ public record Pom(
       if (version.isBlank()) {
         throw new IllegalArgumentException();
       }
+    }
+
+    public Coordinates coordinates() {
+      return new Coordinates(groupId, artifactId, version);
     }
   }
 
