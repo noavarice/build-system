@@ -17,7 +17,7 @@ public record Pom(
     String version,
     @Nullable Parent parent,
     Map<String, String> properties,
-    List<Dependency> dependencyManagement,
+    List<Dependency> dependencyManagement, // TODO: use separate model with non-nullable version
     List<Dependency> dependencies
 ) {
 
@@ -96,6 +96,10 @@ public record Pom(
       }
 
       Objects.requireNonNull(scope);
+    }
+
+    public ArtifactCoordinates artifactCoordinates() {
+      return new ArtifactCoordinates(groupId, artifactId);
     }
 
     public enum Scope {

@@ -3,13 +3,14 @@ package com.github.build;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.github.build.deps.Coordinates;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyService;
-import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
@@ -31,6 +32,13 @@ class DependencyServiceTest {
       "1.5.18"
   );
 
+  private final Dependency.Remote.Exact springCore = new Dependency.Remote.Exact(
+      "org.springframework",
+      "spring-core",
+      "6.0.11"
+  );
+
+
   private final RemoteRepository mavenCentral = new RemoteRepository(
       URI.create("https://repo.maven.apache.org/maven2"),
       HttpClient.newHttpClient()
@@ -41,27 +49,15 @@ class DependencyServiceTest {
   @DisplayName("Check resolving transitive dependencies for a single dependency")
   @Test
   void testResolvingTransitiveDependencies() {
-    final var ref = new AtomicReference<List<Pom.Dependency>>();
+    final var ref = new AtomicReference<Set<Coordinates>>();
     assertThatCode(
-        () -> ref.set(service.resolveTransitive(logbackClassic))
+        () -> ref.set(service.resolveTransitive(springCore))
     ).doesNotThrowAnyException();
 
-    final List<Pom.Dependency> actual = ref.get();
-    final List<Pom.Dependency> expected = List.of(
-        new Pom.Dependency(
-            "ch.qos.logback",
-            "logback-core",
-            "1.5.18",
-            Pom.Dependency.Scope.COMPILE,
-            false
-        ),
-        new Pom.Dependency(
-            "jakarta.activation",
-            "jakarta.activation-api",
-            "2.1.0",
-            Pom.Dependency.Scope.COMPILE,
-            true
-        )
+    final Set<Coordinates> actual = ref.get();
+    final Set<Coordinates> expected = Set.of(
+        new Coordinates("ch.qos.logback", "logback-core", "1.5.18"),
+        new Coordinates("org.slf4j", "slf4j-api", "2.0.17")
     );
 
     assertThat(actual).isEqualTo(expected);

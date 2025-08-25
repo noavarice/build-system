@@ -208,6 +208,7 @@ public final class RemoteRepository {
 
     return container.getAny()
         .stream()
+        .filter(Node::hasChildNodes)
         .collect(toUnmodifiableMap(
             Node::getNodeName,
             element -> element.getFirstChild().getNodeValue()

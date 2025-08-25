@@ -6,9 +6,9 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public record Coordinates(String groupId, String artifactId, String version) {
+public record ArtifactCoordinates(String groupId, String artifactId) {
 
-  public Coordinates {
+  public ArtifactCoordinates {
     groupId = Objects.requireNonNull(groupId).strip();
     if (groupId.isBlank()) {
       throw new IllegalArgumentException();
@@ -18,15 +18,10 @@ public record Coordinates(String groupId, String artifactId, String version) {
     if (artifactId.isBlank()) {
       throw new IllegalArgumentException();
     }
-
-    version = Objects.requireNonNull(version).strip();
-    if (version.isBlank()) {
-      throw new IllegalArgumentException();
-    }
   }
 
   @Override
   public String toString() {
-    return String.join(":", groupId, artifactId, version);
+    return groupId + ':' + artifactId;
   }
 }
