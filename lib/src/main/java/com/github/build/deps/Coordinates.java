@@ -8,6 +8,16 @@ import java.util.Objects;
  */
 public record Coordinates(String groupId, String artifactId, String version) {
 
+  public static Coordinates parse(final String value) {
+    Objects.requireNonNull(value);
+    final String[] parts = value.split(":", -1);
+    return switch (parts.length) {
+      case 3 -> new Coordinates(parts[0], parts[1], parts[2]);
+      case 4 -> new Coordinates(parts[0], parts[1], parts[3]); // skipping classifier
+      default -> throw new IllegalStateException("Unexpected part count " + parts.length);
+    };
+  }
+
   public Coordinates {
     groupId = Objects.requireNonNull(groupId).strip();
     if (groupId.isBlank()) {

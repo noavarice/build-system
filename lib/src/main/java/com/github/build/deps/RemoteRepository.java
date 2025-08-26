@@ -1,6 +1,7 @@
 package com.github.build.deps;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBElement;
@@ -19,6 +20,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import org.apache.maven.pom._4_0.DependencyManagement;
 import org.apache.maven.pom._4_0.Model;
 import org.apache.maven.pom._4_0.Parent;
@@ -190,11 +192,25 @@ public final class RemoteRepository {
           final var scope = d.getScope() == null
               ? Pom.Dependency.Scope.COMPILE
               : Pom.Dependency.Scope.valueOf(d.getScope().toUpperCase(Locale.US));
+          final Set<ArtifactCoordinates> exclusions;
+          if (d.getExclusions() == null) {
+            exclusions = Set.of();
+          } else {
+            exclusions = d.getExclusions().getExclusion()
+                .stream()
+                .map(exclusion -> new ArtifactCoordinates(
+                    exclusion.getGroupId(),
+                    exclusion.getArtifactId())
+                )
+                .collect(toUnmodifiableSet());
+          }
+
           return new Pom.Dependency(
               d.getGroupId(),
               d.getArtifactId(),
               d.getVersion(),
               scope,
+              exclusions,
               optional
           );
         })

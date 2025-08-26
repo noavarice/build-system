@@ -15,6 +15,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Timeout;
 
 /**
  * {@link DependencyService} tests.
@@ -36,6 +37,18 @@ class DependencyServiceTest {
       "org.springframework",
       "spring-context",
       "6.0.11"
+  );
+
+  private final Dependency.Remote.Exact jacksonParameterNames = new Dependency.Remote.Exact(
+      "com.fasterxml.jackson.module",
+      "jackson-module-parameter-names",
+      "2.15.4"
+  );
+
+  private final Dependency.Remote.Exact springBootWeb = new Dependency.Remote.Exact(
+      "org.springframework.boot",
+      "spring-boot-starter-web",
+      "3.2.5"
   );
 
   private final RemoteRepository mavenCentral = new RemoteRepository(
@@ -80,5 +93,84 @@ class DependencyServiceTest {
     );
 
     assertThat(actual).isEqualTo(expected);
+  }
+
+  @DisplayName("Check resolving dependency with a chain of parents")
+  @Test
+  @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+  void testResolvingWithChainOfParents() {
+    final var ref = new AtomicReference<Set<Coordinates>>();
+    assertThatCode(
+        () -> ref.set(service.resolveTransitive(jacksonParameterNames))
+    ).doesNotThrowAnyException();
+
+    final Set<Coordinates> actual = ref.get();
+    final Set<Coordinates> expected = Set.of(
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-annotations:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-core:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-databind:2.15.4")
+    );
+
+    assertThat(actual).isEqualTo(expected);
+  }
+
+  @DisplayName("Check resolving even more transitive dependencies for a single dependency")
+  @Test
+  @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+  void testResolvingEvenMoreTransitiveDependencies() {
+    final var ref = new AtomicReference<Set<Coordinates>>();
+    assertThatCode(
+        () -> ref.set(service.resolveTransitive(springBootWeb))
+    ).doesNotThrowAnyException();
+
+    final Set<Coordinates> actual = ref.get();
+    final Set<Coordinates> expected = Set.of(
+        Coordinates.parse("org.springframework.boot:spring-boot-starter-web:jar:3.2.5"),
+        Coordinates.parse("org.springframework.boot:spring-boot-starter:jar:3.2.5"),
+        Coordinates.parse("org.springframework.boot:spring-boot:jar:3.2.5"),
+        Coordinates.parse("org.springframework.boot:spring-boot-autoconfigure:jar:3.2.5"),
+        Coordinates.parse("org.springframework.boot:spring-boot-starter-logging:jar:3.2.5"),
+        Coordinates.parse("ch.qos.logback:logback-classic:jar:1.4.14"),
+        Coordinates.parse("ch.qos.logback:logback-core:jar:1.4.14"),
+        Coordinates.parse("org.slf4j:slf4j-api:jar:2.0.7"),
+        Coordinates.parse("org.apache.logging.log4j:log4j-to-slf4j:jar:2.21.1"),
+        Coordinates.parse("org.apache.logging.log4j:log4j-api:jar:2.21.1"),
+        Coordinates.parse("org.slf4j:jul-to-slf4j:jar:2.0.13"),
+        Coordinates.parse("jakarta.annotation:jakarta.annotation-api:jar:2.1.1"),
+        Coordinates.parse("org.springframework:spring-core:jar:6.1.6"),
+        Coordinates.parse("org.springframework:spring-jcl:jar:6.1.6"),
+        Coordinates.parse("org.yaml:snakeyaml:jar:2.2"),
+        Coordinates.parse("org.springframework.boot:spring-boot-starter-json:jar:3.2.5"),
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-databind:jar:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-annotations:jar:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.core:jackson-core:jar:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:jar:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:2.15.4"),
+        Coordinates.parse("com.fasterxml.jackson.module:jackson-module-parameter-names:jar:2.15.4"),
+        Coordinates.parse("org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"),
+        Coordinates.parse("org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"),
+        Coordinates.parse("org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"),
+        Coordinates.parse("org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"),
+        Coordinates.parse("org.springframework:spring-web:jar:6.1.6"),
+        Coordinates.parse("org.springframework:spring-beans:jar:6.1.6"),
+        Coordinates.parse("io.micrometer:micrometer-observation:jar:1.12.5"),
+        Coordinates.parse("io.micrometer:micrometer-commons:jar:1.12.5"),
+        Coordinates.parse("org.springframework:spring-webmvc:jar:6.1.6"),
+        Coordinates.parse("org.springframework:spring-aop:jar:6.1.6"),
+        Coordinates.parse("org.springframework:spring-context:jar:6.1.6"),
+        Coordinates.parse("org.springframework:spring-expression:jar:6.1.6")
+    );
+
+    final var actualSorted = actual
+        .stream()
+        .map(c -> c.toString())
+        .sorted()
+        .toList();
+    final var expectedSorted = expected
+        .stream()
+        .map(c -> c.toString())
+        .sorted()
+        .toList();
+    assertThat(actualSorted).isEqualTo(expectedSorted);
   }
 }

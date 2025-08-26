@@ -81,21 +81,21 @@ public final class DependencyService {
 
         // resolving and accumulating explicit dependencies
         for (final Pom.Dependency d : parent.dependencies()) {
-          if (d.scope() != Pom.Dependency.Scope.COMPILE) {
-            log.info("Skipping non-compile dependency {} (scope {})",
-                d.artifactCoordinates(),
-                d.scope()
-            );
-            continue;
-          }
-
           if (d.optional()) {
             log.info("Skipping optional dependency {}", d.artifactCoordinates());
             continue;
           }
 
-          final String exactVersion = resolveExactVersion(d, properties, dependencyManagement);
-          dependencies.put(d.artifactCoordinates(), exactVersion);
+          switch (d.scope()) {
+            case COMPILE, RUNTIME -> {
+              final String exactVersion = resolveExactVersion(d, properties, dependencyManagement);
+              dependencies.put(d.artifactCoordinates(), exactVersion);
+            }
+            default -> log.info("Skipping non-compile, non-runtime dependency {} (scope {})",
+                d.artifactCoordinates(),
+                d.scope()
+            );
+          }
         }
       }
 
@@ -182,18 +182,22 @@ public final class DependencyService {
       final Map<String, String> properties
   ) {
     // resolving version from properties
-    final boolean valuePlaceholder = version.startsWith("${") && version.endsWith("}");
-    if (!valuePlaceholder) {
-      return version;
+    String foundVersion = version;
+
+    // resolving in cycle because property value can be another placeholder
+    while (foundVersion != null && foundVersion.startsWith("${") && foundVersion.endsWith("}")) {
+      final String propertyName = foundVersion.substring(2, foundVersion.length() - 1);
+      foundVersion = properties.get(propertyName);
+      if (foundVersion != null) {
+        foundVersion = foundVersion.strip();
+      }
     }
 
-    final String propertyName = version.substring(2, version.length() - 1);
-    final String exactVersion = properties.get(propertyName);
-    if (exactVersion == null) {
+    if (foundVersion == null) {
       // TODO: rework error model
       throw new IllegalStateException("");
     }
 
-    return exactVersion;
+    return foundVersion;
   }
 }

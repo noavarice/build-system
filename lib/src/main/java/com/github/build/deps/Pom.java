@@ -3,6 +3,7 @@ package com.github.build.deps;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -85,6 +86,7 @@ public record Pom(
       String artifactId,
       @Nullable String version,
       Scope scope,
+      Set<ArtifactCoordinates> exclusions,
       boolean optional
   ) {
 
@@ -96,6 +98,7 @@ public record Pom(
       }
 
       Objects.requireNonNull(scope);
+      exclusions = Set.copyOf(exclusions);
     }
 
     public ArtifactCoordinates artifactCoordinates() {
@@ -108,6 +111,7 @@ public record Pom(
       TEST,
       SYSTEM,
       PROVIDED,
+      IMPORT,
     }
   }
 }
