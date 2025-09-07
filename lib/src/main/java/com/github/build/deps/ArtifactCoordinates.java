@@ -20,6 +20,10 @@ public record ArtifactCoordinates(String groupId, String artifactId) {
     }
   }
 
+  public Coordinates withVersion(final String version) {
+    return new Coordinates(groupId, artifactId, version);
+  }
+
   @Override
   public String toString() {
     return groupId + ':' + artifactId;

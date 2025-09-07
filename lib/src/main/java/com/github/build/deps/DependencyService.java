@@ -1,5 +1,7 @@
 package com.github.build.deps;
 
+import com.github.build.deps.graph.Graph;
+import com.github.build.deps.graph.GraphPath;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -34,13 +36,16 @@ public final class DependencyService {
   public Set<Coordinates> resolveTransitive(final Dependency.Remote.Exact dependency) {
     final var result = new HashSet<Coordinates>();
 
-    final var queue = new ArrayList<Coordinates>();
-    queue.addLast(dependency.coordinates());
+    final var queue = new ArrayList<GraphPath>();
+    queue.addLast(new GraphPath(dependency.coordinates()));
+
+    final var graph = new Graph();
 
     final var handled = new HashSet<Coordinates>();
 
     while (!queue.isEmpty()) {
-      final Coordinates current = queue.removeFirst();
+      final GraphPath currentPath = queue.removeLast();
+      final Coordinates current = currentPath.getLast();
       if (handled.contains(current)) {
         continue;
       } else {
@@ -90,6 +95,11 @@ public final class DependencyService {
             case COMPILE, RUNTIME -> {
               final String exactVersion = resolveExactVersion(d, properties, dependencyManagement);
               dependencies.put(d.artifactCoordinates(), exactVersion);
+              graph.add(
+                  d.artifactCoordinates().withVersion(exactVersion),
+                  d.exclusions(),
+                  currentPath
+              );
             }
             default -> log.info("Skipping non-compile, non-runtime dependency {} (scope {})",
                 d.artifactCoordinates(),
@@ -101,18 +111,17 @@ public final class DependencyService {
 
       final var moreToResolve = new ArrayList<Coordinates>(dependencies.size());
       dependencies.forEach((artifactCoordinates, version) -> {
-        final var coordinates = new Coordinates(
-            artifactCoordinates.groupId(),
-            artifactCoordinates.artifactId(),
-            version
-        );
+        final Coordinates coordinates = artifactCoordinates.withVersion(version);
         if (!handled.contains(coordinates)) {
           moreToResolve.add(coordinates);
         }
       });
 
       log.info("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
-      moreToResolve.forEach(queue::addLast);
+      moreToResolve
+          .stream()
+          .map(currentPath::addLast)
+          .forEach(queue::addLast);
       result.addAll(moreToResolve);
     }
 

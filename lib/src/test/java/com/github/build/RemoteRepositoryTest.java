@@ -10,8 +10,8 @@ import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
-import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -149,7 +149,7 @@ class RemoteRepositoryTest {
                           "assertj-core",
                           "${assertj-core.version}",
                           Pom.Dependency.Scope.TEST,
-                          List.of(),
+                          Set.of(),
                           false
                       )
                   )
@@ -167,7 +167,7 @@ class RemoteRepositoryTest {
                           "logback-core",
                           "${project.version}",
                           Pom.Dependency.Scope.COMPILE,
-                          List.of(),
+                          Set.of(),
                           false
                       )
                   )
