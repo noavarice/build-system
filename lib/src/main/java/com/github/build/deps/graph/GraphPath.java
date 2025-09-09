@@ -13,10 +13,12 @@ import java.util.List;
  */
 public final class GraphPath implements Iterable<Coordinates> {
 
+  public static final GraphPath ROOT = new GraphPath();
+
   private final List<Coordinates> nodes;
 
-  public GraphPath(final Coordinates value) {
-    this(List.of(value));
+  public GraphPath(final Coordinates... values) {
+    this(List.of(values));
   }
 
   public GraphPath(final List<Coordinates> nodes) {

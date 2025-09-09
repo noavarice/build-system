@@ -67,6 +67,10 @@ public final class Graph {
     return true;
   }
 
+  public Set<Coordinates> resolve() {
+    throw new UnsupportedOperationException();
+  }
+
   private static final class Node {
 
     private final Coordinates value;
