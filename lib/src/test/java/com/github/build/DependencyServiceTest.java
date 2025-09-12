@@ -24,7 +24,6 @@ import org.junit.jupiter.api.Timeout;
  * @since 1.0.0
  */
 @DisplayName("Tests for dependency service")
-@Disabled("Because implementation is not ready yet")
 class DependencyServiceTest {
 
   private final Dependency.Remote.Exact logbackClassic = new Dependency.Remote.Exact(
@@ -117,6 +116,7 @@ class DependencyServiceTest {
   @DisplayName("Check resolving even more transitive dependencies for a single dependency")
   @Test
   @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+  @Disabled("Dependency importing is not implemented yet")
   void testResolvingEvenMoreTransitiveDependencies() {
     final var ref = new AtomicReference<Set<Coordinates>>();
     assertThatCode(

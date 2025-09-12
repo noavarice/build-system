@@ -1,16 +1,25 @@
 package com.github.build.deps.graph;
 
+import static java.util.stream.Collectors.toUnmodifiableMap;
+
 import com.github.build.deps.ArtifactCoordinates;
 import com.github.build.deps.Coordinates;
+import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * @author noavarice
  * @since 1.0.0
  */
 public final class Graph {
+
+  private static final Logger log = LoggerFactory.getLogger(Graph.class);
 
   private final Set<Node> nodes = new HashSet<>();
 
@@ -67,8 +76,67 @@ public final class Graph {
     return true;
   }
 
-  public Set<Coordinates> resolve() {
-    throw new UnsupportedOperationException();
+  public Graph resolve() {
+    record State(
+        GraphPath path,
+        Set<Node> nodes,
+        Set<ArtifactCoordinates> exclusions,
+        Map<ArtifactCoordinates, String> overrides
+    ) {
+
+      State {
+        Objects.requireNonNull(path);
+        nodes = Set.copyOf(nodes);
+        exclusions = Set.copyOf(exclusions);
+        overrides = Map.copyOf(overrides);
+      }
+
+      State next(final Node node) {
+        final var nextExclusions = new HashSet<>(exclusions);
+        nextExclusions.addAll(node.exclusions);
+
+        final var nextOverrides = new HashMap<>(overrides);
+        final var currentLevel = nodes
+            .stream()
+            .collect(toUnmodifiableMap(n -> n.value.artifactCoordinates(), n -> n.value.version()));
+        nextOverrides.putAll(currentLevel);
+
+        return new State(path.addLast(node.value), node.nodes, nextExclusions, nextOverrides);
+      }
+    }
+
+    final var queue = new ArrayList<State>();
+    queue.add(new State(GraphPath.ROOT, nodes, Set.of(), Map.of()));
+
+    final var result = new Graph();
+
+    do {
+      final State currentState = queue.removeLast();
+      for (final Node node : currentState.nodes) {
+        final ArtifactCoordinates artifact = node.value.artifactCoordinates();
+        final boolean excluded = currentState.exclusions.contains(artifact);
+        if (excluded) {
+          log.info("{} is excluded", artifact);
+          continue;
+        }
+
+        final boolean overridden = currentState.overrides.containsKey(artifact);
+        final String currentVersion = node.value.version();
+        if (overridden) {
+          log.info("{} version {} is overridden by version {}",
+              artifact,
+              currentVersion,
+              currentState.overrides.get(artifact)
+          );
+          continue;
+        }
+
+        result.add(node.value, node.exclusions, currentState.path);
+        queue.add(currentState.next(node));
+      }
+    } while (!queue.isEmpty());
+
+    return result;
   }
 
   private static final class Node {

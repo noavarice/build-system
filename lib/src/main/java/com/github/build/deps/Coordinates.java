@@ -35,6 +35,10 @@ public record Coordinates(String groupId, String artifactId, String version) {
     }
   }
 
+  public ArtifactCoordinates artifactCoordinates() {
+    return new ArtifactCoordinates(groupId, artifactId);
+  }
+
   @Override
   public String toString() {
     return String.join(":", groupId, artifactId, version);

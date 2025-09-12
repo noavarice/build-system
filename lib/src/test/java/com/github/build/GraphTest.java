@@ -1,7 +1,8 @@
 package com.github.build;
 
-import static org.assertj.core.api.Assertions.assertThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.Coordinates;
@@ -11,7 +12,6 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
-import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 /**
@@ -69,19 +69,24 @@ class GraphTest {
     };
   }
 
-  @DisplayName("Test Spring Boot Starter Tomcat resolved dependencies")
-  @Test
-  void testSpringBootStarterTomcatResolvedDependencies() {
+  @DisplayName("Test Spring Boot Starter Tomcat resolved graph")
+  @TestFactory
+  DynamicTest[] testSpringBootStarterTomcatResolvedDependencies() {
     final var graph = new Graph();
     graph.add(
         jakartaAnnotations,
         Set.of(),
-        GraphPath.ROOT
+        new GraphPath(starterTomcat)
     );
     graph.add(
         tomcatEmbedEl,
         Set.of(),
-        GraphPath.ROOT
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(tomcatAnnotations.artifactCoordinates()),
+        new GraphPath(starterTomcat)
     );
     graph.add(
         tomcatAnnotations,
@@ -89,18 +94,70 @@ class GraphTest {
         new GraphPath(starterTomcat, tomcatEmbedCore)
     );
     graph.add(
+        tomcatEmbedWebsocket,
+        Set.of(tomcatAnnotations.artifactCoordinates()),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
         tomcatAnnotations,
         Set.of(),
         new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore)
     );
 
-    final Set<Coordinates> expected = Set.of(
+    final var tomcatAnnotationsWebsocketPath = new GraphPath(
         starterTomcat,
-        jakartaAnnotations,
+        tomcatEmbedWebsocket,
         tomcatEmbedCore,
-        tomcatEmbedEl,
-        tomcatEmbedWebsocket
+        tomcatAnnotations
     );
-    assertThat(graph.resolve()).isEqualTo(expected);
+    assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
+
+    final var tomcatAnnotationsCorePath = new GraphPath(
+        starterTomcat,
+        tomcatEmbedCore,
+        tomcatAnnotations
+    );
+    assumeTrue(graph.contains(tomcatAnnotationsCorePath));
+
+    final Graph resolvedGraph = graph.resolve();
+
+    return new DynamicTest[]{
+        dynamicTest(
+            "Check Jakarta Annotations dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, jakartaAnnotations);
+              assertTrue(resolvedGraph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed El dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
+              assertTrue(resolvedGraph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed Core dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
+              assertTrue(resolvedGraph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed Core dependency is not present via Starter -> Websocket",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+              assertFalse(resolvedGraph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat annotations dependency is not present via Starter -> Websocket -> Core",
+            () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsWebsocketPath))
+        ),
+        dynamicTest(
+            "Check Tomcat annotations dependency is not present via Starter -> Core",
+            () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsCorePath))
+        ),
+    };
   }
 }
