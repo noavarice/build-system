@@ -139,6 +139,23 @@ public final class Graph {
     return result;
   }
 
+  public Set<Coordinates> toDependencies() {
+    if (nodes.isEmpty()) {
+      return Set.of();
+    }
+
+    final var queue = new ArrayList<>(nodes);
+    final var result = new HashSet<Coordinates>();
+
+    do {
+      final Node currentNode = queue.removeLast();
+      result.add(currentNode.value);
+      queue.addAll(currentNode.nodes);
+    } while (!queue.isEmpty());
+
+    return Set.copyOf(result);
+  }
+
   private static final class Node {
 
     private final Coordinates value;

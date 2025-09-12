@@ -1,5 +1,6 @@
 package com.github.build;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 
 /**
@@ -71,7 +73,7 @@ class GraphTest {
 
   @DisplayName("Test Spring Boot Starter Tomcat resolved graph")
   @TestFactory
-  DynamicTest[] testSpringBootStarterTomcatResolvedDependencies() {
+  DynamicTest[] testSpringBootStarterTomcatResolvedGraph() {
     final var graph = new Graph();
     graph.add(
         jakartaAnnotations,
@@ -159,5 +161,41 @@ class GraphTest {
             () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsCorePath))
         ),
     };
+  }
+
+  @DisplayName("Test Spring Boot Starter Tomcat dependency set")
+  @Test
+  void testSpringBootStarterTomcatDependencySet() {
+    final var graph = new Graph();
+    graph.add(
+        jakartaAnnotations,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedEl,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(),
+        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
+    );
+
+    final Set<Coordinates> expected = Set.of(
+        starterTomcat,
+        jakartaAnnotations,
+        tomcatEmbedEl,
+        tomcatEmbedCore,
+        tomcatEmbedWebsocket
+    );
+    final Set<Coordinates> actual = graph.toDependencies();
+    assertThat(actual).isEqualTo(expected);
   }
 }
