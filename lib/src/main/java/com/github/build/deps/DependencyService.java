@@ -70,6 +70,13 @@ public final class DependencyService {
 
         // resolving dependency management versions and accumulating them
         for (final Pom.Dependency d : parent.dependencyManagement()) {
+          if (d.scope() == Pom.Dependency.Scope.IMPORT) {
+            final String version = resolveExactVersion(d, properties, dependencyManagement);
+            final Coordinates coordinates = d.artifactCoordinates().withVersion(version);
+            importDependencyManagement(coordinates, dependencyManagement);
+            continue;
+          }
+
           final String version = Objects.requireNonNull(d.version());
           final String exactVersion = resolveExactVersion(version, properties);
           dependencyManagement.put(d.artifactCoordinates(), exactVersion);
@@ -113,7 +120,56 @@ public final class DependencyService {
           .forEach(queue::addLast);
     }
 
-    return graph.resolve().toDependencies();
+    final Graph resolved = graph.resolve();
+    return resolved.toDependencies();
+  }
+
+  // TODO: add tests
+  private void importDependencyManagement(
+      final Coordinates importing,
+      final Map<ArtifactCoordinates, String> importTo
+  ) {
+    final Pom pom = poms.computeIfAbsent(importing, this::findPom);
+    final List<Pom> parents = resolveParents(pom);
+    final var parentsAndCurrent = new ArrayList<>(parents);
+    parentsAndCurrent.add(pom);
+
+    final var properties = new HashMap<String, String>();
+    final var dependencyManagement = new HashMap<ArtifactCoordinates, String>();
+    for (final Pom parent : parentsAndCurrent) {
+      // accumulating parent properties
+      properties.put("project.version", parent.version());
+      if (parent.parent() != null) {
+        properties.put("project.parent.version", parent.parent().version());
+      }
+      properties.putAll(parent.properties());
+
+      // resolving dependency management versions and accumulating them
+      for (final Pom.Dependency d : parent.dependencyManagement()) {
+        if (d.scope() == Pom.Dependency.Scope.IMPORT) {
+          final String version = resolveExactVersion(d, properties, dependencyManagement);
+          final Coordinates coordinates = d.artifactCoordinates().withVersion(version);
+          importDependencyManagement(coordinates, dependencyManagement);
+          continue;
+        }
+
+        final String version = Objects.requireNonNull(d.version());
+        final String exactVersion = resolveExactVersion(version, properties);
+        dependencyManagement.put(d.artifactCoordinates(), exactVersion);
+      }
+    }
+
+    if (log.isDebugEnabled()) {
+      final var imported = new ArrayList<Coordinates>(dependencyManagement.size());
+      dependencyManagement.forEach((artifactCoordinates, version) -> {
+        final Coordinates coordinates = artifactCoordinates.withVersion(version);
+        imported.add(coordinates);
+      });
+
+      log.debug("Importing from {}: {}", importing, imported);
+    }
+
+    importTo.putAll(dependencyManagement);
   }
 
   private List<Pom> resolveParents(final Pom pom) {
