@@ -12,7 +12,6 @@ import java.net.http.HttpClient;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.Timeout;
@@ -116,7 +115,6 @@ class DependencyServiceTest {
   @DisplayName("Check resolving even more transitive dependencies for a single dependency")
   @Test
   @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-  @Disabled("Dependency importing is not implemented yet")
   void testResolvingEvenMoreTransitiveDependencies() {
     final var ref = new AtomicReference<Set<Coordinates>>();
     assertThatCode(

@@ -4,7 +4,6 @@ import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -34,30 +33,22 @@ public final class DependencyService {
   }
 
   public Set<Coordinates> resolveTransitive(final Dependency.Remote.Exact dependency) {
-    final var result = new HashSet<Coordinates>();
-
     final var queue = new ArrayList<GraphPath>();
     queue.addLast(new GraphPath(dependency.coordinates()));
 
     final var graph = new Graph();
-
-    final var handled = new HashSet<Coordinates>();
+    graph.add(dependency.coordinates(), Set.of(), GraphPath.ROOT);
 
     while (!queue.isEmpty()) {
       final GraphPath currentPath = queue.removeLast();
       final Coordinates current = currentPath.getLast();
-      if (handled.contains(current)) {
-        continue;
-      } else {
-        handled.add(current);
-      }
 
       log.info("Resolving direct dependencies for {}", current);
 
       // resolve POM and all of its parents, so it's possible to resolve versions
       // for transitive dependencies (e.g., when dependency version is set implicitly
       // or explicitly but via POM property)
-      final Pom pom = findPom(current);
+      final Pom pom = poms.computeIfAbsent(current, this::findPom);
       poms.putIfAbsent(pom.coordinates(), pom);
       final List<Pom> parents = resolveParents(pom);
       log.info("Resolved {} parents: {}", current, parents.stream().map(Pom::coordinates).toList());
@@ -112,9 +103,7 @@ public final class DependencyService {
       final var moreToResolve = new ArrayList<Coordinates>(dependencies.size());
       dependencies.forEach((artifactCoordinates, version) -> {
         final Coordinates coordinates = artifactCoordinates.withVersion(version);
-        if (!handled.contains(coordinates)) {
-          moreToResolve.add(coordinates);
-        }
+        moreToResolve.add(coordinates);
       });
 
       log.info("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
@@ -122,10 +111,9 @@ public final class DependencyService {
           .stream()
           .map(currentPath::addLast)
           .forEach(queue::addLast);
-      result.addAll(moreToResolve);
     }
 
-    return result;
+    return graph.resolve().toDependencies();
   }
 
   private List<Pom> resolveParents(final Pom pom) {
