@@ -66,8 +66,9 @@ class DependencyServiceTest {
 
     final Set<Coordinates> actual = ref.get();
     final Set<Coordinates> expected = Set.of(
-        new Coordinates("ch.qos.logback", "logback-core", "1.5.18"),
-        new Coordinates("org.slf4j", "slf4j-api", "2.0.17")
+        logbackClassic.coordinates(),
+        Coordinates.parse("ch.qos.logback:logback-core:1.5.18"),
+        Coordinates.parse("org.slf4j:slf4j-api:2.0.17")
     );
 
     assertThat(actual).isEqualTo(expected);
@@ -83,11 +84,12 @@ class DependencyServiceTest {
 
     final Set<Coordinates> actual = ref.get();
     final Set<Coordinates> expected = Set.of(
-        new Coordinates("org.springframework", "spring-aop", "6.0.11"),
-        new Coordinates("org.springframework", "spring-beans", "6.0.11"),
-        new Coordinates("org.springframework", "spring-core", "6.0.11"),
-        new Coordinates("org.springframework", "spring-expression", "6.0.11"),
-        new Coordinates("org.springframework", "spring-jcl", "6.0.11")
+        springContext.coordinates(),
+        Coordinates.parse("org.springframework:spring-aop:6.0.11"),
+        Coordinates.parse("org.springframework:spring-beans:6.0.11"),
+        Coordinates.parse("org.springframework:spring-core:6.0.11"),
+        Coordinates.parse("org.springframework:spring-expression:6.0.11"),
+        Coordinates.parse("org.springframework:spring-jcl:6.0.11")
     );
 
     assertThat(actual).isEqualTo(expected);
@@ -104,6 +106,7 @@ class DependencyServiceTest {
 
     final Set<Coordinates> actual = ref.get();
     final Set<Coordinates> expected = Set.of(
+        jacksonParameterNames.coordinates(),
         Coordinates.parse("com.fasterxml.jackson.core:jackson-annotations:2.15.4"),
         Coordinates.parse("com.fasterxml.jackson.core:jackson-core:2.15.4"),
         Coordinates.parse("com.fasterxml.jackson.core:jackson-databind:2.15.4")
