@@ -111,7 +111,7 @@ public final class Graph {
     final var result = new Graph();
 
     do {
-      final State currentState = queue.removeLast();
+      final State currentState = queue.removeFirst();
       for (final Node node : currentState.nodes) {
         final ArtifactCoordinates artifact = node.value.artifactCoordinates();
         final boolean excluded = currentState.exclusions.contains(artifact);
@@ -148,7 +148,7 @@ public final class Graph {
     final var result = new HashSet<Coordinates>();
 
     do {
-      final Node currentNode = queue.removeLast();
+      final Node currentNode = queue.removeFirst();
       result.add(currentNode.value);
       queue.addAll(currentNode.nodes);
     } while (!queue.isEmpty());
