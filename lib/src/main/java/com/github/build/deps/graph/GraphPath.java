@@ -6,6 +6,7 @@ import com.github.build.deps.Coordinates;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Objects;
 
 /**
  * @author noavarice
@@ -46,5 +47,22 @@ public final class GraphPath implements Iterable<Coordinates> {
   @Override
   public Iterator<Coordinates> iterator() {
     return nodes.stream().iterator();
+  }
+
+  @Override
+  public boolean equals(final Object o) {
+    if (this == o) {
+      return true;
+    }
+    if (o == null || getClass() != o.getClass()) {
+      return false;
+    }
+    final GraphPath that = (GraphPath) o;
+    return Objects.equals(nodes, that.nodes);
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash(nodes);
   }
 }
