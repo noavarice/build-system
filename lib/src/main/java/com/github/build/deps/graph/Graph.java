@@ -10,6 +10,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Predicate;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -74,6 +75,50 @@ public final class Graph {
     }
 
     return true;
+  }
+
+  public Set<GraphPath> findAllPaths(final Coordinates coordinates) {
+    Objects.requireNonNull(coordinates);
+    return findAllPaths(c -> c.equals(coordinates));
+  }
+
+  public Set<GraphPath> findAllPaths(final ArtifactCoordinates coordinates) {
+    Objects.requireNonNull(coordinates);
+    return findAllPaths(c -> c.artifactCoordinates().equals(coordinates));
+  }
+
+  private Set<GraphPath> findAllPaths(final Predicate<Coordinates> condition) {
+    Objects.requireNonNull(condition);
+
+    record State(GraphPath path, Set<Node> nodes) {
+
+      State {
+        Objects.requireNonNull(path);
+        nodes = Set.copyOf(nodes);
+      }
+
+      State next(final Node node) {
+        return new State(path.addLast(node.value), node.nodes);
+      }
+    }
+
+    final var queue = new ArrayList<State>();
+    queue.addLast(new State(GraphPath.ROOT, nodes));
+
+    final var result = new HashSet<GraphPath>();
+    while (!queue.isEmpty()) {
+      final State state = queue.removeFirst();
+      for (final Node node : state.nodes) {
+        final Coordinates artifact = node.value;
+        if (condition.test(artifact)) {
+          result.add(state.path.addLast(artifact));
+        } else if (!node.nodes.isEmpty()) {
+          queue.addLast(state.next(node));
+        }
+      }
+    }
+
+    return result;
   }
 
   public Graph resolve() {
