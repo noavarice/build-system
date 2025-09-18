@@ -9,7 +9,6 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.github.build.deps.Coordinates;
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
-import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -47,13 +46,12 @@ class GraphTest {
       "jakarta.annotation:jakarta.annotation-api:2.1.1"
   );
 
-  @DisplayName("Test Spring Boot Starter Tomcat graph")
+  @DisplayName("Adding graph path works")
   @TestFactory
-  DynamicTest[] testSpringBootStarterTomcatGraph() {
+  DynamicTest[] testAdd() {
     final var graph = new Graph();
 
-    final var annotationsPath = new GraphPath(List.of(starterTomcat, tomcatEmbedWebsocket,
-        tomcatEmbedCore));
+    final var annotationsPath = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
     graph.add(tomcatAnnotations, Set.of(), annotationsPath);
 
     final var elPath = new GraphPath(starterTomcat);
@@ -67,6 +65,103 @@ class GraphTest {
         dynamicTest(
             "Check El dependency",
             () -> assertTrue(graph.contains(elPath.addLast(tomcatEmbedEl)))
+        ),
+    };
+  }
+
+  @DisplayName("Removing graph path works")
+  @TestFactory
+  DynamicTest[] testRemove() {
+    final var graph = new Graph();
+    graph.add(
+        jakartaAnnotations,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedEl,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(tomcatAnnotations.artifactCoordinates()),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatAnnotations,
+        Set.of(),
+        new GraphPath(starterTomcat, tomcatEmbedCore)
+    );
+    graph.add(
+        tomcatEmbedWebsocket,
+        Set.of(tomcatAnnotations.artifactCoordinates()),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatAnnotations,
+        Set.of(),
+        new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore)
+    );
+
+    final var tomcatAnnotationsWebsocketPath = new GraphPath(
+        starterTomcat,
+        tomcatEmbedWebsocket,
+        tomcatEmbedCore,
+        tomcatAnnotations
+    );
+    assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
+
+    final var tomcatAnnotationsCorePath = new GraphPath(
+        starterTomcat,
+        tomcatEmbedCore,
+        tomcatAnnotations
+    );
+    assumeTrue(graph.contains(tomcatAnnotationsCorePath));
+    return new DynamicTest[]{
+        dynamicTest(
+            "Check method returns true when something is removed",
+            () -> assertTrue(graph.removeLast(tomcatAnnotationsCorePath))
+        ),
+        dynamicTest(
+            "Check method returns false when path is not present",
+            () -> assertFalse(graph.removeLast(tomcatAnnotationsCorePath))
+        ),
+        dynamicTest(
+            "Check Jakarta Annotations dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, jakartaAnnotations);
+              assertTrue(graph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed El dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
+              assertTrue(graph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed Core dependency is present via Starter",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
+              assertTrue(graph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat Embed Core dependency is present via Starter -> Websocket",
+            () -> {
+              final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+              assertTrue(graph.contains(path));
+            }
+        ),
+        dynamicTest(
+            "Check Tomcat annotations dependency is present via Starter -> Websocket -> Core",
+            () -> assertTrue(graph.contains(tomcatAnnotationsWebsocketPath))
+        ),
+        dynamicTest(
+            "Check Tomcat annotations dependency is not present via Starter -> Core",
+            () -> assertFalse(graph.contains(tomcatAnnotationsCorePath))
         ),
     };
   }

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.io.TempDir;
  * @since 1.0.0
  */
 @DisplayName("Tests for dependency resolution process")
-class DependencyResolutionTest {
+class DependencyResolutionIT {
 
   @DisplayName("Check resolution works")
   @TestFactory

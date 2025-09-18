@@ -26,7 +26,7 @@ import org.junit.jupiter.api.TestFactory;
  * @since 1.0.0
  */
 @DisplayName("Tests for remote repository")
-class RemoteRepositoryTest {
+class RemoteRepositoryIT {
 
   // TODO: setup separate Maven repository (via Testcontainers, for example)
   private final URI baseUri = URI.create("https://repo.maven.apache.org/maven2");

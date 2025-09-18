@@ -7,10 +7,12 @@ import com.github.build.deps.Coordinates;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -22,7 +24,7 @@ public final class Graph {
 
   private static final Logger log = LoggerFactory.getLogger(Graph.class);
 
-  private final Set<Node> nodes = new HashSet<>();
+  private final List<Node> nodes = new ArrayList<>();
 
   public void add(
       final Coordinates coordinates,
@@ -53,6 +55,32 @@ public final class Graph {
 
     final var newNode = new Node(coordinates, exclusions);
     currentNodes.add(newNode);
+  }
+
+  public boolean removeLast(final GraphPath path) {
+    Objects.requireNonNull(path);
+    if (path.isRoot()) {
+      return false;
+    }
+
+    var currentNodes = this.nodes;
+    for (final Coordinates value : path.removeLast()) {
+      boolean found = false;
+      for (final Node currentNode : currentNodes) {
+        if (currentNode.value.equals(value)) {
+          currentNodes = currentNode.nodes;
+          found = true;
+          break;
+        }
+      }
+
+      if (!found) {
+        return false;
+      }
+    }
+
+    final Coordinates toRemove = path.getLast();
+    return currentNodes.removeIf(node -> node.value.equals(toRemove));
   }
 
   public boolean contains(final GraphPath path) {
@@ -90,11 +118,11 @@ public final class Graph {
   private Set<GraphPath> findAllPaths(final Predicate<Coordinates> condition) {
     Objects.requireNonNull(condition);
 
-    record State(GraphPath path, Set<Node> nodes) {
+    record State(GraphPath path, List<Node> nodes) {
 
       State {
         Objects.requireNonNull(path);
-        nodes = Set.copyOf(nodes);
+        nodes = List.copyOf(nodes);
       }
 
       State next(final Node node) {
@@ -124,14 +152,14 @@ public final class Graph {
   public Graph resolve() {
     record State(
         GraphPath path,
-        Set<Node> nodes,
+        List<Node> nodes,
         Set<ArtifactCoordinates> exclusions,
         Map<ArtifactCoordinates, String> overrides
     ) {
 
       State {
         Objects.requireNonNull(path);
-        nodes = Set.copyOf(nodes);
+        nodes = List.copyOf(nodes);
         exclusions = Set.copyOf(exclusions);
         overrides = Map.copyOf(overrides);
       }
@@ -155,6 +183,7 @@ public final class Graph {
 
     final var result = new Graph();
 
+    final Map<ArtifactCoordinates, List<GraphPath>> artifactPaths = new HashMap<>();
     do {
       final State currentState = queue.removeFirst();
       for (final Node node : currentState.nodes) {
@@ -176,10 +205,42 @@ public final class Graph {
           continue;
         }
 
+        final List<GraphPath> paths = artifactPaths
+            .computeIfAbsent(artifact, ignored -> new ArrayList<>());
+        final Set<Coordinates> coordinates = paths
+            .stream()
+            .map(GraphPath::getLast)
+            .collect(Collectors.toUnmodifiableSet());
+        if (!coordinates.contains(node.value)) {
+          final GraphPath anotherPath = currentState.path.addLast(node.value);
+          paths.add(anotherPath);
+        }
         result.add(node.value, node.exclusions, currentState.path);
         queue.add(currentState.next(node));
       }
     } while (!queue.isEmpty());
+
+    // resolving conflicts
+    for (final ArtifactCoordinates artifact : artifactPaths.keySet()) {
+      final var paths = artifactPaths.get(artifact);
+      if (paths.size() < 2) {
+        continue;
+      }
+
+      log.info("Found conflicts for {}: {}", artifact, paths);
+      GraphPath picked = paths.getFirst();
+      for (int i = 1; i < paths.size(); i++) {
+        final GraphPath path = paths.get(i);
+        if (path.isDuplicateWith(picked)) {
+          log.info("Path {} is duplicate with {}, picking {} as latest", path, picked, path);
+          result.removeLast(picked);
+          picked = path;
+        } else {
+          log.info("Path {} conflicts with {}, picking {} as earliest", path, picked, picked);
+          result.removeLast(path);
+        }
+      }
+    }
 
     return result;
   }
@@ -207,7 +268,7 @@ public final class Graph {
 
     private final Set<ArtifactCoordinates> exclusions;
 
-    private final Set<Node> nodes = new HashSet<>();
+    private final List<Node> nodes = new ArrayList<>();
 
     private Node(final Coordinates value, final Set<ArtifactCoordinates> exclusions) {
       this.value = Objects.requireNonNull(value);

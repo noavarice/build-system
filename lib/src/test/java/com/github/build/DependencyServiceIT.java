@@ -22,8 +22,10 @@ import org.junit.jupiter.api.Timeout;
  * @author noavarice
  * @since 1.0.0
  */
+// TODO: setup proxy repository
+// TODO: move to integration tests
 @DisplayName("Tests for dependency service")
-class DependencyServiceTest {
+class DependencyServiceIT {
 
   private final Dependency.Remote.Exact logbackClassic = new Dependency.Remote.Exact(
       "ch.qos.logback",
@@ -115,6 +117,7 @@ class DependencyServiceTest {
     assertThat(actual).isEqualTo(expected);
   }
 
+  // TODO: copy this test for Graph
   @DisplayName("Check resolving even more transitive dependencies for a single dependency")
   @Test
   @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)

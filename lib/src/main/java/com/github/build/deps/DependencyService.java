@@ -49,7 +49,6 @@ public final class DependencyService {
       // for transitive dependencies (e.g., when dependency version is set implicitly
       // or explicitly but via POM property)
       final Pom pom = poms.computeIfAbsent(current, this::findPom);
-      poms.putIfAbsent(pom.coordinates(), pom);
       final List<Pom> parents = resolveParents(pom);
       log.info("Resolved {} parents: {}", current, parents.stream().map(Pom::coordinates).toList());
 
