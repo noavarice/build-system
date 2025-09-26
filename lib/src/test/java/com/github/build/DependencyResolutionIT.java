@@ -376,17 +376,13 @@ class DependencyResolutionIT {
   }
 
   private static Project getProject(final Dependency.Remote.Lax dependency) {
-    return new Project(
-        new Project.Id("test-project"),
-        Path.of(""),
-        Set.of(new SourceSet(
-            new SourceSet.Id("main"),
-            List.of(Path.of("src/main/java")),
-            List.of(Path.of("src/main/resources")),
-            SourceSet.Type.PROD,
-            Set.of(dependency)
-        )),
-        Project.ArtifactLayout.DEFAULT
-    );
+    final var mainSourceSet = SourceSet
+        .withId("main")
+        .withDependency(dependency)
+        .build();
+    return Project
+        .withId("test-project")
+        .withSourceSet(mainSourceSet)
+        .build();
   }
 }

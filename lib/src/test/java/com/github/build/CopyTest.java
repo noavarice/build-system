@@ -338,18 +338,18 @@ class CopyTest {
     DynamicTest[] testCopyResourcesFromMultipleDirWorks(
         @TempDir final Path tempDir
     ) throws IOException {
-      final var project = new Project(
-          new Project.Id("test-project"),
-          Path.of(""),
-          Set.of(new SourceSet(
-              new SourceSet.Id("main"),
-              List.of(Path.of("src/main/java")),
-              List.of(Path.of("src/main/resources"), Path.of("src/main/other-resources")),
-              SourceSet.Type.PROD,
-              Set.of()
-          )),
-          Project.ArtifactLayout.DEFAULT
+      final var layout = new SourceSetLayout(
+          List.of(Path.of("java")),
+          List.of(Path.of("resources"), Path.of("other-resources"))
       );
+      final var mainSourceSet = SourceSet
+          .withId("main")
+          .withLayout(layout)
+          .build();
+      final var project = Project
+          .withId("test-project")
+          .withSourceSet(mainSourceSet)
+          .build();
 
       // setup resources directory
       {
@@ -406,18 +406,13 @@ class CopyTest {
     }
 
     private static Project createProject() {
-      return new Project(
-          new Project.Id("test-project"),
-          Path.of(""),
-          Set.of(new SourceSet(
-              new SourceSet.Id("main"),
-              List.of(Path.of("src/main/java")),
-              List.of(Path.of("src/main/resources")),
-              SourceSet.Type.PROD,
-              Set.of()
-          )),
-          Project.ArtifactLayout.DEFAULT
-      );
+      final var mainSourceSet = SourceSet
+          .withId("main")
+          .build();
+      return Project
+          .withId("test-project")
+          .withSourceSet(mainSourceSet)
+          .build();
     }
   }
 }

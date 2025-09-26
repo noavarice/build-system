@@ -1,6 +1,7 @@
 package com.github.build;
 
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
 
@@ -16,6 +17,11 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayout artifactLayout) {
+
+  public static Builder withId(final String idStr) {
+    final var id = new Project.Id(idStr);
+    return new Builder(id);
+  }
 
   public Project {
     Objects.requireNonNull(id);
@@ -51,7 +57,7 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
         .orElseThrow();
   }
 
-  record Id(String value) {
+  public record Id(String value) {
 
     public Id {
       Objects.requireNonNull(value);
@@ -102,6 +108,36 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
         throw new IllegalArgumentException("Must be a relative path");
       }
       classesDir = classesDir.normalize();
+    }
+  }
+
+  public static final class Builder {
+
+    private final Id id;
+
+    private Path path;
+
+    private final Set<SourceSet> sourceSets = new HashSet<>();
+
+    private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
+
+    public Builder(final Project.Id id) {
+      this.id = id;
+    }
+
+    public Builder withSourceSet(final SourceSet sourceSet) {
+      Objects.requireNonNull(sourceSet);
+      sourceSets.add(sourceSet);
+      return this;
+    }
+
+    public Project build() {
+      return new Project(
+          id,
+          Objects.requireNonNullElseGet(path, () -> Path.of("")),
+          sourceSets,
+          artifactLayout
+      );
     }
   }
 }

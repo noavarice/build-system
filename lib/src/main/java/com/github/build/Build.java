@@ -229,12 +229,12 @@ public final class Build {
     Objects.requireNonNull(project);
 
     log.info("[project={}] Copying resources from main source set", project.id());
-    final SourceSet main = project.mainSourceSet();
+    final SourceSet mainSourceSet = project.mainSourceSet();
     final Path targetDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().resourcesDir())
-        .resolve(main.id().value());
+        .resolve(mainSourceSet.id().value());
 
     if (Files.isDirectory(targetDir)) {
       deleteDirectory(targetDir);
@@ -247,9 +247,10 @@ public final class Build {
       throw new UncheckedIOException(e);
     }
 
-    for (final Path dir : main.resourceDirectories()) {
+    for (final Path dir : mainSourceSet.layout().resourceDirectories()) {
       final var absolutePath = workdir
           .resolve(project.path())
+          .resolve(mainSourceSet.path())
           .resolve(dir);
       copyDirectory(absolutePath, targetDir);
     }
