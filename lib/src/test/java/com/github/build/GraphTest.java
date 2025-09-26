@@ -6,7 +6,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.deps.Coordinates;
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
 import java.util.Set;
@@ -22,27 +22,27 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Dependency graph model test")
 class GraphTest {
 
-  private final Coordinates starterTomcat = Coordinates.parse(
+  private final GroupArtifactVersion starterTomcat = GroupArtifactVersion.parse(
       "org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"
   );
 
-  private final Coordinates tomcatEmbedCore = Coordinates.parse(
+  private final GroupArtifactVersion tomcatEmbedCore = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"
   );
 
-  private final Coordinates tomcatEmbedEl = Coordinates.parse(
+  private final GroupArtifactVersion tomcatEmbedEl = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"
   );
 
-  private final Coordinates tomcatEmbedWebsocket = Coordinates.parse(
+  private final GroupArtifactVersion tomcatEmbedWebsocket = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"
   );
 
-  private final Coordinates tomcatAnnotations = Coordinates.parse(
+  private final GroupArtifactVersion tomcatAnnotations = GroupArtifactVersion.parse(
       "org.apache.tomcat:tomcat-annotations-api:jar:10.1.20"
   );
 
-  private final Coordinates jakartaAnnotations = Coordinates.parse(
+  private final GroupArtifactVersion jakartaAnnotations = GroupArtifactVersion.parse(
       "jakarta.annotation:jakarta.annotation-api:2.1.1"
   );
 
@@ -85,7 +85,7 @@ class GraphTest {
     );
     graph.add(
         tomcatEmbedCore,
-        Set.of(tomcatAnnotations.artifactCoordinates()),
+        Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
     );
     graph.add(
@@ -95,7 +95,7 @@ class GraphTest {
     );
     graph.add(
         tomcatEmbedWebsocket,
-        Set.of(tomcatAnnotations.artifactCoordinates()),
+        Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
     );
     graph.add(
@@ -182,7 +182,7 @@ class GraphTest {
     );
     graph.add(
         tomcatEmbedCore,
-        Set.of(tomcatAnnotations.artifactCoordinates()),
+        Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
     );
     graph.add(
@@ -192,7 +192,7 @@ class GraphTest {
     );
     graph.add(
         tomcatEmbedWebsocket,
-        Set.of(tomcatAnnotations.artifactCoordinates()),
+        Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
     );
     graph.add(
@@ -283,14 +283,14 @@ class GraphTest {
         new GraphPath(starterTomcat, tomcatEmbedWebsocket)
     );
 
-    final Set<Coordinates> expected = Set.of(
+    final Set<GroupArtifactVersion> expected = Set.of(
         starterTomcat,
         jakartaAnnotations,
         tomcatEmbedEl,
         tomcatEmbedCore,
         tomcatEmbedWebsocket
     );
-    final Set<Coordinates> actual = graph.toDependencies();
+    final Set<GroupArtifactVersion> actual = graph.toDependencies();
     assertThat(actual).isEqualTo(expected);
   }
 }

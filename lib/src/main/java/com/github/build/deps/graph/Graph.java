@@ -2,8 +2,8 @@ package com.github.build.deps.graph;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
-import com.github.build.deps.ArtifactCoordinates;
-import com.github.build.deps.Coordinates;
+import com.github.build.deps.GroupArtifact;
+import com.github.build.deps.GroupArtifactVersion;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,16 +27,16 @@ public final class Graph {
   private final List<Node> nodes = new ArrayList<>();
 
   public void add(
-      final Coordinates coordinates,
-      final Set<ArtifactCoordinates> exclusions,
+      final GroupArtifactVersion gav,
+      final Set<GroupArtifact> exclusions,
       final GraphPath path
   ) {
-    Objects.requireNonNull(coordinates);
+    Objects.requireNonNull(gav);
     Objects.requireNonNull(exclusions);
     Objects.requireNonNull(path);
 
     var currentNodes = this.nodes;
-    for (final Coordinates value : path) {
+    for (final GroupArtifactVersion value : path) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(value)) {
@@ -53,7 +53,7 @@ public final class Graph {
       }
     }
 
-    final var newNode = new Node(coordinates, exclusions);
+    final var newNode = new Node(gav, exclusions);
     currentNodes.add(newNode);
   }
 
@@ -64,7 +64,7 @@ public final class Graph {
     }
 
     var currentNodes = this.nodes;
-    for (final Coordinates value : path.removeLast()) {
+    for (final GroupArtifactVersion value : path.removeLast()) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(value)) {
@@ -79,7 +79,7 @@ public final class Graph {
       }
     }
 
-    final Coordinates toRemove = path.getLast();
+    final GroupArtifactVersion toRemove = path.getLast();
     return currentNodes.removeIf(node -> node.value.equals(toRemove));
   }
 
@@ -87,7 +87,7 @@ public final class Graph {
     Objects.requireNonNull(path);
 
     var currentNodes = nodes;
-    for (final Coordinates value : path) {
+    for (final GroupArtifactVersion value : path) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(value)) {
@@ -105,17 +105,17 @@ public final class Graph {
     return true;
   }
 
-  public Set<GraphPath> findAllPaths(final Coordinates coordinates) {
-    Objects.requireNonNull(coordinates);
-    return findAllPaths(c -> c.equals(coordinates));
+  public Set<GraphPath> findAllPaths(final GroupArtifactVersion gav) {
+    Objects.requireNonNull(gav);
+    return findAllPaths(c -> c.equals(gav));
   }
 
-  public Set<GraphPath> findAllPaths(final ArtifactCoordinates coordinates) {
-    Objects.requireNonNull(coordinates);
-    return findAllPaths(c -> c.artifactCoordinates().equals(coordinates));
+  public Set<GraphPath> findAllPaths(final GroupArtifact groupArtifact) {
+    Objects.requireNonNull(groupArtifact);
+    return findAllPaths(c -> c.groupArtifact().equals(groupArtifact));
   }
 
-  private Set<GraphPath> findAllPaths(final Predicate<Coordinates> condition) {
+  private Set<GraphPath> findAllPaths(final Predicate<GroupArtifactVersion> condition) {
     Objects.requireNonNull(condition);
 
     record State(GraphPath path, List<Node> nodes) {
@@ -137,9 +137,9 @@ public final class Graph {
     while (!queue.isEmpty()) {
       final State state = queue.removeFirst();
       for (final Node node : state.nodes) {
-        final Coordinates artifact = node.value;
-        if (condition.test(artifact)) {
-          result.add(state.path.addLast(artifact));
+        final GroupArtifactVersion gav = node.value;
+        if (condition.test(gav)) {
+          result.add(state.path.addLast(gav));
         } else if (!node.nodes.isEmpty()) {
           queue.addLast(state.next(node));
         }
@@ -153,8 +153,8 @@ public final class Graph {
     record State(
         GraphPath path,
         List<Node> nodes,
-        Set<ArtifactCoordinates> exclusions,
-        Map<ArtifactCoordinates, String> overrides
+        Set<GroupArtifact> exclusions,
+        Map<GroupArtifact, String> overrides
     ) {
 
       State {
@@ -171,7 +171,7 @@ public final class Graph {
         final var nextOverrides = new HashMap<>(overrides);
         final var currentLevel = nodes
             .stream()
-            .collect(toUnmodifiableMap(n -> n.value.artifactCoordinates(), n -> n.value.version()));
+            .collect(toUnmodifiableMap(n -> n.value.groupArtifact(), n -> n.value.version()));
         nextOverrides.putAll(currentLevel);
 
         return new State(path.addLast(node.value), node.nodes, nextExclusions, nextOverrides);
@@ -183,31 +183,31 @@ public final class Graph {
 
     final var result = new Graph();
 
-    final Map<ArtifactCoordinates, List<GraphPath>> artifactPaths = new HashMap<>();
+    final Map<GroupArtifact, List<GraphPath>> artifactPaths = new HashMap<>();
     do {
       final State currentState = queue.removeFirst();
       for (final Node node : currentState.nodes) {
-        final ArtifactCoordinates artifact = node.value.artifactCoordinates();
-        final boolean excluded = currentState.exclusions.contains(artifact);
+        final GroupArtifact groupArtifact = node.value.groupArtifact();
+        final boolean excluded = currentState.exclusions.contains(groupArtifact);
         if (excluded) {
-          log.info("{} is excluded", artifact);
+          log.info("{} is excluded", groupArtifact);
           continue;
         }
 
-        final boolean overridden = currentState.overrides.containsKey(artifact);
+        final boolean overridden = currentState.overrides.containsKey(groupArtifact);
         final String currentVersion = node.value.version();
         if (overridden) {
           log.info("{} version {} is overridden by version {}",
-              artifact,
+              groupArtifact,
               currentVersion,
-              currentState.overrides.get(artifact)
+              currentState.overrides.get(groupArtifact)
           );
           continue;
         }
 
         final List<GraphPath> paths = artifactPaths
-            .computeIfAbsent(artifact, ignored -> new ArrayList<>());
-        final Set<Coordinates> coordinates = paths
+            .computeIfAbsent(groupArtifact, ignored -> new ArrayList<>());
+        final Set<GroupArtifactVersion> coordinates = paths
             .stream()
             .map(GraphPath::getLast)
             .collect(Collectors.toUnmodifiableSet());
@@ -221,13 +221,13 @@ public final class Graph {
     } while (!queue.isEmpty());
 
     // resolving conflicts
-    for (final ArtifactCoordinates artifact : artifactPaths.keySet()) {
-      final var paths = artifactPaths.get(artifact);
+    for (final GroupArtifact groupArtifact : artifactPaths.keySet()) {
+      final var paths = artifactPaths.get(groupArtifact);
       if (paths.size() < 2) {
         continue;
       }
 
-      log.info("Found conflicts for {}: {}", artifact, paths);
+      log.info("Found conflicts for {}: {}", groupArtifact, paths);
       GraphPath picked = paths.getFirst();
       for (int i = 1; i < paths.size(); i++) {
         final GraphPath path = paths.get(i);
@@ -245,13 +245,13 @@ public final class Graph {
     return result;
   }
 
-  public Set<Coordinates> toDependencies() {
+  public Set<GroupArtifactVersion> toDependencies() {
     if (nodes.isEmpty()) {
       return Set.of();
     }
 
     final var queue = new ArrayList<>(nodes);
-    final var result = new HashSet<Coordinates>();
+    final var result = new HashSet<GroupArtifactVersion>();
 
     do {
       final Node currentNode = queue.removeFirst();
@@ -264,13 +264,13 @@ public final class Graph {
 
   private static final class Node {
 
-    private final Coordinates value;
+    private final GroupArtifactVersion value;
 
-    private final Set<ArtifactCoordinates> exclusions;
+    private final Set<GroupArtifact> exclusions;
 
     private final List<Node> nodes = new ArrayList<>();
 
-    private Node(final Coordinates value, final Set<ArtifactCoordinates> exclusions) {
+    private Node(final GroupArtifactVersion value, final Set<GroupArtifact> exclusions) {
       this.value = Objects.requireNonNull(value);
       this.exclusions = Set.copyOf(exclusions);
     }

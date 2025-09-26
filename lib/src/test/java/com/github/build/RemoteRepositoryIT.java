@@ -97,7 +97,7 @@ class RemoteRepositoryIT {
     @DisplayName("Check downloading non-existent dependency POM works")
     @Test
     void testGettingPomForNonExistentDependency() {
-      assertThat(repo.getPom(nonExistentSlf4j.coordinates())).isEmpty();
+      assertThat(repo.getPom(nonExistentSlf4j.gav())).isEmpty();
     }
 
     @DisplayName("Check downloading existing dependency POM works")
@@ -107,7 +107,7 @@ class RemoteRepositoryIT {
 
       // checking method works beforehand for simplifying actual tests
       assertThatCode(
-          () -> ref.set(repo.getPom(logbackParent.coordinates()))
+          () -> ref.set(repo.getPom(logbackParent.gav()))
       ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();
@@ -182,7 +182,7 @@ class RemoteRepositoryIT {
 
       // checking method works beforehand for simplifying actual tests
       assertThatCode(
-          () -> ref.set(repo.getPom(logbackClassic.coordinates()))
+          () -> ref.set(repo.getPom(logbackClassic.gav()))
       ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();

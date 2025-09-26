@@ -124,8 +124,8 @@ public sealed interface Dependency {
         }
       }
 
-      public Coordinates coordinates() {
-        return new Coordinates(groupId, artifactId, version);
+      public GroupArtifactVersion gav() {
+        return new GroupArtifactVersion(groupId, artifactId, version);
       }
 
       @Override

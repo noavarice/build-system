@@ -2,8 +2,8 @@ package com.github.build.deps.graph;
 
 import static java.util.stream.Collectors.joining;
 
-import com.github.build.deps.ArtifactCoordinates;
-import com.github.build.deps.Coordinates;
+import com.github.build.deps.GroupArtifact;
+import com.github.build.deps.GroupArtifactVersion;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -13,21 +13,21 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public final class GraphPath implements Iterable<Coordinates> {
+public final class GraphPath implements Iterable<GroupArtifactVersion> {
 
   public static final GraphPath ROOT = new GraphPath();
 
-  private final List<Coordinates> nodes;
+  private final List<GroupArtifactVersion> nodes;
 
-  public GraphPath(final Coordinates... values) {
+  public GraphPath(final GroupArtifactVersion... values) {
     this(List.of(values));
   }
 
-  public GraphPath(final List<Coordinates> nodes) {
+  public GraphPath(final List<GroupArtifactVersion> nodes) {
     this.nodes = List.copyOf(nodes);
   }
 
-  public GraphPath addLast(final Coordinates node) {
+  public GraphPath addLast(final GroupArtifactVersion node) {
     final var result = new ArrayList<>(nodes);
     result.add(node);
     return new GraphPath(result);
@@ -39,7 +39,7 @@ public final class GraphPath implements Iterable<Coordinates> {
     return new GraphPath(result);
   }
 
-  public Coordinates getLast() {
+  public GroupArtifactVersion getLast() {
     return nodes.getLast();
   }
 
@@ -57,28 +57,28 @@ public final class GraphPath implements Iterable<Coordinates> {
     }
 
     for (int i = 0; i < nodes.size() - 1; i++) {
-      final Coordinates c1 = nodes.get(i);
-      final Coordinates c2 = other.nodes.get(i);
+      final GroupArtifactVersion c1 = nodes.get(i);
+      final GroupArtifactVersion c2 = other.nodes.get(i);
       if (!c1.equals(c2)) {
         return false;
       }
     }
 
-    final ArtifactCoordinates a1 = nodes.getLast().artifactCoordinates();
-    final ArtifactCoordinates a2 = other.nodes.getLast().artifactCoordinates();
-    return a1.equals(a2);
+    final GroupArtifact ga1 = nodes.getLast().groupArtifact();
+    final GroupArtifact ga2 = other.nodes.getLast().groupArtifact();
+    return ga1.equals(ga2);
   }
 
   @Override
   public String toString() {
     return nodes
         .stream()
-        .map(Coordinates::toString)
+        .map(GroupArtifactVersion::toString)
         .collect(joining(" -> "));
   }
 
   @Override
-  public Iterator<Coordinates> iterator() {
+  public Iterator<GroupArtifactVersion> iterator() {
     return nodes.stream().iterator();
   }
 

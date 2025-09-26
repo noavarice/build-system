@@ -42,8 +42,8 @@ public record Pom(
     dependencies = List.copyOf(dependencies);
   }
 
-  public Coordinates coordinates() {
-    return new Coordinates(groupId, artifactId, version);
+  public GroupArtifactVersion gav() {
+    return new GroupArtifactVersion(groupId, artifactId, version);
   }
 
   @Override
@@ -76,8 +76,8 @@ public record Pom(
       }
     }
 
-    public Coordinates coordinates() {
-      return new Coordinates(groupId, artifactId, version);
+    public GroupArtifactVersion gav() {
+      return new GroupArtifactVersion(groupId, artifactId, version);
     }
   }
 
@@ -86,7 +86,7 @@ public record Pom(
       String artifactId,
       @Nullable String version,
       Scope scope,
-      Set<ArtifactCoordinates> exclusions,
+      Set<GroupArtifact> exclusions,
       boolean optional
   ) {
 
@@ -101,8 +101,8 @@ public record Pom(
       exclusions = Set.copyOf(exclusions);
     }
 
-    public ArtifactCoordinates artifactCoordinates() {
-      return new ArtifactCoordinates(groupId, artifactId);
+    public GroupArtifact groupArtifact() {
+      return new GroupArtifact(groupId, artifactId);
     }
 
     public enum Scope {

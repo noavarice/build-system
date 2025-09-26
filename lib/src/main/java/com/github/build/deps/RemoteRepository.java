@@ -59,7 +59,7 @@ public final class RemoteRepository {
    * @return Resolution result, never null, empty if no dependency found
    */
   public Optional<ArtifactResolutionResult> download(final Dependency.Remote.Exact dependency) {
-    final var uri = buildUri(dependency.coordinates(), ".jar");
+    final var uri = buildUri(dependency.gav(), ".jar");
     log.info("Downloading {} JAR from {}", dependency, uri);
     final var request = HttpRequest
         .newBuilder(uri)
@@ -85,9 +85,9 @@ public final class RemoteRepository {
     return Optional.of(result);
   }
 
-  public Optional<Pom> getPom(final Coordinates dependency) {
-    final URI uri = buildUri(dependency, ".pom");
-    log.debug("Downloading {} POM from {}", dependency, uri);
+  public Optional<Pom> getPom(final GroupArtifactVersion gav) {
+    final URI uri = buildUri(gav, ".pom");
+    log.debug("Downloading {} POM from {}", gav, uri);
     final var request = HttpRequest
         .newBuilder(uri)
         .GET()
@@ -104,7 +104,7 @@ public final class RemoteRepository {
 
     final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
     if (!is2xx) {
-      log.warn("Downloading {} POM failed, response status: {}", dependency, response.statusCode());
+      log.warn("Downloading {} POM failed, response status: {}", gav, response.statusCode());
       return Optional.empty();
     }
 
@@ -192,13 +192,13 @@ public final class RemoteRepository {
           final var scope = d.getScope() == null
               ? Pom.Dependency.Scope.COMPILE
               : Pom.Dependency.Scope.valueOf(d.getScope().toUpperCase(Locale.US));
-          final Set<ArtifactCoordinates> exclusions;
+          final Set<GroupArtifact> exclusions;
           if (d.getExclusions() == null) {
             exclusions = Set.of();
           } else {
             exclusions = d.getExclusions().getExclusion()
                 .stream()
-                .map(exclusion -> new ArtifactCoordinates(
+                .map(exclusion -> new GroupArtifact(
                     exclusion.getGroupId(),
                     exclusion.getArtifactId())
                 )
@@ -231,13 +231,13 @@ public final class RemoteRepository {
         ));
   }
 
-  private URI buildUri(final Coordinates dep, final String suffix) {
+  private URI buildUri(final GroupArtifactVersion gav, final String suffix) {
     // TODO: fragile - use dedicated URI builder
     final String result = baseUri
-        + "/" + dep.groupId().replace('.', '/')
-        + '/' + dep.artifactId()
-        + '/' + dep.version()
-        + '/' + dep.artifactId() + '-' + dep.version() + suffix;
+        + "/" + gav.groupId().replace('.', '/')
+        + '/' + gav.artifactId()
+        + '/' + gav.version()
+        + '/' + gav.artifactId() + '-' + gav.version() + suffix;
     try {
       return new URI(result);
     } catch (final URISyntaxException e) {

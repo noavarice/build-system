@@ -23,7 +23,7 @@ public final class DependencyService {
 
   private final List<RemoteRepository> remoteRepositories;
 
-  private final Map<Coordinates, Pom> poms = new ConcurrentHashMap<>();
+  private final Map<GroupArtifactVersion, Pom> poms = new ConcurrentHashMap<>();
 
   public DependencyService(final List<RemoteRepository> remoteRepositories) {
     this.remoteRepositories = List.copyOf(remoteRepositories);
@@ -32,16 +32,16 @@ public final class DependencyService {
     }
   }
 
-  public Set<Coordinates> resolveTransitive(final Dependency.Remote.Exact dependency) {
+  public Set<GroupArtifactVersion> resolveTransitive(final Dependency.Remote.Exact dependency) {
     final var queue = new ArrayList<GraphPath>();
-    queue.addLast(new GraphPath(dependency.coordinates()));
+    queue.addLast(new GraphPath(dependency.gav()));
 
     final var graph = new Graph();
-    graph.add(dependency.coordinates(), Set.of(), GraphPath.ROOT);
+    graph.add(dependency.gav(), Set.of(), GraphPath.ROOT);
 
     while (!queue.isEmpty()) {
       final GraphPath currentPath = queue.removeLast();
-      final Coordinates current = currentPath.getLast();
+      final GroupArtifactVersion current = currentPath.getLast();
 
       log.info("Resolving direct dependencies for {}", current);
 
@@ -50,11 +50,11 @@ public final class DependencyService {
       // or explicitly but via POM property)
       final Pom pom = poms.computeIfAbsent(current, this::findPom);
       final List<Pom> parents = resolveParents(pom);
-      log.info("Resolved {} parents: {}", current, parents.stream().map(Pom::coordinates).toList());
+      log.info("Resolved {} parents: {}", current, parents.stream().map(Pom::gav).toList());
 
       final var properties = new HashMap<String, String>();
-      final var dependencyManagement = new HashMap<ArtifactCoordinates, String>();
-      final var dependencies = new HashMap<ArtifactCoordinates, String>();
+      final var dependencyManagement = new HashMap<GroupArtifact, String>();
+      final var dependencies = new HashMap<GroupArtifact, String>();
 
       final var parentsAndCurrent = new ArrayList<>(parents);
       parentsAndCurrent.add(pom);
@@ -71,45 +71,46 @@ public final class DependencyService {
         for (final Pom.Dependency d : parent.dependencyManagement()) {
           if (d.scope() == Pom.Dependency.Scope.IMPORT) {
             final String version = resolveExactVersion(d, properties, dependencyManagement);
-            final Coordinates coordinates = d.artifactCoordinates().withVersion(version);
-            importDependencyManagement(coordinates, dependencyManagement);
+            final GroupArtifactVersion gav = d.groupArtifact()
+                .withVersion(version);
+            importDependencyManagement(gav, dependencyManagement);
             continue;
           }
 
           final String version = Objects.requireNonNull(d.version());
           final String exactVersion = resolveExactVersion(version, properties);
-          dependencyManagement.put(d.artifactCoordinates(), exactVersion);
+          dependencyManagement.put(d.groupArtifact(), exactVersion);
         }
 
         // resolving and accumulating explicit dependencies
         for (final Pom.Dependency d : parent.dependencies()) {
           if (d.optional()) {
-            log.info("Skipping optional dependency {}", d.artifactCoordinates());
+            log.info("Skipping optional dependency {}", d.groupArtifact());
             continue;
           }
 
           switch (d.scope()) {
             case COMPILE, RUNTIME -> {
               final String exactVersion = resolveExactVersion(d, properties, dependencyManagement);
-              dependencies.put(d.artifactCoordinates(), exactVersion);
+              dependencies.put(d.groupArtifact(), exactVersion);
               graph.add(
-                  d.artifactCoordinates().withVersion(exactVersion),
+                  d.groupArtifact().withVersion(exactVersion),
                   d.exclusions(),
                   currentPath
               );
             }
             default -> log.info("Skipping non-compile, non-runtime dependency {} (scope {})",
-                d.artifactCoordinates(),
+                d.groupArtifact(),
                 d.scope()
             );
           }
         }
       }
 
-      final var moreToResolve = new ArrayList<Coordinates>(dependencies.size());
+      final var moreToResolve = new ArrayList<GroupArtifactVersion>(dependencies.size());
       dependencies.forEach((artifactCoordinates, version) -> {
-        final Coordinates coordinates = artifactCoordinates.withVersion(version);
-        moreToResolve.add(coordinates);
+        final GroupArtifactVersion gav = artifactCoordinates.withVersion(version);
+        moreToResolve.add(gav);
       });
 
       log.info("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
@@ -125,8 +126,8 @@ public final class DependencyService {
 
   // TODO: add tests
   private void importDependencyManagement(
-      final Coordinates importing,
-      final Map<ArtifactCoordinates, String> importTo
+      final GroupArtifactVersion importing,
+      final Map<GroupArtifact, String> importTo
   ) {
     final Pom pom = poms.computeIfAbsent(importing, this::findPom);
     final List<Pom> parents = resolveParents(pom);
@@ -134,7 +135,7 @@ public final class DependencyService {
     parentsAndCurrent.add(pom);
 
     final var properties = new HashMap<String, String>();
-    final var dependencyManagement = new HashMap<ArtifactCoordinates, String>();
+    final var dependencyManagement = new HashMap<GroupArtifact, String>();
     for (final Pom parent : parentsAndCurrent) {
       // accumulating parent properties
       properties.put("project.version", parent.version());
@@ -147,22 +148,23 @@ public final class DependencyService {
       for (final Pom.Dependency d : parent.dependencyManagement()) {
         if (d.scope() == Pom.Dependency.Scope.IMPORT) {
           final String version = resolveExactVersion(d, properties, dependencyManagement);
-          final Coordinates coordinates = d.artifactCoordinates().withVersion(version);
-          importDependencyManagement(coordinates, dependencyManagement);
+          final GroupArtifactVersion gav = d.groupArtifact()
+              .withVersion(version);
+          importDependencyManagement(gav, dependencyManagement);
           continue;
         }
 
         final String version = Objects.requireNonNull(d.version());
         final String exactVersion = resolveExactVersion(version, properties);
-        dependencyManagement.put(d.artifactCoordinates(), exactVersion);
+        dependencyManagement.put(d.groupArtifact(), exactVersion);
       }
     }
 
     if (log.isDebugEnabled()) {
-      final var imported = new ArrayList<Coordinates>(dependencyManagement.size());
-      dependencyManagement.forEach((artifactCoordinates, version) -> {
-        final Coordinates coordinates = artifactCoordinates.withVersion(version);
-        imported.add(coordinates);
+      final var imported = new ArrayList<GroupArtifactVersion>(dependencyManagement.size());
+      dependencyManagement.forEach((groupArtifact, version) -> {
+        final GroupArtifactVersion gav = groupArtifact.withVersion(version);
+        imported.add(gav);
       });
 
       log.debug("Importing from {}: {}", importing, imported);
@@ -172,11 +174,11 @@ public final class DependencyService {
   }
 
   private List<Pom> resolveParents(final Pom pom) {
-    log.info("Resolving parents for {}", pom.coordinates());
+    log.info("Resolving parents for {}", pom.gav());
     final var result = new ArrayList<Pom>();
     Pom.Parent parent = pom.parent();
     while (parent != null) {
-      final Pom parentPom = poms.computeIfAbsent(parent.coordinates(), this::findPom);
+      final Pom parentPom = poms.computeIfAbsent(parent.gav(), this::findPom);
       parent = parentPom.parent();
       result.addFirst(parentPom);
     }
@@ -184,16 +186,16 @@ public final class DependencyService {
     return result;
   }
 
-  private Pom findPom(final Coordinates dependency) {
+  private Pom findPom(final GroupArtifactVersion gav) {
     for (final RemoteRepository repository : remoteRepositories) {
-      final Optional<Pom> pomOpt = repository.getPom(dependency);
+      final Optional<Pom> pomOpt = repository.getPom(gav);
       if (pomOpt.isPresent()) {
         return pomOpt.get();
       }
     }
 
     log.error("Failed to find POM for {} in the following repositories: {}",
-        dependency,
+        gav,
         remoteRepositories
     );
     throw new IllegalStateException();
@@ -210,14 +212,14 @@ public final class DependencyService {
   private static String resolveExactVersion(
       final Pom.Dependency dependency,
       final Map<String, String> properties,
-      final Map<ArtifactCoordinates, String> dependencyManagement
+      final Map<GroupArtifact, String> dependencyManagement
   ) {
-    final ArtifactCoordinates coordinates = dependency.artifactCoordinates();
+    final GroupArtifact groupArtifact = dependency.groupArtifact();
     final String version = dependency.version();
 
     // resolving version from dependency management
     if (version == null) {
-      final String exactVersion = dependencyManagement.get(coordinates);
+      final String exactVersion = dependencyManagement.get(groupArtifact);
       if (exactVersion == null) {
         // TODO: rework error model
         throw new IllegalStateException();
