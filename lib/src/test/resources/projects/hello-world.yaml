@@ -1,0 +1,13 @@
+files:
+  - type: plaintext
+    path: org/example/HelloWorld.java
+    #language=Java
+    text: |
+      package org.example;
+      
+      public class HelloWorld {
+        
+        public static void main(final String[] args) {
+          System.out.println("Hello, world!");
+        }
+      }

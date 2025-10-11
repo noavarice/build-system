@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -51,16 +50,13 @@ class JarTest {
 
   @DisplayName("Creating JAR for project works")
   @TestFactory
-  DynamicTest[] creatingJarProjectWorks(@TempDir final Path tempDir) throws IOException {
-    // setup source file
-    final Path source = Files.writeString(
-        tempDir.resolve("HelloWorld.java"),
-        ResourceUtils.readString("/HelloWorld.java")
-    );
+  DynamicTest[] creatingJarProjectWorks(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
 
     // compile sources
     final Path classFile;
     {
+      final Path source = tempDir.resolve("org/example/HelloWorld.java");
       final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
       assumeTrue(Build.compile(args));
 

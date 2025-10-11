@@ -6,8 +6,6 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
@@ -26,15 +24,12 @@ class CompilationTest {
 
   @DisplayName("Compiling hello world project works")
   @TestFactory
-  DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) throws IOException {
-    // setup source file
-    final var source = Files.writeString(
-        tempDir.resolve("HelloWorld.java"),
-        ResourceUtils.readString("/HelloWorld.java")
-    );
+  DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+    final Path source = tempDir.resolve("org/example/HelloWorld.java");
 
     final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
-
+    args.sources().forEach(path -> assumeThat(path).isRegularFile());
     assumeThat(args.classesDir()).doesNotExist();
 
     return new DynamicTest[]{
@@ -53,17 +48,12 @@ class CompilationTest {
 
   @DisplayName("Compiling without required classpath dependency fails")
   @TestFactory
-  DynamicTest[] compilingWithoutRequiredDependencyFails(
-      @TempDir final Path tempDir
-  ) throws IOException {
-    // setup source file
-    final var source = Files.writeString(
-        tempDir.resolve("Slf4jExample.java"),
-        ResourceUtils.readString("/Slf4jExample.java")
-    );
+  DynamicTest[] compilingWithoutRequiredDependencyFails(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final Path source = tempDir.resolve("org/example/Slf4jExample.java");
 
     final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
-
+    args.sources().forEach(path -> assumeThat(path).isRegularFile());
     assumeThat(args.classesDir()).doesNotExist();
 
     return new DynamicTest[]{
@@ -82,20 +72,14 @@ class CompilationTest {
 
   @DisplayName("Compiling with dependency works")
   @TestFactory
-  DynamicTest[] compilingWithDependencyWorks(@TempDir final Path tempDir) throws IOException {
-    // setup source file
-    final var source = Files.writeString(
-        tempDir.resolve("Slf4jExample.java"),
-        ResourceUtils.readString("/Slf4jExample.java")
-    );
-    // setup dependency JAR file
-    final var jar = Files.write(
-        tempDir.resolve("slf4j-api.jar"),
-        ResourceUtils.read("/slf4j-api-2.0.17.jar")
-    );
-
+  DynamicTest[] compilingWithDependencyWorks(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final Path source = tempDir.resolve("org/example/Slf4jExample.java");
+    final Path jar = tempDir.resolve("slf4j-api.jar");
     final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of(jar));
 
+    assumeThat(source).isRegularFile();
+    assumeThat(jar).isRegularFile();
     assumeThat(args.classesDir()).doesNotExist();
 
     return new DynamicTest[]{
