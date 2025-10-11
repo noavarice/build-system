@@ -71,6 +71,11 @@ public record SourceSet(
       this.id = id;
     }
 
+    public Builder withType(final Type type) {
+      this.type = Objects.requireNonNull(type);
+      return this;
+    }
+
     public Builder withLayout(final SourceSetLayout layout) {
       this.layout = Objects.requireNonNull(layout);
       return this;

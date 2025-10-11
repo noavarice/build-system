@@ -1,0 +1,44 @@
+files:
+  - type: plaintext
+    path: calculator/src/main/java/org/example/Calculator.java
+    #language=Java
+    text: |
+      package org.example;
+      
+      public class Calculator {
+        
+        public static int square(final int value) {
+          return value * value;
+        }
+      }
+  - type: plaintext
+    path: calculator/src/test/java/org/example/CalculatorTest.java
+    #language=Java
+    text: |
+      package org.example;
+      
+      import static org.junit.jupiter.api.Assertions.assertEquals;
+      
+      import org.junit.jupiter.api.DisplayName;
+      
+      @DisplayName("Calculator tests")
+      class CalculatorTest {
+        
+        @DisplayName("Check squaring positive number works")
+        void squarePositiveWorks() {
+          assertEquals(9, Calculator.square(3));
+        }
+        
+        @DisplayName("Check squaring negative number works")
+        void squareNegativeWorks() {
+          assertEquals(9, Calculator.square(-3));
+        }
+        
+        @DisplayName("Check squaring zero works")
+        void squareZeroWorks() {
+          assertEquals(0, Calculator.square(0));
+        }
+      }
+  - type: resource
+    path: junit-jupiter-api.jar
+    name: /junit-jupiter-api-5.13.4.jar

@@ -88,7 +88,7 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
    *                     {@link #rootDir}
    * @param resourcesDir Path to a directory for storing resources, relative to a {@link #rootDir}
    */
-  record ArtifactLayout(Path rootDir, Path classesDir, Path resourcesDir) {
+  public record ArtifactLayout(Path rootDir, Path classesDir, Path resourcesDir) {
 
     public static ArtifactLayout DEFAULT = new ArtifactLayout(
         Path.of("build"),
@@ -115,7 +115,7 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
 
     private final Id id;
 
-    private Path path;
+    private Path path = Path.of("");
 
     private final Set<SourceSet> sourceSets = new HashSet<>();
 
@@ -123,6 +123,16 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
 
     public Builder(final Project.Id id) {
       this.id = id;
+    }
+
+    public Builder withPath(final Path path) {
+      Objects.requireNonNull(path);
+      if (path.isAbsolute()) {
+        throw new IllegalArgumentException();
+      }
+
+      this.path = path.normalize();
+      return this;
     }
 
     public Builder withSourceSet(final SourceSet sourceSet) {
@@ -134,7 +144,7 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
     public Project build() {
       return new Project(
           id,
-          Objects.requireNonNullElseGet(path, () -> Path.of("")),
+          path,
           sourceSets,
           artifactLayout
       );
