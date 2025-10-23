@@ -38,7 +38,7 @@ public final class Dependencies {
   }
 
   public static final RemoteRepository MAVEN_CENTRAL = new RemoteRepository
-      .Builder("central", "default", "https://repo.maven.apache.org/maven2")
+      .Builder("nexus-local", "default", "http://localhost:8081/repository/maven-central")
       .build();
 
   public static final List<RemoteRepository> DEFAULT_REPOS = List.of(

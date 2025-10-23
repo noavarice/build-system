@@ -1,0 +1,13 @@
+services:
+  nexus:
+    image: sonatype/nexus3:3.82.0-alpine
+    container_name: build-nexus-local
+    volumes:
+      - nexus-data:/nexus-data
+    security_opt:
+      - no-new-privileges
+    ports:
+      - 127.0.0.1:8081:8081
+
+volumes:
+  nexus-data:

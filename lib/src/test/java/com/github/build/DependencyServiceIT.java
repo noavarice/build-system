@@ -52,7 +52,8 @@ class DependencyServiceIT {
   );
 
   private final RemoteRepository mavenCentral = new RemoteRepository(
-      URI.create("https://repo.maven.apache.org/maven2"),
+      // TODO: externalize
+      URI.create("http://localhost:8081/repository/maven-central"),
       HttpClient.newHttpClient()
   );
 

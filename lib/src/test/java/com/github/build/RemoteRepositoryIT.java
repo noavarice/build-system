@@ -28,8 +28,8 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Tests for remote repository")
 class RemoteRepositoryIT {
 
-  // TODO: setup separate Maven repository (via Testcontainers, for example)
-  private final URI baseUri = URI.create("https://repo.maven.apache.org/maven2");
+  // TODO: externalize
+  private final URI baseUri = URI.create("http://localhost:8081/repository/maven-central");
 
   private final HttpClient client = HttpClient.newHttpClient();
 
