@@ -20,21 +20,25 @@ files:
       import static org.junit.jupiter.api.Assertions.assertEquals;
       
       import org.junit.jupiter.api.DisplayName;
+      import org.junit.jupiter.api.Test;
       
       @DisplayName("Calculator tests")
       class CalculatorTest {
         
         @DisplayName("Check squaring positive number works")
+        @Test
         void squarePositiveWorks() {
           assertEquals(9, Calculator.square(3));
         }
         
         @DisplayName("Check squaring negative number works")
+        @Test
         void squareNegativeWorks() {
           assertEquals(9, Calculator.square(-3));
         }
         
         @DisplayName("Check squaring zero works")
+        @Test
         void squareZeroWorks() {
           assertEquals(0, Calculator.square(0));
         }
@@ -42,3 +46,6 @@ files:
   - type: resource
     path: junit-jupiter-api.jar
     name: /junit-jupiter-api-5.13.4.jar
+  - type: resource
+    path: apiguardian-api.jar
+    name: /apiguardian-api-1.1.2.jar

@@ -61,15 +61,16 @@ class JUnitIntegrationTest {
           .resolve(project.artifactLayout().classesDir())
           .resolve("test");
       final var jupiterApi = tempDir.resolve("junit-jupiter-api.jar");
+      final var apiguardianApi = tempDir.resolve("apiguardian-api.jar");
       final var args = new CompileArgs(
           Set.of(source),
           classesDir,
-          Set.of(mainClassesDir, jupiterApi)
+          Set.of(mainClassesDir, jupiterApi, apiguardianApi)
       );
       assumeTrue(Build.compile(args));
     }
 
-    final TestResults result = Test.withJUnit(projectRoot, project);
+    final TestResults result = Test.withJUnit(tempDir, project);
     return new DynamicTest[]{
         dynamicTest("Check succeeded count", () -> assertEquals(3, result.testsSucceededCount())),
         dynamicTest("Check failed count", () -> assertEquals(0, result.testsFailedCount())),
