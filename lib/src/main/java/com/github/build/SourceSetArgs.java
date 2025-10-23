@@ -3,6 +3,7 @@ package com.github.build;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.deps.Dependency;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -13,12 +14,15 @@ import org.jspecify.annotations.Nullable;
 /**
  * Arguments for creating {@link SourceSet} within {@link Project}.
  *
- * @param path                Optional path to source set content, relative to
- *                            {@link Project#path() project directory}
- * @param sourceDirectories   Directories containing source files
- * @param resourceDirectories Directories containing resources
- * @param type                Source set type (main, test, etc.)
- * @param dependencies        Source set dependencies (compile classpath, runtime classpath, etc.)
+ * @param path                  Optional path to source set content, relative to
+ *                              {@link Project#path() project directory}
+ * @param sourceDirectories     Directories containing source files
+ * @param resourceDirectories   Directories containing resources
+ * @param type                  Source set type (main, test, etc.)
+ * @param dependencies          Source set dependencies (compile classpath, runtime classpath,
+ *                              etc.)
+ * @param dependencyConstraints Constraints to use when resolving dependencies without exact
+ *                              versions
  * @author noavarice
  * @since 1.0.0
  */
@@ -27,7 +31,8 @@ public record SourceSetArgs(
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     Type type,
-    Set<Dependency> dependencies
+    Set<Dependency> dependencies,
+    DependencyConstraints dependencyConstraints
 ) {
 
   public static Builder builder() {
@@ -70,6 +75,8 @@ public record SourceSetArgs(
 
     private final Set<Dependency> dependencies = new HashSet<>();
 
+    private DependencyConstraints dependencyConstraints = DependencyConstraints.EMPTY;
+
     private Builder() {
       resourceDirectories.add(Path.of("resources"));
     }
@@ -80,6 +87,7 @@ public record SourceSetArgs(
     }
 
     public Builder withResourceDir(final String resourceDir) {
+      Objects.requireNonNull(resourceDir);
       return withResourceDir(Path.of(resourceDir));
     }
 
@@ -91,7 +99,13 @@ public record SourceSetArgs(
     }
 
     public Builder withDependency(final Dependency dependency) {
+      Objects.requireNonNull(dependency);
       dependencies.add(dependency);
+      return this;
+    }
+
+    public Builder withDependencyConstraints(final DependencyConstraints dependencyConstraints) {
+      this.dependencyConstraints = Objects.requireNonNull(dependencyConstraints);
       return this;
     }
 
@@ -101,7 +115,8 @@ public record SourceSetArgs(
           Set.of(Path.of("java")),
           resourceDirectories,
           type,
-          dependencies
+          dependencies,
+          dependencyConstraints
       );
     }
   }

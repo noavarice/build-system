@@ -3,6 +3,7 @@ package com.github.build;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.deps.Dependency;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -18,7 +19,8 @@ public record SourceSet(
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     SourceSetArgs.Type type,
-    Set<Dependency> dependencies
+    Set<Dependency> dependencies,
+    DependencyConstraints dependencyConstraints
 ) {
 
   public SourceSet {
@@ -46,6 +48,7 @@ public record SourceSet(
 
     Objects.requireNonNull(type);
     dependencies = Set.copyOf(dependencies);
+    Objects.requireNonNull(dependencyConstraints);
   }
 
   public record Id(String value) {

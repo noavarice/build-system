@@ -54,7 +54,8 @@ public final class Project {
         args.sourceDirectories(),
         args.resourceDirectories(),
         args.type(),
-        args.dependencies()
+        args.dependencies(),
+        args.dependencyConstraints()
     );
   }
 
