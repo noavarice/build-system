@@ -1,6 +1,6 @@
 files:
   - type: plaintext
-    path: org/example/HelloWorld.java
+    path: hello-world/src/main/java/org/example/HelloWorld.java
     #language=Java
     text: |
       package org.example;
@@ -11,3 +11,12 @@ files:
           System.out.println("Hello, world!");
         }
       }
+  - type: plaintext
+    path: hello-world/src/main/resources/greeting.txt
+    text: Hello, world!
+  - type: plaintext
+    path: hello-world/src/main/resources/nested/greeting.txt
+    text: Hello, world from nested resource file!
+  - type: plaintext
+    path: hello-world/src/main/other-resources/other-greeting.txt
+    text: Hello, world from resource file from additional resource directory!

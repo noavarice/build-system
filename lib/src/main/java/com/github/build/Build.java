@@ -56,7 +56,7 @@ public final class Build {
     PathUtils.checkAbsolute(workdir);
 
     @Nullable
-    final SourceSet mainSourceSet = project.sourceSets().get(SourceSet.Id.MAIN);
+    final SourceSet mainSourceSet = project.mainSourceSet();
     Objects.requireNonNull(mainSourceSet);
 
     final Set<Path> sources = collectSources(workdir, mainSourceSet);
@@ -315,24 +315,27 @@ public final class Build {
   /**
    * Copies resources from project's main source set to a {@link ArtifactLayout#resourcesDir()}.
    *
-   * @param workdir Working directory
-   * @param project Project info
+   * @param workdir   Working directory
+   * @param sourceSet Source set to copy resources from
    */
-  public static void copyResources(Path workdir, final Project project) {
+  public static void copyResources(final Path workdir, final SourceSet sourceSet) {
     Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
-    workdir = workdir.normalize();
 
-    Objects.requireNonNull(project);
+    log.info("[project={}][sourceSet={}] Copying resources",
+        sourceSet.project().id(),
+        sourceSet.id()
+    );
 
-    log.info("[project={}] Copying resources from main source set", project.id());
-    final SourceSet mainSourceSet = project.mainSourceSet();
+    final Project project = sourceSet.project();
     final Path targetDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().resourcesDir())
-        .resolve(mainSourceSet.id().value());
+        .resolve(sourceSet.id().value());
 
     if (Files.isDirectory(targetDir)) {
       deleteDirectory(targetDir);
@@ -345,11 +348,16 @@ public final class Build {
       throw new UncheckedIOException(e);
     }
 
-    for (final Path dir : mainSourceSet.resourceDirectories()) {
+    for (final Path dir : sourceSet.resourceDirectories()) {
       final var absolutePath = workdir
           .resolve(project.path())
-          .resolve(mainSourceSet.path())
+          .resolve(sourceSet.path())
           .resolve(dir);
+      log.info("[project={}][sourceSet={}] Copying resources from {}",
+          sourceSet.project().id(),
+          sourceSet.id(),
+          absolutePath
+      );
       copyDirectory(absolutePath, targetDir);
     }
   }
@@ -428,6 +436,7 @@ public final class Build {
         }
       } else {
         try {
+          log.debug("Copying {} to {}", path, pathInsideTarget);
           Files.copy(path, pathInsideTarget, StandardCopyOption.REPLACE_EXISTING);
         } catch (final IOException e) {
           throw new UncheckedIOException(e);

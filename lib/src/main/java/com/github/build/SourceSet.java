@@ -52,6 +52,8 @@ public record SourceSet(
 
     public static final Id MAIN = new Id("main");
 
+    public static final Id TEST = new Id("test");
+
     public Id {
       value = Objects.requireNonNull(value).strip();
       if (value.isBlank()) {

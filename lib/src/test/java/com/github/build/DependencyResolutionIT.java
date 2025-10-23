@@ -376,12 +376,12 @@ class DependencyResolutionIT {
 
   private static Project getProject(final Dependency.Remote.Lax dependency) {
     final var mainSourceSet = SourceSetArgs
-        .withId("main")
+        .builder()
         .withDependency(dependency)
         .build();
     return Project
         .withId("test-project")
-        .withSourceSet(mainSourceSet)
+        .withMainSourceSet(mainSourceSet)
         .build();
   }
 }

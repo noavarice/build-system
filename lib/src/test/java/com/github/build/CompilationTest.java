@@ -111,12 +111,12 @@ class CompilationTest {
     DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
       final var main = SourceSetArgs
-          .withId("main")
+          .builder()
           .build();
       final var project = Project
           .withId("calculator")
           .withPath(Path.of("calculator"))
-          .withSourceSet(main)
+          .withMainSourceSet(main)
           .build();
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/main");

@@ -2,8 +2,6 @@ package com.github.build;
 
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
-import java.util.HashMap;
-import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -18,10 +16,11 @@ public final class Project {
 
   private final Path path;
 
-  private final Map<SourceSet.Id, SourceSet> sourceSets;
+  private final SourceSet main;
+
+  private final SourceSet test;
 
   private final ArtifactLayout artifactLayout;
-
 
   public static Builder withId(final String idStr) {
     final var id = new Id(idStr);
@@ -31,56 +30,40 @@ public final class Project {
   private Project(
       final Id id,
       final Path path,
-      final Map<SourceSet.Id, SourceSetArgs> sourceSets,
+      final SourceSetArgs main,
+      final SourceSetArgs test,
       final ArtifactLayout artifactLayout
   ) {
     this.id = id;
     this.path = path;
-    checkSingleProdSourceSet(sourceSets);
-    this.sourceSets = createSourceSets(sourceSets);
+    this.main = createSourceSet(SourceSet.Id.MAIN, main);
+    this.test = createSourceSet(SourceSet.Id.TEST, test);
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
-  private Map<SourceSet.Id, SourceSet> createSourceSets(
-      final Map<SourceSet.Id, SourceSetArgs> allArgs
-  ) {
-    final var result = new HashMap<SourceSet.Id, SourceSet>();
-    for (final SourceSet.Id id : allArgs.keySet()) {
-      final SourceSetArgs args = allArgs.get(id);
-      final var sourceSet = new SourceSet(
-          this,
-          id,
-          args.path(),
-          args.sourceDirectories(),
-          args.resourceDirectories(),
-          args.type(),
-          args.dependencies()
-      );
-      result.put(id, sourceSet);
-    }
-
-    return Map.copyOf(result);
-  }
-
-  private static void checkSingleProdSourceSet(final Map<SourceSet.Id, SourceSetArgs> sourceSets) {
-    final long prodSetsCount = sourceSets.values()
-        .stream()
-        .filter(sourceSet -> sourceSet.type() == SourceSetArgs.Type.PROD)
-        .count();
-    if (prodSetsCount == 0) {
-      throw new IllegalArgumentException("No production source sets specified");
-    }
-    if (prodSetsCount > 1) {
-      throw new IllegalArgumentException("Project can have only one production source set");
-    }
+  private SourceSet createSourceSet(final SourceSet.Id id, final SourceSetArgs args) {
+    // TODO: consider more flexible approach
+    final Path path = Objects.requireNonNullElseGet(
+        args.path(),
+        () -> Path.of("src", id.value())
+    );
+    return new SourceSet(
+        this,
+        id,
+        path,
+        args.sourceDirectories(),
+        args.resourceDirectories(),
+        args.type(),
+        args.dependencies()
+    );
   }
 
   public SourceSet mainSourceSet() {
-    return sourceSets.values()
-        .stream()
-        .filter(sourceSet -> sourceSet.type() == SourceSetArgs.Type.PROD)
-        .findFirst()
-        .orElseThrow();
+    return main;
+  }
+
+  public SourceSet testSourceSet() {
+    return test;
   }
 
   public Id id() {
@@ -89,10 +72,6 @@ public final class Project {
 
   public Path path() {
     return path;
-  }
-
-  public Map<SourceSet.Id, SourceSet> sourceSets() {
-    return sourceSets;
   }
 
   public ArtifactLayout artifactLayout() {
@@ -164,10 +143,21 @@ public final class Project {
 
     private Path path = Path.of("");
 
-    private final Map<SourceSet.Id, SourceSetArgs> sourceSetArgs = new HashMap<>();
+    private SourceSetArgs main = SourceSetArgs
+        .builder()
+        .build();
+
+    private SourceSetArgs test = SourceSetArgs
+        .builder()
+        .withType(SourceSetArgs.Type.TEST)
+        .build();
 
     public Builder(final Id id) {
       this.id = id;
+    }
+
+    public Builder withPath(final String path) {
+      return withPath(Path.of(path));
     }
 
     public Builder withPath(final Path path) {
@@ -177,9 +167,13 @@ public final class Project {
       return this;
     }
 
-    public Builder withSourceSet(final SourceSetArgs args) {
-      Objects.requireNonNull(args);
-      sourceSetArgs.put(args.id(), args);
+    public Builder withMainSourceSet(final SourceSetArgs args) {
+      main = Objects.requireNonNull(args);
+      return this;
+    }
+
+    public Builder withTestSourceSet(final SourceSetArgs args) {
+      test = Objects.requireNonNull(args);
       return this;
     }
 
@@ -187,7 +181,8 @@ public final class Project {
       return new Project(
           id,
           path,
-          sourceSetArgs,
+          main,
+          test,
           ArtifactLayout.DEFAULT
       );
     }

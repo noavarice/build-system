@@ -25,17 +25,17 @@ class JUnitTest {
     FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
 
     final var main = SourceSetArgs
-        .withId("main")
+        .builder()
         .build();
     final var test = SourceSetArgs
-        .withId("test")
+        .builder()
         .withType(SourceSetArgs.Type.TEST)
         .build();
     final var project = Project
         .withId("calculator")
         .withPath(Path.of("calculator"))
-        .withSourceSet(main)
-        .withSourceSet(test)
+        .withMainSourceSet(main)
+        .withTestSourceSet(test)
         .build();
     final var projectRoot = tempDir.resolve(project.id().value());
 

@@ -250,7 +250,9 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
-              assertThatCode(() -> Build.copyResources(tempDir, project)).doesNotThrowAnyException()
+              assertThatCode(
+                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+              ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
               () -> assertThat(targetDir).isEmptyDirectory()
@@ -276,7 +278,9 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
-              assertThatCode(() -> Build.copyResources(tempDir, project)).doesNotThrowAnyException()
+              assertThatCode(
+                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+              ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
               () -> assertThat(targetDir).isEmptyDirectory()
@@ -286,126 +290,114 @@ class CopyTest {
 
     @DisplayName("Check copying resources works")
     @TestFactory
-    DynamicTest[] testCopyResourcesWorks(@TempDir final Path tempDir) throws IOException {
-      final Project project = createProject();
+    DynamicTest[] testCopyResourcesWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+      final Project project = Project
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withMainSourceSet(SourceSetArgs.builder().build())
+          .build();
 
-      // setup resources directory
-      {
-        final Path resourcesDir = Files.createDirectories(tempDir.resolve("src/main/resources"));
-        Files.writeString(resourcesDir.resolve("greeting.txt"), "Hello, world!");
+      final Path copiedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/greeting.txt"
+      );
+      assumeThat(copiedResourcePath).doesNotExist();
 
-        final Path nestedDir = Files.createDirectory(resourcesDir.resolve("nested"));
-        Files.writeString(nestedDir.resolve("greeting.txt"), "Hello, world!");
+      final Path copiedNestedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/nested/greeting.txt"
+      );
+      assumeThat(copiedNestedResourcePath).doesNotExist();
 
-        assumeThat(resourcesDir).isNotEmptyDirectory();
-        assumeThat(nestedDir).isNotEmptyDirectory();
-      }
-
-      // setup paths for copied resources
-      final Path copiedResourcePath, copiedNestedResourcePath;
-      {
-        final Path targetDir = tempDir
-            .resolve(project.path())
-            .resolve(project.artifactLayout().rootDir())
-            .resolve(project.artifactLayout().resourcesDir())
-            .resolve(project.mainSourceSet().id().value());
-        assumeThat(targetDir).doesNotExist();
-
-        copiedResourcePath = targetDir.resolve("greeting.txt");
-        assumeThat(copiedResourcePath).doesNotExist();
-
-        copiedNestedResourcePath = targetDir.resolve("nested").resolve("greeting.txt");
-        assumeThat(copiedNestedResourcePath).doesNotExist();
-      }
+      final Path otherCopiedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/other-greeting.txt"
+      );
+      assumeThat(copiedNestedResourcePath).doesNotExist();
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
-              assertThatCode(() -> Build.copyResources(tempDir, project)).doesNotThrowAnyException()
+              assertThatCode(
+                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+              ).doesNotThrowAnyException()
           ),
-          dynamicTest("Check resource copied",
-              () -> assertThat(copiedResourcePath).hasContent("Hello, world!")
+          dynamicTest(
+              "Check resource copied",
+              () -> assertThat(copiedResourcePath)
+                  .hasContent("Hello, world!")
           ),
-          dynamicTest("Check nested resource copied",
-              () -> assertThat(copiedNestedResourcePath).hasContent("Hello, world!")
+          dynamicTest(
+              "Check nested resource copied",
+              () -> assertThat(copiedNestedResourcePath)
+                  .hasContent("Hello, world from nested resource file!")
+          ),
+          dynamicTest(
+              "Check resource from other directory is not copied",
+              () -> assertThat(otherCopiedResourcePath)
+                  .doesNotExist()
           ),
       };
     }
 
     @DisplayName("Check copying resources from multiple directories works")
     @TestFactory
-    DynamicTest[] testCopyResourcesFromMultipleDirWorks(
-        @TempDir final Path tempDir
-    ) throws IOException {
+    DynamicTest[] testCopyResourcesFromMultipleDirWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final var mainSourceSet = SourceSetArgs
-          .withId("main")
+          .builder()
           .withResourceDir("other-resources")
           .build();
       final var project = Project
-          .withId("test-project")
-          .withSourceSet(mainSourceSet)
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withMainSourceSet(mainSourceSet)
           .build();
 
-      // setup resources directory
-      {
-        final Path resourcesDir = Files.createDirectories(tempDir.resolve("src/main/resources"));
-        Files.writeString(resourcesDir.resolve("greeting.txt"), "Hello, world!");
-
-        final Path nestedDir = Files.createDirectory(resourcesDir.resolve("nested"));
-        Files.writeString(nestedDir.resolve("greeting.txt"), "Hello, world!");
-
-        final Path otherResourcesDir = Files.createDirectories(
-            tempDir.resolve("src/main/other-resources")
-        );
-        Files.writeString(otherResourcesDir.resolve("other-greeting.txt"), "Hello, world!");
-
-        assumeThat(resourcesDir).isNotEmptyDirectory();
-        assumeThat(nestedDir).isNotEmptyDirectory();
-        assumeThat(otherResourcesDir).isNotEmptyDirectory();
-      }
-
       // setup paths for copied resources
-      final Path copiedResourcePath, copiedNestedResourcePath, otherCopiedResourcePath;
-      {
-        final Path targetDir = tempDir
-            .resolve(project.path())
-            .resolve(project.artifactLayout().rootDir())
-            .resolve(project.artifactLayout().resourcesDir())
-            .resolve(project.mainSourceSet().id().value());
-        assumeThat(targetDir).doesNotExist();
+      final Path copiedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/greeting.txt"
+      );
+      assumeThat(copiedResourcePath).doesNotExist();
 
-        copiedResourcePath = targetDir.resolve("greeting.txt");
-        assumeThat(copiedResourcePath).doesNotExist();
+      final Path copiedNestedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/nested/greeting.txt"
+      );
+      assumeThat(copiedNestedResourcePath).doesNotExist();
 
-        copiedNestedResourcePath = targetDir.resolve("nested").resolve("greeting.txt");
-        assumeThat(copiedNestedResourcePath).doesNotExist();
-
-        otherCopiedResourcePath = targetDir.resolve("other-greeting.txt");
-        assumeThat(otherCopiedResourcePath).doesNotExist();
-      }
+      final Path otherCopiedResourcePath = tempDir.resolve(
+          "hello-world/build/resources/main/other-greeting.txt"
+      );
+      assumeThat(copiedNestedResourcePath).doesNotExist();
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
-              assertThatCode(() -> Build.copyResources(tempDir, project)).doesNotThrowAnyException()
+              assertThatCode(
+                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+              ).doesNotThrowAnyException()
           ),
-          dynamicTest("Check resource copied",
-              () -> assertThat(copiedResourcePath).hasContent("Hello, world!")
+          dynamicTest(
+              "Check resource copied",
+              () -> assertThat(copiedResourcePath)
+                  .hasContent("Hello, world!")
           ),
-          dynamicTest("Check nested resource copied",
-              () -> assertThat(copiedNestedResourcePath).hasContent("Hello, world!")
+          dynamicTest(
+              "Check nested resource copied",
+              () -> assertThat(copiedNestedResourcePath)
+                  .hasContent("Hello, world from nested resource file!")
           ),
-          dynamicTest("Check resource from other directory copied",
-              () -> assertThat(otherCopiedResourcePath).hasContent("Hello, world!")
+          dynamicTest(
+              "Check resource from other directory copied",
+              () -> assertThat(otherCopiedResourcePath)
+                  .hasContent("Hello, world from resource file from additional resource directory!")
           ),
       };
     }
 
     private static Project createProject() {
       final var mainSourceSet = SourceSetArgs
-          .withId("main")
+          .builder()
           .build();
       return Project
           .withId("test-project")
-          .withSourceSet(mainSourceSet)
+          .withMainSourceSet(mainSourceSet)
           .build();
     }
   }
