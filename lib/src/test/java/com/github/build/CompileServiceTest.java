@@ -105,40 +105,4 @@ class CompileServiceTest {
       };
     }
   }
-
-  @DisplayName("Compile source set")
-  @Nested
-  class SourceSet {
-
-    @DisplayName("Compiling main source set works")
-    @TestFactory
-    DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = SourceSetArgs
-          .builder()
-          .build();
-      final var project = Project
-          .withId("calculator")
-          .withPath(Path.of("calculator"))
-          .withMainSourceSet(main)
-          .build();
-
-      final Path classesDir = tempDir.resolve("calculator/build/classes/main");
-      assumeThat(classesDir).doesNotExist();
-
-      final Path classFile = classesDir.resolve("org/example/Calculator.class");
-      assumeThat(classFile).doesNotExist();
-
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project))
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
-  }
 }

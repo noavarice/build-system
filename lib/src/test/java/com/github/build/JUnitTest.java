@@ -23,6 +23,8 @@ class JUnitTest {
 
   private final CompileService compileService = new CompileService();
 
+  private final BuildService buildService = new BuildService(compileService);
+
   @DisplayName("Check running tests work")
   @TestFactory
   DynamicTest[] testRunningWorks(@TempDir final Path tempDir) {
@@ -44,7 +46,7 @@ class JUnitTest {
     final var projectRoot = tempDir.resolve(project.id().value());
 
     // compile main classes
-    compileService.compileMain(tempDir, project);
+    buildService.compileMain(tempDir, project);
 
     // compile test classes
     {
