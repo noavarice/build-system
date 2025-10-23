@@ -5,9 +5,10 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.compile.CompileArgs;
+import com.github.build.compile.CompileService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -26,6 +27,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisplayName("JAR tests")
 class JarTest {
+
+  private final CompileService compileService = new CompileService();
 
   @DisplayName("Creating JAR works")
   @TestFactory
@@ -56,21 +59,22 @@ class JarTest {
     // compile sources
     final Path classFile;
     {
-      final Path source = tempDir.resolve("org/example/HelloWorld.java");
+      final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
       final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
-      assumeTrue(Build.compile(args));
-
-      classFile = args.classesDir().resolve("org/example/HelloWorld.class");
-      assumeThat(classFile).isNotEmptyFile();
+      compileService.compile(args);
+      classFile = tempDir.resolve("classes/org/example/HelloWorld.class");
     }
 
     final var args = new JarArgs(
         tempDir.resolve("app.jar"),
         Map.of(Path.of("org/example/HelloWorld.class"), new JarArgs.Content.File(classFile))
     );
-    assumeThat(args.path()).doesNotExist();
 
     return new DynamicTest[]{
+        dynamicTest(
+            "Check JAR does not exist yet",
+            () -> assumeThat(args.path()).doesNotExist()
+        ),
         dynamicTest(
             "Check creating JAR succeeds",
             () -> assertThatCode(() -> Build.createJar(args)).doesNotThrowAnyException()

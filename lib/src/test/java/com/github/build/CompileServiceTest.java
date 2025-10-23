@@ -6,6 +6,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.compile.CompileArgs;
+import com.github.build.compile.CompileService;
 import java.nio.file.Path;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
@@ -20,8 +22,10 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  * @since 1.0.0
  */
-@DisplayName("Compilation tests")
-class CompilationTest {
+@DisplayName("Compilation service tests")
+class CompileServiceTest {
+
+  private final CompileService service = new CompileService();
 
   @DisplayName("Compile directly")
   @Nested
@@ -31,7 +35,7 @@ class CompilationTest {
     @TestFactory
     DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Path source = tempDir.resolve("org/example/HelloWorld.java");
+      final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
 
       final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
       args.sources().forEach(path -> assumeThat(path).isRegularFile());
@@ -40,7 +44,7 @@ class CompilationTest {
       return new DynamicTest[]{
           dynamicTest(
               "Check compilation succeeds",
-              () -> assertTrue(Build.compile(args))
+              () -> assertTrue(service.compile(args))
           ),
           dynamicTest(
               "Check class file generated",
@@ -64,7 +68,7 @@ class CompilationTest {
       return new DynamicTest[]{
           dynamicTest(
               "Check compilation fails",
-              () -> assertFalse(Build.compile(args))
+              () -> assertFalse(service.compile(args))
           ),
           dynamicTest(
               "Check class file is not generated",
@@ -90,7 +94,7 @@ class CompilationTest {
       return new DynamicTest[]{
           dynamicTest(
               "Check build succeeds",
-              () -> assertTrue(Build.compile(args))
+              () -> assertTrue(service.compile(args))
           ),
           dynamicTest(
               "Check class file generated",
@@ -128,7 +132,7 @@ class CompilationTest {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(Build.compileMain(tempDir, project))
+              () -> assertTrue(service.compileMain(tempDir, project))
           ),
           dynamicTest(
               "Class file exists",

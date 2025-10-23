@@ -22,7 +22,7 @@ public final class ResourceUtils {
   }
 
   public static byte[] read(final String resourcePath) {
-    try (final var is = CompilationTest.class.getResourceAsStream(resourcePath)) {
+    try (final var is = CompileServiceTest.class.getResourceAsStream(resourcePath)) {
       return Objects.requireNonNull(is).readAllBytes();
     } catch (final IOException e) {
       throw new UncheckedIOException(e);

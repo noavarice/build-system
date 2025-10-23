@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.compile.CompileArgs;
+import com.github.build.compile.CompileService;
 import com.github.build.test.Test;
 import com.github.build.test.TestResults;
 import java.nio.file.Path;
@@ -18,6 +20,8 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisplayName("Tests for JUnit test integration")
 class JUnitTest {
+
+  private final CompileService compileService = new CompileService();
 
   @DisplayName("Check running tests work")
   @TestFactory
@@ -40,7 +44,7 @@ class JUnitTest {
     final var projectRoot = tempDir.resolve(project.id().value());
 
     // compile main classes
-    Build.compileMain(tempDir, project);
+    compileService.compileMain(tempDir, project);
 
     // compile test classes
     {
@@ -60,7 +64,7 @@ class JUnitTest {
           classesDir,
           Set.of(mainClassesDir, jupiterApi, apiguardianApi)
       );
-      assumeTrue(Build.compile(args));
+      assumeTrue(compileService.compile(args));
     }
 
     final TestResults result = Test.withJUnit(tempDir, project);

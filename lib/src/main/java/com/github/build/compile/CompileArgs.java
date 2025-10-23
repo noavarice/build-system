@@ -1,4 +1,4 @@
-package com.github.build;
+package com.github.build.compile;
 
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
