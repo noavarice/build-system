@@ -52,4 +52,36 @@ class BuildServiceTest {
         ),
     };
   }
+
+  @DisplayName("Compiling main source with local JAR dependency works")
+  @TestFactory
+  DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final var main = SourceSetArgs
+        .builder()
+        .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
+        .build();
+    final var project = Project
+        .withId("slf4j-example")
+        .withPath(Path.of("slf4j-example"))
+        .withMainSourceSet(main)
+        .build();
+
+    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+    assertThat(classesDir).doesNotExist();
+
+    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+    assertThat(classFile).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest(
+            "Compilation succeeds",
+            () -> assertTrue(service.compileMain(tempDir, project))
+        ),
+        dynamicTest(
+            "Class file exists",
+            () -> assertThat(classFile).isRegularFile()
+        ),
+    };
+  }
 }

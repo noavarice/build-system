@@ -5,7 +5,6 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
@@ -36,34 +35,20 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Tests for dependency service")
 class DependencyServiceIT {
 
-  private final Dependency.Remote.Exact logbackClassic = new Dependency.Remote.Exact(
-      "ch.qos.logback",
-      "logback-classic",
-      "1.5.18"
+  private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
+      "ch.qos.logback:logback-classic:1.5.18"
   );
 
-  private final Dependency.Remote.Exact springContext = new Dependency.Remote.Exact(
-      "org.springframework",
-      "spring-context",
-      "6.0.11"
+  private final GroupArtifactVersion springContext = GroupArtifactVersion.parse(
+      "org.springframework:spring-context:6.0.11"
   );
 
-  private final Dependency.Remote.Exact jacksonParameterNames = new Dependency.Remote.Exact(
-      "com.fasterxml.jackson.module",
-      "jackson-module-parameter-names",
-      "2.15.4"
+  private final GroupArtifactVersion jacksonParameterNames = GroupArtifactVersion.parse(
+      "com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.4"
   );
 
-  private final Dependency.Remote.Exact springBootWeb = new Dependency.Remote.Exact(
-      "org.springframework.boot",
-      "spring-boot-starter-web",
-      "3.2.5"
-  );
-
-  private final RemoteRepository mavenCentral = new RemoteRepository(
-      // TODO: externalize
-      URI.create("http://localhost:8081/repository/maven-central"),
-      HttpClient.newHttpClient()
+  private final GroupArtifactVersion springBootWeb = GroupArtifactVersion.parse(
+      "org.springframework.boot:spring-boot-starter-web:3.2.5"
   );
 
   private final Path localRepositoryBasePath;
@@ -75,6 +60,11 @@ class DependencyServiceIT {
     final var localRepository = new LocalRepository(
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
+    );
+    final RemoteRepository mavenCentral = new RemoteRepository(
+        // TODO: externalize
+        URI.create("http://localhost:8081/repository/maven-central"),
+        HttpClient.newHttpClient()
     );
     service = new DependencyService(List.of(mavenCentral), localRepository);
   }
@@ -92,7 +82,7 @@ class DependencyServiceIT {
 
       final Set<GroupArtifactVersion> actual = ref.get();
       final Set<GroupArtifactVersion> expected = Set.of(
-          logbackClassic.gav(),
+          logbackClassic,
           GroupArtifactVersion.parse("ch.qos.logback:logback-core:1.5.18"),
           GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17")
       );
@@ -110,7 +100,7 @@ class DependencyServiceIT {
 
       final Set<GroupArtifactVersion> actual = ref.get();
       final Set<GroupArtifactVersion> expected = Set.of(
-          springContext.gav(),
+          springContext,
           GroupArtifactVersion.parse("org.springframework:spring-aop:6.0.11"),
           GroupArtifactVersion.parse("org.springframework:spring-beans:6.0.11"),
           GroupArtifactVersion.parse("org.springframework:spring-core:6.0.11"),
@@ -132,7 +122,7 @@ class DependencyServiceIT {
 
       final Set<GroupArtifactVersion> actual = ref.get();
       final Set<GroupArtifactVersion> expected = Set.of(
-          jacksonParameterNames.gav(),
+          jacksonParameterNames,
           GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.15.4"),
           GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.15.4"),
           GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.15.4")

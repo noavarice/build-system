@@ -1,7 +1,5 @@
 package com.github.build;
 
-import static java.util.stream.Collectors.toUnmodifiableSet;
-
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.Dependency;
@@ -58,14 +56,16 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
-    final Set<Path> classpath = mainSourceSet.dependencies()
-        .stream()
-        .map(dependency -> switch (dependency) {
-          case Dependency.File file -> file.path();
-          // TODO: implement
-          case Dependency.Remote ignored -> throw new UnsupportedOperationException();
-        })
-        .collect(toUnmodifiableSet());
+    final Set<Path> classpath = new HashSet<>();
+    for (final Dependency dependency : mainSourceSet.dependencies()) {
+      final Path path = switch (dependency) {
+        case Dependency.Jar file -> file.path();
+        // TODO: implement
+        case Dependency.Remote ignored -> throw new UnsupportedOperationException();
+      };
+      classpath.add(path);
+    }
+
     final var compileArgs = new CompileArgs(sources, classesDir, classpath);
     return compileService.compile(compileArgs);
   }

@@ -1,6 +1,6 @@
 files:
   - type: plaintext
-    path: org/example/Slf4jExample.java
+    path: slf4j-example/src/main/java/org/example/Slf4jExample.java
     #language=Java
     text: |
       package org.example;

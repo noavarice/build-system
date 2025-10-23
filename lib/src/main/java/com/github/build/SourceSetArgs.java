@@ -98,9 +98,8 @@ public record SourceSetArgs(
       return this;
     }
 
-    public Builder withDependency(final Dependency dependency) {
-      Objects.requireNonNull(dependency);
-      dependencies.add(dependency);
+    public Builder compileWithLocalJar(final Path jarPath) {
+      dependencies.add(new Dependency.Jar(jarPath));
       return this;
     }
 

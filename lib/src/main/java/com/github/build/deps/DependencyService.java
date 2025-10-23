@@ -43,12 +43,12 @@ public final class DependencyService {
     this.localRepository = Objects.requireNonNull(localRepository);
   }
 
-  public Set<GroupArtifactVersion> resolveTransitive(final Dependency.Remote.Exact dependency) {
+  public Set<GroupArtifactVersion> resolveTransitive(final GroupArtifactVersion artifact) {
     final var queue = new ArrayList<GraphPath>();
-    queue.addLast(new GraphPath(dependency.gav()));
+    queue.addLast(new GraphPath(artifact));
 
     final var graph = new Graph();
-    graph.add(dependency.gav(), Set.of(), GraphPath.ROOT);
+    graph.add(artifact, Set.of(), GraphPath.ROOT);
 
     while (!queue.isEmpty()) {
       final GraphPath currentPath = queue.removeLast();
