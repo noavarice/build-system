@@ -33,7 +33,7 @@ public final class LocalRepository {
     this.basePath = basePath;
   }
 
-  public void saveJar(final GroupArtifactVersion gav, final byte[] bytes) {
+  public Path saveJar(final GroupArtifactVersion gav, final byte[] bytes) {
     log.debug("Saving {} JAR to local repository", gav);
     final Path dir = basePath
         .resolve(gav.groupId().replace('.', '/'))
@@ -68,5 +68,38 @@ public final class LocalRepository {
         throw new UncheckedIOException(e);
       }
     }
+
+    return jarPath;
+  }
+
+  /**
+   * Checks if artifact JAR is present in file system.
+   *
+   * @param gav Artifact
+   * @return True if JAR exists, false otherwise
+   */
+  public boolean jarPresent(final GroupArtifactVersion gav) {
+    Objects.requireNonNull(gav);
+    final Path jarPath = getPathInternal(gav);
+    return Files.isRegularFile(jarPath);
+  }
+
+  /**
+   * Constructs JAR file path for artifact without checking file presence.
+   *
+   * @param gav Artifact
+   * @return JAR path, never null
+   */
+  public Path getPath(final GroupArtifactVersion gav) {
+    Objects.requireNonNull(gav);
+    return getPathInternal(gav);
+  }
+
+  private Path getPathInternal(final GroupArtifactVersion gav) {
+    return basePath
+        .resolve(gav.groupId().replace('.', '/'))
+        .resolve(gav.artifactId())
+        .resolve(gav.version())
+        .resolve(gav.artifactId() + '-' + gav.version() + ".jar");
   }
 }

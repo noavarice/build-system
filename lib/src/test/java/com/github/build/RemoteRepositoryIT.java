@@ -4,7 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.deps.ArtifactResolutionResult;
+import com.github.build.deps.ArtifactDownloadResult;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
@@ -58,7 +58,7 @@ class RemoteRepositoryIT {
     @DisplayName("Check downloading dependency jar works")
     @TestFactory
     DynamicTest[] testDownloadingJar() {
-      final var ref = new AtomicReference<Optional<ArtifactResolutionResult>>();
+      final var ref = new AtomicReference<Optional<ArtifactDownloadResult>>();
       final byte[] expectedBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
       return new DynamicTest[]{
           dynamicTest("Check method works", () ->

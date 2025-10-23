@@ -58,7 +58,7 @@ public final class RemoteRepository {
    * @param dependency Dependency coordinates
    * @return Resolution result, never null, empty if no dependency found
    */
-  public Optional<ArtifactResolutionResult> download(final GroupArtifactVersion dependency) {
+  public Optional<ArtifactDownloadResult> download(final GroupArtifactVersion dependency) {
     final var uri = buildUri(dependency, ".jar");
     log.info("Downloading {} JAR from {}", dependency, uri);
     final var request = HttpRequest
@@ -81,7 +81,7 @@ public final class RemoteRepository {
       return Optional.empty();
     }
 
-    final var result = new ArtifactResolutionResult(response.body());
+    final var result = new ArtifactDownloadResult(response.body());
     return Optional.of(result);
   }
 

@@ -2,6 +2,10 @@ package com.github.build.deps;
 
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.UncheckedIOException;
+import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -10,6 +14,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -23,13 +28,19 @@ public final class DependencyService {
 
   private final List<RemoteRepository> remoteRepositories;
 
+  private final LocalRepository localRepository;
+
   private final Map<GroupArtifactVersion, Pom> poms = new ConcurrentHashMap<>();
 
-  public DependencyService(final List<RemoteRepository> remoteRepositories) {
-    this.remoteRepositories = List.copyOf(remoteRepositories);
+  public DependencyService(
+      final List<RemoteRepository> remoteRepositories,
+      final LocalRepository localRepository
+  ) {
     if (remoteRepositories.isEmpty()) {
       throw new IllegalArgumentException();
     }
+    this.remoteRepositories = List.copyOf(remoteRepositories);
+    this.localRepository = Objects.requireNonNull(localRepository);
   }
 
   public Set<GroupArtifactVersion> resolveTransitive(final Dependency.Remote.Exact dependency) {
@@ -253,5 +264,62 @@ public final class DependencyService {
     }
 
     return foundVersion;
+  }
+
+  /**
+   * Fetches dependencies from remote repositories and saves them to local repository.
+   *
+   * @param artifacts Artifacts to fetch
+   * @return Mapping from artifact to its path in the file system
+   */
+  @SuppressWarnings("resource")
+  public Map<GroupArtifactVersion, Path> fetchToLocal(final Set<GroupArtifactVersion> artifacts) {
+    Objects.requireNonNull(artifacts);
+    if (artifacts.isEmpty()) {
+      return Map.of();
+    }
+
+    final var result = new HashMap<GroupArtifactVersion, Path>();
+    for (final GroupArtifactVersion gav : artifacts) {
+      if (localRepository.jarPresent(gav)) {
+        final Path path = localRepository.getPath(gav);
+        log.debug("{} already fetched to {}", gav, path);
+        result.put(gav, path);
+        continue;
+      }
+
+      log.debug("{} is missing locally, fetching", gav);
+      @Nullable InputStream jarInputStream = null;
+      for (final RemoteRepository remoteRepository : remoteRepositories) {
+        final Optional<ArtifactDownloadResult> artifactResolutionResult = remoteRepository.download(
+            gav
+        );
+        if (artifactResolutionResult.isEmpty()) {
+          log.debug("{} JAR in {}: not found", gav, remoteRepository);
+        } else {
+          log.debug("{} JAR in {}: found", gav, remoteRepository);
+          jarInputStream = artifactResolutionResult.get().stream();
+          break;
+        }
+      }
+
+      if (jarInputStream == null) {
+        // TODO: introduce specific exception
+        throw new IllegalStateException(gav + " JAR not found in any remote repository");
+      }
+
+      final byte[] jarBytes;
+      try {
+        jarBytes = jarInputStream.readAllBytes();
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+
+      final Path jarPath = localRepository.saveJar(gav, jarBytes);
+      log.debug("{} fetched and saved to {}", gav, jarPath);
+      result.put(gav, jarPath);
+    }
+
+    return Map.copyOf(result);
   }
 }

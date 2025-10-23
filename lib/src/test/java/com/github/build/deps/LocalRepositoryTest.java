@@ -2,7 +2,8 @@ package com.github.build.deps;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.assertj.core.api.Assumptions.assumeThat;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.ResourceUtils;
@@ -27,7 +28,6 @@ class LocalRepositoryTest {
     final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
     final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
 
-    assumeThat(tempDir).isEmptyDirectory();
     final var expectedJarPath = tempDir.resolve(
         "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar"
     );
@@ -36,8 +36,12 @@ class LocalRepositoryTest {
     );
     return new DynamicTest[]{
         dynamicTest(
+            "Check directory is empty initially",
+            () -> assertThat(tempDir).isEmptyDirectory()
+        ),
+        dynamicTest(
             "Check method works",
-            () -> assertThatCode(() -> repository.saveJar(gav, jarBytes)).doesNotThrowAnyException()
+            () -> assertThat(repository.saveJar(gav, jarBytes)).isEqualTo(expectedJarPath)
         ),
         dynamicTest(
             "Check JAR created",
@@ -48,6 +52,30 @@ class LocalRepositoryTest {
             () -> assertThat(expectedHashPath).hasContent(
                 "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832"
             )
+        ),
+    };
+  }
+
+  @DisplayName("Checking JAR presence works")
+  @TestFactory
+  DynamicTest[] checkingJarPresenceWorks(@TempDir final Path tempDir) {
+    final var repository = new LocalRepository(tempDir, Map.of("sha256", "SHA-256"));
+    final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+    return new DynamicTest[]{
+        dynamicTest(
+            "Check JAR is not yet present",
+            () -> assertFalse(repository.jarPresent(gav))
+        ),
+        dynamicTest(
+            "Check method works",
+            () -> {
+              final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
+              assertThatCode(() -> repository.saveJar(gav, jarBytes)).doesNotThrowAnyException();
+            }
+        ),
+        dynamicTest(
+            "Check JAR is present",
+            () -> assertTrue(repository.jarPresent(gav))
         ),
     };
   }

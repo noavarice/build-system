@@ -10,9 +10,9 @@ import java.util.Objects;
  * @see RemoteRepository
  * @since 1.0.0
  */
-public record ArtifactResolutionResult(InputStream stream) {
+public record ArtifactDownloadResult(InputStream stream) {
 
-  public ArtifactResolutionResult {
+  public ArtifactDownloadResult {
     Objects.requireNonNull(stream);
   }
 }
