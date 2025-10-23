@@ -4,6 +4,7 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
@@ -105,6 +106,11 @@ public record SourceSetArgs(
 
     public Builder compileWith(final GroupArtifactVersion gav) {
       dependencies.add(new Dependency.Remote.WithVersion(gav));
+      return this;
+    }
+
+    public Builder compileWith(final GroupArtifact ga) {
+      dependencies.add(new Dependency.Remote.WithoutVersion(ga));
       return this;
     }
 

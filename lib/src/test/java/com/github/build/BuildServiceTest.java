@@ -7,7 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepository;
@@ -146,6 +148,128 @@ class BuildServiceTest {
     final var main = SourceSetArgs
         .builder()
         .compileWith(slf4jApi)
+        .build();
+    final var project = Project
+        .withId("slf4j-example")
+        .withPath(Path.of("slf4j-example"))
+        .withMainSourceSet(main)
+        .build();
+
+    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+    assertThat(classesDir).doesNotExist();
+
+    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+    assertThat(classFile).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest(
+            "Compilation succeeds",
+            () -> assertTrue(service.compileMain(tempDir, project))
+        ),
+        dynamicTest(
+            "Class file exists",
+            () -> assertThat(classFile).isRegularFile()
+        ),
+    };
+  }
+
+  @DisplayName("""
+      Compiling main source with dependency without version
+       and without dependency constraints fails
+      """)
+  @TestFactory
+  DynamicTest[] compilingMainWithDependencyWithoutVersionAndConstraintFails(
+      @TempDir final Path tempDir
+  ) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+    final var main = SourceSetArgs
+        .builder()
+        .compileWith(slf4jApi)
+        .build();
+    final var project = Project
+        .withId("slf4j-example")
+        .withPath(Path.of("slf4j-example"))
+        .withMainSourceSet(main)
+        .build();
+
+    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+    assertThat(classesDir).doesNotExist();
+
+    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+    assertThat(classFile).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest(
+            "Compilation fails",
+            () -> assertFalse(service.compileMain(tempDir, project))
+        ),
+        dynamicTest(
+            "Class file is not generated",
+            () -> assertThat(classFile).doesNotExist()
+        ),
+    };
+  }
+
+  @DisplayName("""
+      Compiling main source with dependency without version
+       and with dependency constraints but without necessary
+       constraint fails
+      """)
+  @TestFactory
+  DynamicTest[] compilingMainWithoutNecessaryConstraintFails(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+    final var constraints = DependencyConstraints
+        .builder()
+        .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
+        .build();
+    final var main = SourceSetArgs
+        .builder()
+        .compileWith(slf4jApi)
+        .withDependencyConstraints(constraints)
+        .build();
+    final var project = Project
+        .withId("slf4j-example")
+        .withPath(Path.of("slf4j-example"))
+        .withMainSourceSet(main)
+        .build();
+
+    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+    assertThat(classesDir).doesNotExist();
+
+    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+    assertThat(classFile).doesNotExist();
+
+    return new DynamicTest[]{
+        dynamicTest(
+            "Compilation fails",
+            () -> assertFalse(service.compileMain(tempDir, project))
+        ),
+        dynamicTest(
+            "Class file is not generated",
+            () -> assertThat(classFile).doesNotExist()
+        ),
+    };
+  }
+
+  @DisplayName("""
+      Compiling main source with dependency without version
+       and with dependency constraints and with necessary
+       constraint works
+      """)
+  @TestFactory
+  DynamicTest[] compilingMainWithNecessaryConstraintWorks(@TempDir final Path tempDir) {
+    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+    final var constraints = DependencyConstraints
+        .builder()
+        .withExactVersion(slf4jApi, "2.0.17")
+        .build();
+    final var main = SourceSetArgs
+        .builder()
+        .compileWith(slf4jApi)
+        .withDependencyConstraints(constraints)
         .build();
     final var project = Project
         .withId("slf4j-example")

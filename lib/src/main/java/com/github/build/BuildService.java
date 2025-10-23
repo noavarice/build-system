@@ -3,6 +3,7 @@ package com.github.build;
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.Dependency;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
@@ -77,8 +78,22 @@ public final class BuildService {
           );
           classpath.addAll(localArtifacts.values());
         }
-        // TODO: implement
-        case Dependency.Remote.WithoutVersion ignored -> throw new UnsupportedOperationException();
+        case Dependency.Remote.WithoutVersion withoutVersion -> {
+          final DependencyConstraints constraints = mainSourceSet.dependencyConstraints();
+          @Nullable
+          final String version = constraints.getConstraint(withoutVersion.ga());
+          if (version == null) {
+            log.error("Dependency has no version and no associated source set-wise constraint");
+            return false;
+          }
+
+          final GroupArtifactVersion gav = withoutVersion.ga().withVersion(version);
+          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
+          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+              artifacts
+          );
+          classpath.addAll(localArtifacts.values());
+        }
       }
     }
 
