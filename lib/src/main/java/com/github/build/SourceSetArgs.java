@@ -4,6 +4,7 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.HashSet;
@@ -19,8 +20,7 @@ import org.jspecify.annotations.Nullable;
  * @param sourceDirectories     Directories containing source files
  * @param resourceDirectories   Directories containing resources
  * @param type                  Source set type (main, test, etc.)
- * @param dependencies          Source set dependencies (compile classpath, runtime classpath,
- *                              etc.)
+ * @param compileClasspath      Source set compile classpath
  * @param dependencyConstraints Constraints to use when resolving dependencies without exact
  *                              versions
  * @author noavarice
@@ -31,7 +31,7 @@ public record SourceSetArgs(
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     Type type,
-    Set<Dependency> dependencies,
+    Set<Dependency> compileClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
@@ -58,7 +58,7 @@ public record SourceSetArgs(
         .collect(toUnmodifiableSet());
 
     Objects.requireNonNull(type);
-    dependencies = Set.copyOf(dependencies);
+    compileClasspath = Set.copyOf(compileClasspath);
   }
 
   public enum Type {
@@ -100,6 +100,11 @@ public record SourceSetArgs(
 
     public Builder compileWithLocalJar(final Path jarPath) {
       dependencies.add(new Dependency.Jar(jarPath));
+      return this;
+    }
+
+    public Builder compileWith(final GroupArtifactVersion gav) {
+      dependencies.add(new Dependency.Remote.WithVersion(gav));
       return this;
     }
 

@@ -1,14 +1,21 @@
 package com.github.build;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assumptions.assumeTrue;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
+import com.github.build.deps.DependencyService;
+import com.github.build.deps.LocalRepository;
+import com.github.build.deps.RemoteRepository;
 import com.github.build.test.Test;
 import com.github.build.test.TestResults;
+import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -23,7 +30,21 @@ class JUnitTest {
 
   private final CompileService compileService = new CompileService();
 
-  private final BuildService buildService = new BuildService(compileService);
+  private final BuildService buildService;
+
+  JUnitTest(@TempDir final Path localRepositoryBasePath) {
+    final var remoteRepository = new RemoteRepository(
+        // TODO: externalize
+        URI.create("http://localhost:8081/repository/maven-central"),
+        HttpClient.newHttpClient()
+    );
+    final var localRepository = new LocalRepository(
+        localRepositoryBasePath,
+        Map.of("sha256", "SHA-256")
+    );
+    final var dependencyService = new DependencyService(List.of(remoteRepository), localRepository);
+    buildService = new BuildService(compileService, dependencyService);
+  }
 
   @DisplayName("Check running tests work")
   @TestFactory
@@ -51,6 +72,7 @@ class JUnitTest {
     // compile test classes
     {
       final var source = projectRoot.resolve("src/test/java/org/example/CalculatorTest.java");
+      // TODO: express dependency on other source set
       final Path mainClassesDir = projectRoot
           .resolve(project.artifactLayout().rootDir())
           .resolve(project.artifactLayout().classesDir())
@@ -66,7 +88,7 @@ class JUnitTest {
           classesDir,
           Set.of(mainClassesDir, jupiterApi, apiguardianApi)
       );
-      assumeTrue(compileService.compile(args));
+      assertTrue(compileService.compile(args));
     }
 
     final TestResults result = Test.withJUnit(tempDir, project);

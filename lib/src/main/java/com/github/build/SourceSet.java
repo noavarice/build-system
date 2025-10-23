@@ -19,7 +19,7 @@ public record SourceSet(
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     SourceSetArgs.Type type,
-    Set<Dependency> dependencies,
+    Set<Dependency> compileClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
@@ -47,7 +47,7 @@ public record SourceSet(
         .collect(toUnmodifiableSet());
 
     Objects.requireNonNull(type);
-    dependencies = Set.copyOf(dependencies);
+    compileClasspath = Set.copyOf(compileClasspath);
     Objects.requireNonNull(dependencyConstraints);
   }
 

@@ -3,6 +3,8 @@ package com.github.build;
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.Dependency;
+import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -13,6 +15,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -30,8 +33,14 @@ public final class BuildService {
 
   private final CompileService compileService;
 
-  public BuildService(final CompileService compileService) {
+  private final DependencyService dependencyService;
+
+  public BuildService(
+      final CompileService compileService,
+      final DependencyService dependencyService
+  ) {
     this.compileService = Objects.requireNonNull(compileService);
+    this.dependencyService = Objects.requireNonNull(dependencyService);
   }
 
   public boolean compileMain(final Path workdir, final Project project) {
@@ -57,13 +66,20 @@ public final class BuildService {
     }
 
     final Set<Path> classpath = new HashSet<>();
-    for (final Dependency dependency : mainSourceSet.dependencies()) {
-      final Path path = switch (dependency) {
-        case Dependency.Jar file -> file.path();
+    for (final Dependency dependency : mainSourceSet.compileClasspath()) {
+      switch (dependency) {
+        case Dependency.Jar file -> classpath.add(file.path());
+        case Dependency.Remote.WithVersion withVersion -> {
+          final GroupArtifactVersion gav = withVersion.gav();
+          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
+          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+              artifacts
+          );
+          classpath.addAll(localArtifacts.values());
+        }
         // TODO: implement
-        case Dependency.Remote ignored -> throw new UnsupportedOperationException();
-      };
-      classpath.add(path);
+        case Dependency.Remote.WithoutVersion ignored -> throw new UnsupportedOperationException();
+      }
     }
 
     final var compileArgs = new CompileArgs(sources, classesDir, classpath);
