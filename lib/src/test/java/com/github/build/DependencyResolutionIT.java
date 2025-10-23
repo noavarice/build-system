@@ -10,7 +10,6 @@ import com.github.build.deps.Dependency;
 import com.github.build.deps.ResolvedRemoteDependency;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import org.eclipse.aether.graph.DependencyFilter;
 import org.eclipse.aether.graph.DependencyNode;
@@ -376,7 +375,7 @@ class DependencyResolutionIT {
   }
 
   private static Project getProject(final Dependency.Remote.Lax dependency) {
-    final var mainSourceSet = SourceSet
+    final var mainSourceSet = SourceSetArgs
         .withId("main")
         .withDependency(dependency)
         .build();

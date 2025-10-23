@@ -8,7 +8,6 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.List;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -337,13 +336,9 @@ class CopyTest {
     DynamicTest[] testCopyResourcesFromMultipleDirWorks(
         @TempDir final Path tempDir
     ) throws IOException {
-      final var layout = new SourceSetLayout(
-          List.of(Path.of("java")),
-          List.of(Path.of("resources"), Path.of("other-resources"))
-      );
-      final var mainSourceSet = SourceSet
+      final var mainSourceSet = SourceSetArgs
           .withId("main")
-          .withLayout(layout)
+          .withResourceDir("other-resources")
           .build();
       final var project = Project
           .withId("test-project")
@@ -405,7 +400,7 @@ class CopyTest {
     }
 
     private static Project createProject() {
-      final var mainSourceSet = SourceSet
+      final var mainSourceSet = SourceSetArgs
           .withId("main")
           .build();
       return Project

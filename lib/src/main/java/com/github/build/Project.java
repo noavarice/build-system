@@ -1,45 +1,71 @@
 package com.github.build;
 
+import com.github.build.util.PathUtils;
 import java.nio.file.Path;
-import java.util.HashSet;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 
 /**
  * Project to build.
  *
- * @param id         Identifies project, so you don't need to mess with physical project location on
- *                   disk.
- * @param path       Path to a physical project files location on disk, relative to a working
- *                   directory
- * @param sourceSets Unmodifiable set of source sets, never null but can be empty
  * @author noavarice
  * @since 1.0.0
  */
-public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayout artifactLayout) {
+public final class Project {
+
+  private final Id id;
+
+  private final Path path;
+
+  private final Map<SourceSet.Id, SourceSet> sourceSets;
+
+  private final ArtifactLayout artifactLayout;
+
 
   public static Builder withId(final String idStr) {
-    final var id = new Project.Id(idStr);
+    final var id = new Id(idStr);
     return new Builder(id);
   }
 
-  public Project {
-    Objects.requireNonNull(id);
-    path = Objects.requireNonNull(path).normalize();
-    if (path.isAbsolute()) {
-      throw new IllegalArgumentException("Must be a relative path");
-    }
-
-    sourceSets = Set.copyOf(sourceSets);
+  private Project(
+      final Id id,
+      final Path path,
+      final Map<SourceSet.Id, SourceSetArgs> sourceSets,
+      final ArtifactLayout artifactLayout
+  ) {
+    this.id = id;
+    this.path = path;
     checkSingleProdSourceSet(sourceSets);
-
-    Objects.requireNonNull(artifactLayout);
+    this.sourceSets = createSourceSets(sourceSets);
+    this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
-  private static void checkSingleProdSourceSet(final Set<SourceSet> sourceSets) {
-    final long prodSetsCount = sourceSets
+  private Map<SourceSet.Id, SourceSet> createSourceSets(
+      final Map<SourceSet.Id, SourceSetArgs> allArgs
+  ) {
+    final var result = new HashMap<SourceSet.Id, SourceSet>();
+    for (final SourceSet.Id id : allArgs.keySet()) {
+      final SourceSetArgs args = allArgs.get(id);
+      final var sourceSet = new SourceSet(
+          this,
+          id,
+          args.path(),
+          args.sourceDirectories(),
+          args.resourceDirectories(),
+          args.type(),
+          args.dependencies()
+      );
+      result.put(id, sourceSet);
+    }
+
+    return Map.copyOf(result);
+  }
+
+  private static void checkSingleProdSourceSet(final Map<SourceSet.Id, SourceSetArgs> sourceSets) {
+    final long prodSetsCount = sourceSets.values()
         .stream()
-        .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
+        .filter(sourceSet -> sourceSet.type() == SourceSetArgs.Type.PROD)
         .count();
     if (prodSetsCount == 0) {
       throw new IllegalArgumentException("No production source sets specified");
@@ -50,11 +76,32 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
   }
 
   public SourceSet mainSourceSet() {
-    return sourceSets
+    return sourceSets.values()
         .stream()
-        .filter(sourceSet -> sourceSet.type() == SourceSet.Type.PROD)
+        .filter(sourceSet -> sourceSet.type() == SourceSetArgs.Type.PROD)
         .findFirst()
         .orElseThrow();
+  }
+
+  public Id id() {
+    return id;
+  }
+
+  public Path path() {
+    return path;
+  }
+
+  public Map<SourceSet.Id, SourceSet> sourceSets() {
+    return sourceSets;
+  }
+
+  public ArtifactLayout artifactLayout() {
+    return artifactLayout;
+  }
+
+  @Override
+  public String toString() {
+    return "Project[id=" + id + ']';
   }
 
   public record Id(String value) {
@@ -117,27 +164,22 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
 
     private Path path = Path.of("");
 
-    private final Set<SourceSet> sourceSets = new HashSet<>();
+    private final Map<SourceSet.Id, SourceSetArgs> sourceSetArgs = new HashMap<>();
 
-    private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
-
-    public Builder(final Project.Id id) {
+    public Builder(final Id id) {
       this.id = id;
     }
 
     public Builder withPath(final Path path) {
       Objects.requireNonNull(path);
-      if (path.isAbsolute()) {
-        throw new IllegalArgumentException();
-      }
-
+      PathUtils.checkRelative(path);
       this.path = path.normalize();
       return this;
     }
 
-    public Builder withSourceSet(final SourceSet sourceSet) {
-      Objects.requireNonNull(sourceSet);
-      sourceSets.add(sourceSet);
+    public Builder withSourceSet(final SourceSetArgs args) {
+      Objects.requireNonNull(args);
+      sourceSetArgs.put(args.id(), args);
       return this;
     }
 
@@ -145,8 +187,8 @@ public record Project(Id id, Path path, Set<SourceSet> sourceSets, ArtifactLayou
       return new Project(
           id,
           path,
-          sourceSets,
-          artifactLayout
+          sourceSetArgs,
+          ArtifactLayout.DEFAULT
       );
     }
   }

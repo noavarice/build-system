@@ -17,19 +17,19 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  */
 @DisplayName("Tests for JUnit test integration")
-class JUnitIntegrationTest {
+class JUnitTest {
 
   @DisplayName("Check running tests work")
   @TestFactory
   DynamicTest[] testRunningWorks(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
 
-    final var main = SourceSet
+    final var main = SourceSetArgs
         .withId("main")
         .build();
-    final var test = SourceSet
+    final var test = SourceSetArgs
         .withId("test")
-        .withType(SourceSet.Type.TEST)
+        .withType(SourceSetArgs.Type.TEST)
         .build();
     final var project = Project
         .withId("calculator")
@@ -40,14 +40,7 @@ class JUnitIntegrationTest {
     final var projectRoot = tempDir.resolve(project.id().value());
 
     // compile main classes
-    {
-      final var source = projectRoot.resolve("src/main/java/org/example/Calculator.java");
-      final Path classesDir = projectRoot
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactLayout().classesDir())
-          .resolve("main");
-      assumeTrue(Build.compile(new CompileArgs(Set.of(source), classesDir, Set.of())));
-    }
+    Build.compileMain(tempDir, project);
 
     // compile test classes
     {
