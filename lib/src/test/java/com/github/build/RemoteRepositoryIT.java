@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.ArtifactResolutionResult;
-import com.github.build.deps.Dependency;
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import java.net.URI;
@@ -35,28 +35,20 @@ class RemoteRepositoryIT {
 
   private final RemoteRepository repo = new RemoteRepository(baseUri, client);
 
-  private final Dependency.Remote.Exact slf4j = new Dependency.Remote.Exact(
-      "org.slf4j",
-      "slf4j-api",
-      "2.0.17"
+  private final GroupArtifactVersion slf4j = GroupArtifactVersion.parse(
+      "org.slf4j:slf4j-api:2.0.17"
   );
 
-  private final Dependency.Remote.Exact logbackParent = new Dependency.Remote.Exact(
-      "ch.qos.logback",
-      "logback-parent",
-      "1.5.8"
+  private final GroupArtifactVersion logbackParent = GroupArtifactVersion.parse(
+      "ch.qos.logback:logback-parent:1.5.8"
   );
 
-  private final Dependency.Remote.Exact logbackClassic = new Dependency.Remote.Exact(
-      "ch.qos.logback",
-      "logback-classic",
-      "1.5.18"
+  private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
+      "ch.qos.logback:logback-classic:1.5.18"
   );
 
-  private final Dependency.Remote.Exact nonExistentSlf4j = new Dependency.Remote.Exact(
-      "org.slf4j",
-      "slf4j-api",
-      "1.9.0"
+  private final GroupArtifactVersion nonExistentSlf4j = GroupArtifactVersion.parse(
+      "org.slf4j:slf4j-api:1.9.0"
   );
 
   @DisplayName("Tests for downloading dependency JAR")
@@ -97,7 +89,7 @@ class RemoteRepositoryIT {
     @DisplayName("Check downloading non-existent dependency POM works")
     @Test
     void testGettingPomForNonExistentDependency() {
-      assertThat(repo.getPom(nonExistentSlf4j.gav())).isEmpty();
+      assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
     }
 
     @DisplayName("Check downloading existing dependency POM works")
@@ -107,7 +99,7 @@ class RemoteRepositoryIT {
 
       // checking method works beforehand for simplifying actual tests
       assertThatCode(
-          () -> ref.set(repo.getPom(logbackParent.gav()))
+          () -> ref.set(repo.getPom(logbackParent))
       ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();
@@ -182,7 +174,7 @@ class RemoteRepositoryIT {
 
       // checking method works beforehand for simplifying actual tests
       assertThatCode(
-          () -> ref.set(repo.getPom(logbackClassic.gav()))
+          () -> ref.set(repo.getPom(logbackClassic))
       ).doesNotThrowAnyException();
 
       final Pom pom = ref.get().orElseThrow();
