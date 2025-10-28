@@ -49,16 +49,12 @@ public final class BuildService {
     Objects.requireNonNull(project);
     PathUtils.checkAbsolute(workdir);
 
-    @Nullable
-    final SourceSet mainSourceSet = project.mainSourceSet();
-    Objects.requireNonNull(mainSourceSet);
-
-    final Set<Path> sources = collectSources(workdir, mainSourceSet);
+    final Set<Path> sources = collectSources(workdir, project, SourceSet.Id.MAIN);
     final Path classesDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
-        .resolve(mainSourceSet.id().toString());
+        .resolve(SourceSet.Id.MAIN.toString());
 
     try {
       Files.createDirectories(classesDir);
@@ -66,6 +62,7 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
+    final SourceSet mainSourceSet = project.sourceSet(SourceSet.Id.MAIN);
     final Set<Path> classpath = new HashSet<>();
     for (final Dependency dependency : mainSourceSet.compileClasspath()) {
       switch (dependency) {
@@ -102,25 +99,25 @@ public final class BuildService {
   }
 
   /**
-   * Collects files ending with ".java" in the specified directories.
-   *
-   * @param workdir   Working directory
-   * @param sourceSet Source set
-   * @return Paths to each individual source file, never null but can be empty
+   * Collects files ending with ".java" in the specified source set.
    */
-  private static Set<Path> collectSources(final Path workdir, final SourceSet sourceSet) {
+  private static Set<Path> collectSources(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId
+  ) {
     final var sources = new HashSet<Path>();
     // for some reason, newDirectoryStream with glob does not work as expected
     // TODO: consider using newDirectoryStream with glob
+    final SourceSet sourceSet = project.sourceSet(sourceSetId);
     for (final Path relativeDir : sourceSet.sourceDirectories()) {
       final Path sourceDir = workdir
-          .resolve(sourceSet.project().path())
-          .resolve(sourceSet.path())
+          .resolve(project.path())
           .resolve(relativeDir);
       if (Files.notExists(sourceDir)) {
         log.debug("[project={}][sourceSet={}] Source directory {} does not exist",
-            sourceSet.project().id(),
-            sourceSet.id(),
+            project.id(),
+            sourceSetId,
             sourceDir
         );
         continue;
@@ -129,8 +126,8 @@ public final class BuildService {
       if (!Files.isDirectory(sourceDir)) {
         log.warn(
             "[project={}][sourceSet={}] {} assumed to be source directory but it's not a directory",
-            sourceSet.project().id(),
-            sourceSet.id(),
+            project.id(),
+            sourceSetId,
             sourceDir
         );
         continue;
@@ -150,8 +147,8 @@ public final class BuildService {
 
       if (sourcesPart.isEmpty()) {
         log.debug("[project={}][sourceSet={}] No source files found in directory {}",
-            sourceSet.project().id(),
-            sourceSet.id(),
+            project.id(),
+            sourceSetId,
             sourceDir
         );
       } else {

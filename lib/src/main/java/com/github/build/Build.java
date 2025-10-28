@@ -74,27 +74,28 @@ public final class Build {
   /**
    * Copies resources from project's main source set to a {@link ArtifactLayout#resourcesDir()}.
    *
-   * @param workdir   Working directory
-   * @param sourceSet Source set to copy resources from
+   * @param workdir     Working directory
+   * @param project     Project
+   * @param sourceSetId Source set ID
    */
-  public static void copyResources(final Path workdir, final SourceSet sourceSet) {
+  public static void copyResources(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId) {
     Objects.requireNonNull(workdir);
-    Objects.requireNonNull(sourceSet);
+    Objects.requireNonNull(project);
+    Objects.requireNonNull(sourceSetId);
 
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][sourceSet={}] Copying resources",
-        sourceSet.project().id(),
-        sourceSet.id()
-    );
+    log.info("[project={}][sourceSet={}] Copying resources", project.id(), sourceSetId);
 
-    final Project project = sourceSet.project();
     final Path targetDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().resourcesDir())
-        .resolve(sourceSet.id().value());
+        .resolve(sourceSetId.value());
 
     if (Files.isDirectory(targetDir)) {
       deleteDirectory(targetDir);
@@ -107,14 +108,14 @@ public final class Build {
       throw new UncheckedIOException(e);
     }
 
+    final SourceSet sourceSet = project.sourceSet(sourceSetId);
     for (final Path dir : sourceSet.resourceDirectories()) {
       final var absolutePath = workdir
           .resolve(project.path())
-          .resolve(sourceSet.path())
           .resolve(dir);
       log.info("[project={}][sourceSet={}] Copying resources from {}",
-          sourceSet.project().id(),
-          sourceSet.id(),
+          project.id(),
+          sourceSetId,
           absolutePath
       );
       copyDirectory(absolutePath, targetDir);

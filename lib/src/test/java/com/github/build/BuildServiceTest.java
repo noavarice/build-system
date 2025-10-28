@@ -50,8 +50,8 @@ class BuildServiceTest {
   @TestFactory
   DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .build();
     final var project = Project
         .withId("calculator")
@@ -81,8 +81,8 @@ class BuildServiceTest {
   @TestFactory
   DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
         .build();
     final var project = Project
@@ -113,8 +113,8 @@ class BuildServiceTest {
   @TestFactory
   DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .build();
     final var project = Project
         .withId("slf4j-example")
@@ -145,8 +145,8 @@ class BuildServiceTest {
   DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
     final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .compileWith(slf4jApi)
         .build();
     final var project = Project
@@ -183,8 +183,8 @@ class BuildServiceTest {
   ) {
     FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
     final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .compileWith(slf4jApi)
         .build();
     final var project = Project
@@ -224,8 +224,8 @@ class BuildServiceTest {
         .builder()
         .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
         .build();
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .compileWith(slf4jApi)
         .withDependencyConstraints(constraints)
         .build();
@@ -266,8 +266,8 @@ class BuildServiceTest {
         .builder()
         .withExactVersion(slf4jApi, "2.0.17")
         .build();
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .compileWith(slf4jApi)
         .withDependencyConstraints(constraints)
         .build();

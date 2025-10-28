@@ -2,6 +2,8 @@ package com.github.build;
 
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Objects;
 
 /**
@@ -16,9 +18,7 @@ public final class Project {
 
   private final Path path;
 
-  private final SourceSet main;
-
-  private final SourceSet test;
+  private final Map<SourceSet.Id, SourceSet> sourceSets;
 
   private final ArtifactLayout artifactLayout;
 
@@ -30,41 +30,17 @@ public final class Project {
   private Project(
       final Id id,
       final Path path,
-      final SourceSetArgs main,
-      final SourceSetArgs test,
+      final Map<SourceSet.Id, SourceSet> sourceSets,
       final ArtifactLayout artifactLayout
   ) {
     this.id = id;
     this.path = path;
-    this.main = createSourceSet(SourceSet.Id.MAIN, main);
-    this.test = createSourceSet(SourceSet.Id.TEST, test);
+    this.sourceSets = Map.copyOf(sourceSets);
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
-  private SourceSet createSourceSet(final SourceSet.Id id, final SourceSetArgs args) {
-    // TODO: consider more flexible approach
-    final Path path = Objects.requireNonNullElseGet(
-        args.path(),
-        () -> Path.of("src", id.value())
-    );
-    return new SourceSet(
-        this,
-        id,
-        path,
-        args.sourceDirectories(),
-        args.resourceDirectories(),
-        args.type(),
-        args.compileClasspath(),
-        args.dependencyConstraints()
-    );
-  }
-
-  public SourceSet mainSourceSet() {
-    return main;
-  }
-
-  public SourceSet testSourceSet() {
-    return test;
+  public SourceSet sourceSet(final SourceSet.Id id) {
+    return Objects.requireNonNull(sourceSets.get(id));
   }
 
   public Id id() {
@@ -144,14 +120,7 @@ public final class Project {
 
     private Path path = Path.of("");
 
-    private SourceSetArgs main = SourceSetArgs
-        .builder()
-        .build();
-
-    private SourceSetArgs test = SourceSetArgs
-        .builder()
-        .withType(SourceSetArgs.Type.TEST)
-        .build();
+    private final Map<SourceSet.Id, SourceSet> sourceSets = new HashMap<>();
 
     public Builder(final Id id) {
       this.id = id;
@@ -168,13 +137,15 @@ public final class Project {
       return this;
     }
 
-    public Builder withMainSourceSet(final SourceSetArgs args) {
-      main = Objects.requireNonNull(args);
+    public Builder withMainSourceSet(final SourceSet sourceSet) {
+      Objects.requireNonNull(sourceSet);
+      sourceSets.put(SourceSet.Id.MAIN, sourceSet);
       return this;
     }
 
-    public Builder withTestSourceSet(final SourceSetArgs args) {
-      test = Objects.requireNonNull(args);
+    public Builder withTestSourceSet(final SourceSet sourceSet) {
+      Objects.requireNonNull(sourceSet);
+      sourceSets.put(SourceSet.Id.TEST, sourceSet);
       return this;
     }
 
@@ -182,8 +153,7 @@ public final class Project {
       return new Project(
           id,
           path,
-          main,
-          test,
+          sourceSets,
           ArtifactLayout.DEFAULT
       );
     }

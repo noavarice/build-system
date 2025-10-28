@@ -245,13 +245,13 @@ class CopyTest {
           .resolve(project.path())
           .resolve(project.artifactLayout().rootDir())
           .resolve(project.artifactLayout().resourcesDir())
-          .resolve(project.mainSourceSet().id().value());
+          .resolve(SourceSet.Id.MAIN.toString());
       assumeThat(targetDir).doesNotExist();
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
@@ -273,13 +273,13 @@ class CopyTest {
           .resolve(project.path())
           .resolve(project.artifactLayout().rootDir())
           .resolve(project.artifactLayout().resourcesDir())
-          .resolve(project.mainSourceSet().id().value());
+          .resolve(SourceSet.Id.MAIN.toString());
       assumeThat(targetDir).doesNotExist();
 
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
@@ -295,7 +295,7 @@ class CopyTest {
       final Project project = Project
           .withId("hello-world")
           .withPath("hello-world")
-          .withMainSourceSet(SourceSetArgs.builder().build())
+          .withMainSourceSet(SourceSet.withMainDefaults().build())
           .build();
 
       final Path copiedResourcePath = tempDir.resolve(
@@ -316,7 +316,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest(
@@ -341,9 +341,9 @@ class CopyTest {
     @TestFactory
     DynamicTest[] testCopyResourcesFromMultipleDirWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final var mainSourceSet = SourceSetArgs
-          .builder()
-          .withResourceDir("other-resources")
+      final var mainSourceSet = SourceSet
+          .withMainDefaults()
+          .withResourceDir("src/main/other-resources")
           .build();
       final var project = Project
           .withId("hello-world")
@@ -370,7 +370,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project.mainSourceSet())
+                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest(
@@ -392,8 +392,8 @@ class CopyTest {
     }
 
     private static Project createProject() {
-      final var mainSourceSet = SourceSetArgs
-          .builder()
+      final var mainSourceSet = SourceSet
+          .withMainDefaults()
           .build();
       return Project
           .withId("test-project")

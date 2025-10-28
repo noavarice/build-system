@@ -51,12 +51,11 @@ class JUnitTest {
   DynamicTest[] testRunningWorks(@TempDir final Path tempDir) {
     FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
 
-    final var main = SourceSetArgs
-        .builder()
+    final var main = SourceSet
+        .withMainDefaults()
         .build();
-    final var test = SourceSetArgs
-        .builder()
-        .withType(SourceSetArgs.Type.TEST)
+    final var test = SourceSet
+        .withTestDefaults()
         .build();
     final var project = Project
         .withId("calculator")
