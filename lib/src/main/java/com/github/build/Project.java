@@ -137,15 +137,9 @@ public final class Project {
       return this;
     }
 
-    public Builder withMainSourceSet(final SourceSet sourceSet) {
+    public Builder withSourceSet(final SourceSet sourceSet) {
       Objects.requireNonNull(sourceSet);
-      sourceSets.put(SourceSet.Id.MAIN, sourceSet);
-      return this;
-    }
-
-    public Builder withTestSourceSet(final SourceSet sourceSet) {
-      Objects.requireNonNull(sourceSet);
-      sourceSets.put(SourceSet.Id.TEST, sourceSet);
+      sourceSets.put(sourceSet.id(), sourceSet);
       return this;
     }
 

@@ -45,16 +45,28 @@ public final class BuildService {
   }
 
   public boolean compileMain(final Path workdir, final Project project) {
+    return compile(workdir, project, SourceSet.Id.MAIN);
+  }
+
+  public boolean compileTest(final Path workdir, final Project project) {
+    return compile(workdir, project, SourceSet.Id.TEST);
+  }
+
+  public boolean compile(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId
+  ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(project);
     PathUtils.checkAbsolute(workdir);
 
-    final Set<Path> sources = collectSources(workdir, project, SourceSet.Id.MAIN);
+    final Set<Path> sources = collectSources(workdir, project, sourceSetId);
     final Path classesDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
-        .resolve(SourceSet.Id.MAIN.toString());
+        .resolve(sourceSetId.toString());
 
     try {
       Files.createDirectories(classesDir);
@@ -62,10 +74,18 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
-    final SourceSet mainSourceSet = project.sourceSet(SourceSet.Id.MAIN);
+    final SourceSet mainSourceSet = project.sourceSet(sourceSetId);
     final Set<Path> classpath = new HashSet<>();
     for (final Dependency dependency : mainSourceSet.compileClasspath()) {
       switch (dependency) {
+        case Dependency.OnSourceSet onSourceSet -> {
+          final Path sourceSetClassesDir = workdir
+              .resolve(project.path())
+              .resolve(project.artifactLayout().rootDir())
+              .resolve(project.artifactLayout().classesDir())
+              .resolve(onSourceSet.sourceSet().id().toString());
+          classpath.add(sourceSetClassesDir);
+        }
         case Dependency.Jar file -> classpath.add(file.path());
         case Dependency.Remote.WithVersion withVersion -> {
           final GroupArtifactVersion gav = withVersion.gav();

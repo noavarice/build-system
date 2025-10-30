@@ -24,24 +24,25 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record SourceSet(
+    Id id,
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     Set<Dependency> compileClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
-  public static Builder builder() {
-    return new Builder();
+  public static Builder builder(final Id id) {
+    return new Builder(id);
   }
 
   public static Builder withMainDefaults() {
-    return new Builder()
+    return new Builder(Id.MAIN)
         .withSourceDir(Path.of("src").resolve("main").resolve("java"))
         .withResourceDir(Path.of("src").resolve("main").resolve("resources"));
   }
 
   public static Builder withTestDefaults() {
-    return new Builder()
+    return new Builder(Id.TEST)
         .withSourceDir(Path.of("src").resolve("test").resolve("java"))
         .withResourceDir(Path.of("src").resolve("test").resolve("resources"));
   }
@@ -69,6 +70,8 @@ public record SourceSet(
 
   public static final class Builder {
 
+    private final Id id;
+
     private final Set<Path> sourceDirectories = new HashSet<>();
 
     private final Set<Path> resourceDirectories = new HashSet<>();
@@ -77,7 +80,8 @@ public record SourceSet(
 
     private DependencyConstraints dependencyConstraints = DependencyConstraints.EMPTY;
 
-    private Builder() {
+    private Builder(final Id id) {
+      this.id = Objects.requireNonNull(id);
     }
 
     public Builder withSourceDir(final Path directory) {
@@ -96,6 +100,11 @@ public record SourceSet(
       Objects.requireNonNull(resourceDir);
       PathUtils.checkRelative(resourceDir);
       resourceDirectories.add(resourceDir.normalize());
+      return this;
+    }
+
+    public Builder compileWith(final SourceSet sourceSet) {
+      compileClasspath.add(new Dependency.OnSourceSet(sourceSet));
       return this;
     }
 
@@ -121,6 +130,7 @@ public record SourceSet(
 
     public SourceSet build() {
       return new SourceSet(
+          id,
           sourceDirectories,
           resourceDirectories,
           compileClasspath,

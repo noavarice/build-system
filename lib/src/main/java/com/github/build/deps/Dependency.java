@@ -1,5 +1,6 @@
 package com.github.build.deps;
 
+import com.github.build.SourceSet;
 import java.nio.file.Path;
 import java.util.Objects;
 
@@ -10,6 +11,18 @@ import java.util.Objects;
  * @since 1.0.0
  */
 public sealed interface Dependency {
+
+  /**
+   * Designates dependency on source set from the same project.
+   *
+   * @param sourceSet Source set
+   */
+  record OnSourceSet(SourceSet sourceSet) implements Dependency {
+
+    public OnSourceSet {
+      Objects.requireNonNull(sourceSet);
+    }
+  }
 
   /**
    * Designates dependency on local file.

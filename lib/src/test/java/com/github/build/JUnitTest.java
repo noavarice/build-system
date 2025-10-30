@@ -4,7 +4,6 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.LocalRepository;
@@ -16,7 +15,6 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -27,8 +25,6 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisplayName("Tests for JUnit test integration")
 class JUnitTest {
-
-  private final CompileService compileService = new CompileService();
 
   private final BuildService buildService;
 
@@ -42,6 +38,7 @@ class JUnitTest {
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
     );
+    final var compileService = new CompileService();
     final var dependencyService = new DependencyService(List.of(remoteRepository), localRepository);
     buildService = new BuildService(compileService, dependencyService);
   }
@@ -56,39 +53,20 @@ class JUnitTest {
         .build();
     final var test = SourceSet
         .withTestDefaults()
+        .compileWith(main)
+        .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
+        .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
         .build();
     final var project = Project
         .withId("calculator")
         .withPath(Path.of("calculator"))
-        .withMainSourceSet(main)
-        .withTestSourceSet(test)
+        .withSourceSet(main)
+        .withSourceSet(test)
         .build();
-    final var projectRoot = tempDir.resolve(project.id().value());
 
-    // compile main classes
-    buildService.compileMain(tempDir, project);
-
-    // compile test classes
-    {
-      final var source = projectRoot.resolve("src/test/java/org/example/CalculatorTest.java");
-      // TODO: express dependency on other source set
-      final Path mainClassesDir = projectRoot
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactLayout().classesDir())
-          .resolve("main");
-      final Path classesDir = projectRoot
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactLayout().classesDir())
-          .resolve("test");
-      final var jupiterApi = tempDir.resolve("junit-jupiter-api.jar");
-      final var apiguardianApi = tempDir.resolve("apiguardian-api.jar");
-      final var args = new CompileArgs(
-          Set.of(source),
-          classesDir,
-          Set.of(mainClassesDir, jupiterApi, apiguardianApi)
-      );
-      assertTrue(compileService.compile(args));
-    }
+    // compile main and test source sets
+    assertTrue(buildService.compileMain(tempDir, project));
+    assertTrue(buildService.compileTest(tempDir, project));
 
     final TestResults result = Test.withJUnit(tempDir, project);
     return new DynamicTest[]{

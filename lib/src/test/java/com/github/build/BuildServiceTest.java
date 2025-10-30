@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,252 +47,340 @@ class BuildServiceTest {
     service = new BuildService(compileService, dependencyService);
   }
 
-  @DisplayName("Compiling main source set works")
-  @TestFactory
-  DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-    final var main = SourceSet
-        .withMainDefaults()
-        .build();
-    final var project = Project
-        .withId("calculator")
-        .withPath(Path.of("calculator"))
-        .withMainSourceSet(main)
-        .build();
+  @DisplayName("Check compiling main source set")
+  @Nested
+  class CompileMain {
 
-    final Path classesDir = tempDir.resolve("calculator/build/classes/main");
-    assumeThat(classesDir).doesNotExist();
+    @DisplayName("Compiling main source set works")
+    @TestFactory
+    DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+      final var main = SourceSet
+          .withMainDefaults()
+          .build();
+      final var project = Project
+          .withId("calculator")
+          .withPath(Path.of("calculator"))
+          .withSourceSet(main)
+          .build();
 
-    final Path classFile = classesDir.resolve("org/example/Calculator.class");
-    assumeThat(classFile).doesNotExist();
+      final Path classesDir = tempDir.resolve("calculator/build/classes/main");
+      assumeThat(classesDir).doesNotExist();
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation succeeds",
-            () -> assertTrue(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file exists",
-            () -> assertThat(classFile).isRegularFile()
-        ),
-    };
+      final Path classFile = classesDir.resolve("org/example/Calculator.class");
+      assumeThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
+
+    @DisplayName("Compiling main source with local JAR dependency works")
+    @TestFactory
+    DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var main = SourceSet
+          .withMainDefaults()
+          .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
+
+    @DisplayName("Compiling main source without remote dependency fails")
+    @TestFactory
+    DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var main = SourceSet
+          .withMainDefaults()
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation fails",
+              () -> assertFalse(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file is not generated",
+              () -> assertThat(classFile).doesNotExist()
+          ),
+      };
+    }
+
+    @DisplayName("Compiling main source with remote dependency works")
+    @TestFactory
+    DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+      final var main = SourceSet
+          .withMainDefaults()
+          .compileWith(slf4jApi)
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
+
+    @DisplayName("""
+        Compiling main source with dependency without version
+         and without dependency constraints fails
+        """)
+    @TestFactory
+    DynamicTest[] compilingMainWithDependencyWithoutVersionAndConstraintFails(
+        @TempDir final Path tempDir
+    ) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+      final var main = SourceSet
+          .withMainDefaults()
+          .compileWith(slf4jApi)
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation fails",
+              () -> assertFalse(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file is not generated",
+              () -> assertThat(classFile).doesNotExist()
+          ),
+      };
+    }
+
+    @DisplayName("""
+        Compiling main source with dependency without version
+         and with dependency constraints but without necessary
+         constraint fails
+        """)
+    @TestFactory
+    DynamicTest[] compilingMainWithoutNecessaryConstraintFails(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+      final var constraints = DependencyConstraints
+          .builder()
+          .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
+          .build();
+      final var main = SourceSet
+          .withMainDefaults()
+          .compileWith(slf4jApi)
+          .withDependencyConstraints(constraints)
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation fails",
+              () -> assertFalse(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file is not generated",
+              () -> assertThat(classFile).doesNotExist()
+          ),
+      };
+    }
+
+    @DisplayName("""
+        Compiling main source with dependency without version
+         and with dependency constraints and with necessary
+         constraint works
+        """)
+    @TestFactory
+    DynamicTest[] compilingMainWithNecessaryConstraintWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+      final var constraints = DependencyConstraints
+          .builder()
+          .withExactVersion(slf4jApi, "2.0.17")
+          .build();
+      final var main = SourceSet
+          .withMainDefaults()
+          .compileWith(slf4jApi)
+          .withDependencyConstraints(constraints)
+          .build();
+      final var project = Project
+          .withId("slf4j-example")
+          .withPath(Path.of("slf4j-example"))
+          .withSourceSet(main)
+          .build();
+
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
   }
 
-  @DisplayName("Compiling main source with local JAR dependency works")
-  @TestFactory
-  DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
+  @DisplayName("Check compiling test source set")
+  @Nested
+  class CompileTest {
 
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
+    @DisplayName("Compiling test source set without compiling main works")
+    @TestFactory
+    DynamicTest[] compilingTestWithoutMainFails(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+      final var main = SourceSet
+          .withMainDefaults()
+          .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .compileWith(main)
+          .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
+          .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
+          .build();
+      final var project = Project
+          .withId("calculator")
+          .withPath(Path.of("calculator"))
+          .withSourceSet(main)
+          .withSourceSet(test)
+          .build();
 
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
+      final Path classesDir = tempDir.resolve("calculator/build/classes/test");
+      assertThat(classesDir).doesNotExist();
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation succeeds",
-            () -> assertTrue(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file exists",
-            () -> assertThat(classFile).isRegularFile()
-        ),
-    };
-  }
+      final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
+      assertThat(classFile).doesNotExist();
 
-  @DisplayName("Compiling main source without remote dependency fails")
-  @TestFactory
-  DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var main = SourceSet
-        .withMainDefaults()
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation fails",
+              () -> assertFalse(service.compileTest(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file does not exist",
+              () -> assertThat(classFile).doesNotExist()
+          ),
+      };
+    }
 
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
+    @DisplayName("Compiling test source set works")
+    @TestFactory
+    DynamicTest[] compilingTestAfterMainWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+      final var main = SourceSet
+          .withMainDefaults()
+          .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .compileWith(main)
+          .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
+          .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
+          .build();
+      final var project = Project
+          .withId("calculator")
+          .withPath(Path.of("calculator"))
+          .withSourceSet(main)
+          .withSourceSet(test)
+          .build();
 
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
+      assertTrue(service.compileMain(tempDir, project));
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation fails",
-            () -> assertFalse(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file is not generated",
-            () -> assertThat(classFile).doesNotExist()
-        ),
-    };
-  }
+      final Path classesDir = tempDir.resolve("calculator/build/classes/test");
+      assertThat(classesDir).doesNotExist();
 
-  @DisplayName("Compiling main source with remote dependency works")
-  @TestFactory
-  DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWith(slf4jApi)
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
+      final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
+      assertThat(classFile).doesNotExist();
 
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
-
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
-
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation succeeds",
-            () -> assertTrue(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file exists",
-            () -> assertThat(classFile).isRegularFile()
-        ),
-    };
-  }
-
-  @DisplayName("""
-      Compiling main source with dependency without version
-       and without dependency constraints fails
-      """)
-  @TestFactory
-  DynamicTest[] compilingMainWithDependencyWithoutVersionAndConstraintFails(
-      @TempDir final Path tempDir
-  ) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWith(slf4jApi)
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
-
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
-
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
-
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation fails",
-            () -> assertFalse(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file is not generated",
-            () -> assertThat(classFile).doesNotExist()
-        ),
-    };
-  }
-
-  @DisplayName("""
-      Compiling main source with dependency without version
-       and with dependency constraints but without necessary
-       constraint fails
-      """)
-  @TestFactory
-  DynamicTest[] compilingMainWithoutNecessaryConstraintFails(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-    final var constraints = DependencyConstraints
-        .builder()
-        .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
-        .build();
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWith(slf4jApi)
-        .withDependencyConstraints(constraints)
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
-
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
-
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
-
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation fails",
-            () -> assertFalse(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file is not generated",
-            () -> assertThat(classFile).doesNotExist()
-        ),
-    };
-  }
-
-  @DisplayName("""
-      Compiling main source with dependency without version
-       and with dependency constraints and with necessary
-       constraint works
-      """)
-  @TestFactory
-  DynamicTest[] compilingMainWithNecessaryConstraintWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-    final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-    final var constraints = DependencyConstraints
-        .builder()
-        .withExactVersion(slf4jApi, "2.0.17")
-        .build();
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWith(slf4jApi)
-        .withDependencyConstraints(constraints)
-        .build();
-    final var project = Project
-        .withId("slf4j-example")
-        .withPath(Path.of("slf4j-example"))
-        .withMainSourceSet(main)
-        .build();
-
-    final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-    assertThat(classesDir).doesNotExist();
-
-    final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-    assertThat(classFile).doesNotExist();
-
-    return new DynamicTest[]{
-        dynamicTest(
-            "Compilation succeeds",
-            () -> assertTrue(service.compileMain(tempDir, project))
-        ),
-        dynamicTest(
-            "Class file exists",
-            () -> assertThat(classFile).isRegularFile()
-        ),
-    };
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileTest(tempDir, project))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
   }
 }
