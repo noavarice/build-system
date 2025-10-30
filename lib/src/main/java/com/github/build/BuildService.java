@@ -78,6 +78,15 @@ public final class BuildService {
     final Set<Path> classpath = new HashSet<>();
     for (final Dependency dependency : mainSourceSet.compileClasspath()) {
       switch (dependency) {
+        case Dependency.OnProject onProject -> {
+          final Project dependingProject = onProject.project();
+          final Path mainSourceSetClassesDir = workdir
+              .resolve(dependingProject.path())
+              .resolve(dependingProject.artifactLayout().rootDir())
+              .resolve(dependingProject.artifactLayout().classesDir())
+              .resolve(dependingProject.mainSourceSet().id().toString());
+          classpath.add(mainSourceSetClassesDir);
+        }
         case Dependency.OnSourceSet onSourceSet -> {
           final Path sourceSetClassesDir = workdir
               .resolve(project.path())

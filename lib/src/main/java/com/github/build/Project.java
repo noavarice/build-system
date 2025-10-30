@@ -14,18 +14,20 @@ import java.util.Objects;
  */
 public final class Project {
 
+  public static Builder withId(final String idStr) {
+    final var id = new Id(idStr);
+    return new Builder(id);
+  }
+
   private final Id id;
 
   private final Path path;
 
   private final Map<SourceSet.Id, SourceSet> sourceSets;
 
-  private final ArtifactLayout artifactLayout;
+  private final SourceSet mainSourceSet;
 
-  public static Builder withId(final String idStr) {
-    final var id = new Id(idStr);
-    return new Builder(id);
-  }
+  private final ArtifactLayout artifactLayout;
 
   private Project(
       final Id id,
@@ -35,12 +37,23 @@ public final class Project {
   ) {
     this.id = id;
     this.path = path;
+
+    Objects.requireNonNull(sourceSets);
+    if (!sourceSets.containsKey(SourceSet.Id.MAIN)) {
+      throw new IllegalArgumentException("Project must have main source set");
+    }
+
     this.sourceSets = Map.copyOf(sourceSets);
+    this.mainSourceSet = Objects.requireNonNull(sourceSets.get(SourceSet.Id.MAIN));
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
   public SourceSet sourceSet(final SourceSet.Id id) {
     return Objects.requireNonNull(sourceSets.get(id));
+  }
+
+  public SourceSet mainSourceSet() {
+    return mainSourceSet;
   }
 
   public Id id() {

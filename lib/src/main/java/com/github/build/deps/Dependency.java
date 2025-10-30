@@ -1,5 +1,6 @@
 package com.github.build.deps;
 
+import com.github.build.Project;
 import com.github.build.SourceSet;
 import java.nio.file.Path;
 import java.util.Objects;
@@ -11,6 +12,18 @@ import java.util.Objects;
  * @since 1.0.0
  */
 public sealed interface Dependency {
+
+  /**
+   * Designates dependency on some other project.
+   *
+   * @param project Project
+   */
+  record OnProject(Project project) implements Dependency {
+
+    public OnProject {
+      Objects.requireNonNull(project);
+    }
+  }
 
   /**
    * Designates dependency on source set from the same project.

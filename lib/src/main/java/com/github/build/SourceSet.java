@@ -108,6 +108,11 @@ public record SourceSet(
       return this;
     }
 
+    public Builder compileWith(final Project project) {
+      compileClasspath.add(new Dependency.OnProject(project));
+      return this;
+    }
+
     public Builder compileWithLocalJar(final Path jarPath) {
       compileClasspath.add(new Dependency.Jar(jarPath));
       return this;

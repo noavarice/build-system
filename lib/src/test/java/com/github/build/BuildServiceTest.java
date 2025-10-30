@@ -301,6 +301,110 @@ class BuildServiceTest {
     }
   }
 
+  @DisplayName("Check compiling main source set")
+  @Nested
+  class CompileMainWithProjectDependency {
+
+    @DisplayName("Compiling main source set without compiling project dependency fails")
+    @TestFactory
+    DynamicTest[] compilingMainWithoutCompilingProjectDependencyFails(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+      FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
+
+      final Project calculatorProject;
+      {
+        final var main = SourceSet
+            .withMainDefaults()
+            .build();
+        calculatorProject = Project
+            .withId("calculator")
+            .withPath(Path.of("calculator"))
+            .withSourceSet(main)
+            .build();
+      }
+
+      final Project calculatorConsumerProject;
+      {
+        final var main = SourceSet
+            .withMainDefaults()
+            .compileWith(calculatorProject)
+            .build();
+        calculatorConsumerProject = Project
+            .withId("calculator-consumer")
+            .withPath(Path.of("calculator-consumer"))
+            .withSourceSet(main)
+            .build();
+      }
+
+      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation fails",
+              () -> assertFalse(service.compileMain(tempDir, calculatorConsumerProject))
+          ),
+          dynamicTest(
+              "Class file does not exist",
+              () -> assertThat(classFile).doesNotExist()
+          ),
+      };
+    }
+
+    @DisplayName("Compiling main source set with compiled project dependency works")
+    @TestFactory
+    DynamicTest[] compilingMainWithCompiledProjectDependencyWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+      FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
+
+      final Project calculatorProject;
+      {
+        final var main = SourceSet
+            .withMainDefaults()
+            .build();
+        calculatorProject = Project
+            .withId("calculator")
+            .withPath(Path.of("calculator"))
+            .withSourceSet(main)
+            .build();
+      }
+      assertTrue(service.compileMain(tempDir, calculatorProject));
+
+      final Project calculatorConsumerProject;
+      {
+        final var main = SourceSet
+            .withMainDefaults()
+            .compileWith(calculatorProject)
+            .build();
+        calculatorConsumerProject = Project
+            .withId("calculator-consumer")
+            .withPath(Path.of("calculator-consumer"))
+            .withSourceSet(main)
+            .build();
+      }
+
+      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
+      assertThat(classesDir).doesNotExist();
+
+      final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
+      assertThat(classFile).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, calculatorConsumerProject))
+          ),
+          dynamicTest(
+              "Class file exists",
+              () -> assertThat(classFile).isRegularFile()
+          ),
+      };
+    }
+  }
+
   @DisplayName("Check compiling test source set")
   @Nested
   class CompileTest {
