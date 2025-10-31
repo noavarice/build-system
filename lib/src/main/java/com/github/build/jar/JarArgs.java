@@ -1,4 +1,4 @@
-package com.github.build;
+package com.github.build.jar;
 
 import java.nio.file.Path;
 import java.util.Map;

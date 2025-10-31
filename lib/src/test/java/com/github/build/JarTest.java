@@ -9,6 +9,8 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
+import com.github.build.jar.Jar;
+import com.github.build.jar.JarArgs;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -35,14 +37,14 @@ class JarTest {
   DynamicTest[] creatingJarWorks(@TempDir final Path tempDir) {
     final var jarPath = tempDir.resolve("app.jar");
     final var content = "Hello, world!".getBytes(StandardCharsets.UTF_8);
-    final var config = new JarArgs(
+    final var args = new JarArgs(
         jarPath,
         Map.of(Path.of("README.txt"), new JarArgs.Content.Bytes(content))
     );
     return new DynamicTest[]{
         dynamicTest(
             "Check creating JAR succeeds",
-            () -> assertDoesNotThrow(() -> Build.createJar(config))
+            () -> assertDoesNotThrow(() -> Jar.create(args))
         ),
         dynamicTest(
             "Check class file generated",
@@ -77,7 +79,7 @@ class JarTest {
         ),
         dynamicTest(
             "Check creating JAR succeeds",
-            () -> assertThatCode(() -> Build.createJar(args)).doesNotThrowAnyException()
+            () -> assertThatCode(() -> Jar.create(args)).doesNotThrowAnyException()
         ),
         dynamicTest(
             "Check JAR generated",

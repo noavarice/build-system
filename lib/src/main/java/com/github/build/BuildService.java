@@ -6,6 +6,7 @@ import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.util.FileUtils;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -222,6 +223,59 @@ public final class BuildService {
     @Override
     public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) {
       return FileVisitResult.CONTINUE;
+    }
+  }
+
+  /**
+   * Copies resources from project's main source set to a project's resource directory.
+   *
+   * @param workdir     Working directory
+   * @param project     Project
+   * @param sourceSetId Source set ID
+   * @see Project.ArtifactLayout#resourcesDir()
+   */
+  public void copyResources(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId
+  ) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(project);
+    Objects.requireNonNull(sourceSetId);
+
+    PathUtils.checkAbsolute(workdir);
+    PathUtils.checkDirectory(workdir);
+
+    log.info("[project={}][sourceSet={}] Copying resources", project.id(), sourceSetId);
+
+    final Path targetDir = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
+        .resolve(sourceSetId.value());
+
+    if (Files.isDirectory(targetDir)) {
+      FileUtils.deleteDirectory(targetDir);
+    }
+
+    try {
+      // always creating directory, even if there's nothing to copy
+      Files.createDirectories(targetDir);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    final SourceSet sourceSet = project.sourceSet(sourceSetId);
+    for (final Path dir : sourceSet.resourceDirectories()) {
+      final var absolutePath = workdir
+          .resolve(project.path())
+          .resolve(dir);
+      log.info("[project={}][sourceSet={}] Copying resources from {}",
+          project.id(),
+          sourceSetId,
+          absolutePath
+      );
+      FileUtils.copyDirectory(absolutePath, targetDir);
     }
   }
 }

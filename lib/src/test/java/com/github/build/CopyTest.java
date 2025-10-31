@@ -5,9 +5,18 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.compile.CompileService;
+import com.github.build.deps.DependencyService;
+import com.github.build.deps.LocalRepository;
+import com.github.build.deps.RemoteRepository;
+import com.github.build.util.FileUtils;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.List;
+import java.util.Map;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -22,6 +31,26 @@ import org.junit.jupiter.api.io.TempDir;
  */
 @DisplayName("Tests for copying files (e.g. resources)")
 class CopyTest {
+
+  private final BuildService buildService;
+
+  CopyTest(@TempDir final Path localRepoBase) {
+    final CompileService compileService = new CompileService();
+    final var remoteRepository = new RemoteRepository(
+        // TODO: externalize
+        URI.create("http://localhost:8081/repository/maven-central"),
+        HttpClient.newHttpClient()
+    );
+    final var localRepository = new LocalRepository(
+        localRepoBase,
+        Map.of("sha256", "SHA-256")
+    );
+    final DependencyService dependencyService = new DependencyService(
+        List.of(remoteRepository),
+        localRepository
+    );
+    buildService = new BuildService(compileService, dependencyService);
+  }
 
   @DisplayName("Tests for copying directory")
   @Nested
@@ -38,7 +67,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(emptyDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(emptyDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exists",
@@ -59,7 +88,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(emptyDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(emptyDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exists",
@@ -83,7 +112,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(sourceDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory has immediate file",
@@ -113,7 +142,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(sourceDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory has immediate file",
@@ -144,7 +173,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(sourceDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check immediate old file not removed",
@@ -176,7 +205,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(sourceDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory has immediate file",
@@ -214,7 +243,7 @@ class CopyTest {
 
       return new DynamicTest[]{
           dynamicTest("Check method succeeds", () ->
-              assertThatCode(() -> Build.copyDirectory(sourceDir, targetDir))
+              assertThatCode(() -> FileUtils.copyDirectory(sourceDir, targetDir))
                   .doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory has immediate file",
@@ -251,7 +280,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
+                  () -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
@@ -279,7 +308,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
+                  () -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest("Check target directory exist",
@@ -316,7 +345,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
+                  () -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest(
@@ -370,7 +399,7 @@ class CopyTest {
       return new DynamicTest[]{
           dynamicTest("Check method works without exception", () ->
               assertThatCode(
-                  () -> Build.copyResources(tempDir, project, SourceSet.Id.MAIN)
+                  () -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN)
               ).doesNotThrowAnyException()
           ),
           dynamicTest(
