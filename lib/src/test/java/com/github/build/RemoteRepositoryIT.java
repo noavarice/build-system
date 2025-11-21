@@ -29,7 +29,7 @@ import org.junit.jupiter.api.TestFactory;
 class RemoteRepositoryIT {
 
   // TODO: externalize
-  private final URI baseUri = URI.create("http://localhost:8081/repository/maven-central");
+  private final URI baseUri = URI.create("http://nexus:8081/repository/maven-central");
 
   private final HttpClient client = HttpClient.newHttpClient();
 

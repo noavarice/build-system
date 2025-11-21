@@ -2,12 +2,31 @@ services:
   nexus:
     image: sonatype/nexus3:3.82.0-alpine
     container_name: build-nexus-local
+    networks:
+      - default
     volumes:
       - nexus-data:/nexus-data
     security_opt:
       - no-new-privileges
     ports:
       - 127.0.0.1:8081:8081
+  maven:
+    image: maven:3.9.11-eclipse-temurin-21
+    container_name: build-maven-local
+    command: mvn clean install
+    networks:
+      - default
+    volumes:
+      - ./:/usr/src/build-system
+    working_dir: /usr/src/build-system
+    security_opt:
+      - no-new-privileges
+    depends_on:
+      - nexus
 
 volumes:
   nexus-data:
+
+networks:
+  default:
+    driver: bridge

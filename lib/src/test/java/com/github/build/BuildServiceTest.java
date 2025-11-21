@@ -36,7 +36,7 @@ class BuildServiceTest {
     final var compileService = new CompileService();
     final var remoteRepository = new RemoteRepository(
         // TODO: externalize
-        URI.create("http://localhost:8081/repository/maven-central"),
+        URI.create("http://nexus:8081/repository/maven-central"),
         HttpClient.newHttpClient()
     );
     final var localRepository = new LocalRepository(
