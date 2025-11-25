@@ -27,6 +27,8 @@ public final class Project {
 
   private final SourceSet mainSourceSet;
 
+  private final SourceSet testSourceSet;
+
   private final ArtifactLayout artifactLayout;
 
   private Project(
@@ -45,6 +47,7 @@ public final class Project {
 
     this.sourceSets = Map.copyOf(sourceSets);
     this.mainSourceSet = Objects.requireNonNull(sourceSets.get(SourceSet.Id.MAIN));
+    this.testSourceSet = Objects.requireNonNull(sourceSets.get(SourceSet.Id.TEST));
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
@@ -54,6 +57,10 @@ public final class Project {
 
   public SourceSet mainSourceSet() {
     return mainSourceSet;
+  }
+
+  public SourceSet testSourceSet() {
+    return testSourceSet;
   }
 
   public Id id() {

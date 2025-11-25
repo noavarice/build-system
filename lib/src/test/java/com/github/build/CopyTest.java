@@ -325,6 +325,7 @@ class CopyTest {
           .withId("hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       final Path copiedResourcePath = tempDir.resolve(
@@ -378,6 +379,7 @@ class CopyTest {
           .withId("hello-world")
           .withPath("hello-world")
           .withSourceSet(mainSourceSet)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       // setup paths for copied resources
@@ -427,6 +429,7 @@ class CopyTest {
       return Project
           .withId("test-project")
           .withSourceSet(mainSourceSet)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
     }
   }

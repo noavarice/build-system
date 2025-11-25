@@ -28,6 +28,7 @@ public record SourceSet(
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
     Set<Dependency> compileClasspath,
+    Set<Dependency> runtimeClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
@@ -66,6 +67,7 @@ public record SourceSet(
         .collect(toUnmodifiableSet());
 
     compileClasspath = Set.copyOf(compileClasspath);
+    runtimeClasspath = Set.copyOf(runtimeClasspath);
   }
 
   public static final class Builder {
@@ -77,6 +79,8 @@ public record SourceSet(
     private final Set<Path> resourceDirectories = new HashSet<>();
 
     private final Set<Dependency> compileClasspath = new HashSet<>();
+
+    private final Set<Dependency> runtimeClasspath = new HashSet<>();
 
     private DependencyConstraints dependencyConstraints = DependencyConstraints.EMPTY;
 
@@ -128,6 +132,66 @@ public record SourceSet(
       return this;
     }
 
+    public Builder runWith(final SourceSet sourceSet) {
+      runtimeClasspath.add(new Dependency.OnSourceSet(sourceSet));
+      return this;
+    }
+
+    public Builder runWith(final Project project) {
+      runtimeClasspath.add(new Dependency.OnProject(project));
+      return this;
+    }
+
+    public Builder runWithLocalJar(final Path jarPath) {
+      runtimeClasspath.add(new Dependency.Jar(jarPath));
+      return this;
+    }
+
+    public Builder runWith(final GroupArtifactVersion gav) {
+      runtimeClasspath.add(new Dependency.Remote.WithVersion(gav));
+      return this;
+    }
+
+    public Builder runWith(final GroupArtifact ga) {
+      runtimeClasspath.add(new Dependency.Remote.WithoutVersion(ga));
+      return this;
+    }
+
+    public Builder compileAndRunWith(final SourceSet sourceSet) {
+      final var dependency = new Dependency.OnSourceSet(sourceSet);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    public Builder compileAndRunWith(final Project project) {
+      final var dependency = new Dependency.OnProject(project);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    public Builder compileAndRunWithLocalJar(final Path jarPath) {
+      final var dependency = new Dependency.Jar(jarPath);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    public Builder compileAndRunWith(final GroupArtifactVersion gav) {
+      final var dependency = new Dependency.Remote.WithVersion(gav);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    public Builder compileAndRunWith(final GroupArtifact ga) {
+      final var dependency = new Dependency.Remote.WithoutVersion(ga);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      return this;
+    }
+
     public Builder withDependencyConstraints(final DependencyConstraints dependencyConstraints) {
       this.dependencyConstraints = Objects.requireNonNull(dependencyConstraints);
       return this;
@@ -139,6 +203,7 @@ public record SourceSet(
           sourceDirectories,
           resourceDirectories,
           compileClasspath,
+          runtimeClasspath,
           dependencyConstraints
       );
     }

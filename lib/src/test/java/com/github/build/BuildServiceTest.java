@@ -58,10 +58,14 @@ class BuildServiceTest {
       final var main = SourceSet
           .withMainDefaults()
           .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .build();
       final var project = Project
           .withId("calculator")
           .withPath(Path.of("calculator"))
           .withSourceSet(main)
+          .withSourceSet(test)
           .build();
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/main");
@@ -90,10 +94,14 @@ class BuildServiceTest {
           .withMainDefaults()
           .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
           .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .build();
       final var project = Project
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(test)
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -121,10 +129,14 @@ class BuildServiceTest {
       final var main = SourceSet
           .withMainDefaults()
           .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .build();
       final var project = Project
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(test)
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -158,6 +170,7 @@ class BuildServiceTest {
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -196,6 +209,7 @@ class BuildServiceTest {
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -238,6 +252,7 @@ class BuildServiceTest {
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -280,6 +295,7 @@ class BuildServiceTest {
           .withId("slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
+          .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -320,6 +336,7 @@ class BuildServiceTest {
             .withId("calculator")
             .withPath(Path.of("calculator"))
             .withSourceSet(main)
+            .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
 
@@ -333,6 +350,7 @@ class BuildServiceTest {
             .withId("calculator-consumer")
             .withPath(Path.of("calculator-consumer"))
             .withSourceSet(main)
+            .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
 
@@ -369,6 +387,7 @@ class BuildServiceTest {
             .withId("calculator")
             .withPath(Path.of("calculator"))
             .withSourceSet(main)
+            .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
       assertTrue(service.compileMain(tempDir, calculatorProject));
@@ -383,6 +402,7 @@ class BuildServiceTest {
             .withId("calculator-consumer")
             .withPath(Path.of("calculator-consumer"))
             .withSourceSet(main)
+            .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
 

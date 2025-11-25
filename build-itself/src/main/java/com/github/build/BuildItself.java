@@ -78,13 +78,18 @@ public class BuildItself {
     final var test = SourceSet
         .withTestDefaults()
         .compileWith(main)
-        .compileWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
-        .compileWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-engine:5.13.4"))
-        .compileWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-params:5.13.4"))
-        .compileWith(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"))
-        .compileWith(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"))
-        .compileWith(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"))
-        .compileWith(
+        // TODO: add batch dependency API
+        .compileAndRunWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
+        .runWith(
+            GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-engine:5.13.4")
+        )
+        .compileAndRunWith(
+            GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-params:5.13.4")
+        )
+        .compileAndRunWith(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"))
+        .compileAndRunWith(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"))
+        .runWith(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"))
+        .compileAndRunWith(
             GroupArtifactVersion.parse(
                 "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
             )
