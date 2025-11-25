@@ -5,8 +5,8 @@ import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepository;
-import com.github.build.test.Test;
 import com.github.build.test.TestResults;
+import com.github.build.test.TestService;
 import com.sun.codemodel.CodeWriter;
 import com.sun.codemodel.JCodeModel;
 import com.sun.codemodel.JPackage;
@@ -41,14 +41,19 @@ public class BuildItself {
 
   public static void main(final String[] args) {
     final var compileService = new CompileService();
-    final var remoteRepository = new RemoteRepository(
+
+    final var httpClient = HttpClient.newHttpClient();
+    final var nexusDocker = new RemoteRepository(
         URI.create("http://nexus:8081/repository/maven-central"),
-        HttpClient.newHttpClient()
+        httpClient
     );
 
-    final Path localRepositoryBasePath = Path
-        .of(System.getProperty("user.home"))
-        .resolve(".m2");
+    final Path localRepositoryBasePath;
+    try {
+      localRepositoryBasePath = Files.createTempDirectory("build-local");
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
     try {
       Files.createDirectory(localRepositoryBasePath);
     } catch (final IOException e) {
@@ -60,7 +65,11 @@ public class BuildItself {
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
     );
-    final var dependencyService = new DependencyService(List.of(remoteRepository), localRepository);
+    final var dependencyService = new DependencyService(
+        List.of(nexusDocker),
+        localRepository
+    );
+    final var testService = new TestService(dependencyService);
     final BuildService service = new BuildService(compileService, dependencyService);
     final Path workdir = Path.of(args[0]);
     final var main = SourceSet
@@ -86,6 +95,9 @@ public class BuildItself {
         .compileAndRunWith(
             GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-params:5.13.4")
         )
+        .runWith(
+            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+        )
         .compileAndRunWith(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"))
         .compileAndRunWith(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"))
         .runWith(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"))
@@ -106,11 +118,10 @@ public class BuildItself {
     service.compileMain(workdir, project);
     service.compileTest(workdir, project);
 
-    final TestResults results = Test.withJUnit(workdir, project);
+    final TestResults results = testService.withJUnit(workdir, project);
     if (results.testsFailedCount() > 0) {
       log.error("Build failed");
       System.exit(1);
-      return;
     }
   }
 
