@@ -14,6 +14,9 @@ services:
     image: maven:3.9.11-eclipse-temurin-21
     container_name: build-maven-local
     command: mvn clean install
+    configs:
+      - source: settings.xml
+        target: /root/.m2/settings.xml
     networks:
       - default
     volumes:
@@ -23,6 +26,35 @@ services:
       - no-new-privileges
     depends_on:
       - nexus
+  build-itself:
+    build:
+      dockerfile: build-itself/Dockerfile
+      context: .
+    container_name: build-itself
+    volumes:
+      - ./:/app
+    security_opt:
+      - no-new-privileges
+    networks:
+      - default
+    depends_on:
+      nexus:
+        condition: service_started
+
+configs:
+  settings.xml:
+    # language=XML
+    content: |
+      <settings>
+        <mirrors>
+          <mirror>
+            <id>nexus</id>
+            <name>Nexus</name>
+            <url>http://nexus:8081/repository/maven-central</url>
+            <mirrorOf>central</mirrorOf>
+          </mirror>
+        </mirrors>
+      </settings>
 
 volumes:
   nexus-data:

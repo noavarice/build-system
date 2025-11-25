@@ -16,6 +16,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * @author noavarice
+ * TODO: follow .m2 local repository structure
  */
 public final class LocalRepository {
 

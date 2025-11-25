@@ -12,10 +12,14 @@ import java.nio.file.Path;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
 import org.junit.platform.launcher.LauncherSession;
+import org.junit.platform.launcher.TestExecutionListener;
+import org.junit.platform.launcher.TestIdentifier;
 import org.junit.platform.launcher.TestPlan;
 import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
 import org.junit.platform.launcher.core.LauncherFactory;
@@ -26,6 +30,7 @@ import org.slf4j.LoggerFactory;
 
 /**
  * @author noavarice
+ * TODO: convert to service
  */
 public final class Test {
 
@@ -34,6 +39,7 @@ public final class Test {
   private Test() {
   }
 
+  // TODO: handle failed tests
   public static TestResults withJUnit(final Path workdir, final Project project) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(project);
@@ -73,7 +79,28 @@ public final class Test {
           return TestResults.NO_TESTS_FOUND;
         }
 
-        launcher.execute(testPlan);
+        final TestExecutionListener executionListener = new TestExecutionListener() {
+          @Override
+          public void executionFinished(
+              final TestIdentifier testIdentifier,
+              final TestExecutionResult testExecutionResult
+          ) {
+            final Optional<Throwable> t = testExecutionResult.getThrowable();
+            if (t.isPresent()) {
+              log.info("{} {}",
+                  testIdentifier.getUniqueId(),
+                  testExecutionResult.getStatus(),
+                  t.get()
+              );
+            } else {
+              log.info("{} {}",
+                  testIdentifier.getUniqueId(),
+                  testExecutionResult.getStatus()
+              );
+            }
+          }
+        };
+        launcher.execute(testPlan, executionListener);
       }
     } catch (final IOException e) {
       throw new UncheckedIOException(e);

@@ -5,7 +5,7 @@
   <modelVersion>4.0.0</modelVersion>
 
   <groupId>com.github.build-system</groupId>
-  <artifactId>lib</artifactId>
+  <artifactId>build-itself</artifactId>
   <version>0.1.0</version>
 
   <properties>
@@ -14,80 +14,26 @@
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
   </properties>
 
-  <dependencyManagement>
-    <dependencies>
-      <dependency>
-        <groupId>org.junit</groupId>
-        <artifactId>junit-bom</artifactId>
-        <version>5.13.4</version>
-        <type>pom</type>
-        <scope>import</scope>
-      </dependency>
-    </dependencies>
-  </dependencyManagement>
-
   <dependencies>
     <dependency>
-      <groupId>org.jspecify</groupId>
-      <artifactId>jspecify</artifactId>
-      <version>1.0.0</version>
-      <scope>provided</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.slf4j</groupId>
-      <artifactId>slf4j-api</artifactId>
-      <version>2.0.17</version>
-    </dependency>
-    <dependency>
-      <groupId>jakarta.xml.bind</groupId>
-      <artifactId>jakarta.xml.bind-api</artifactId>
-      <version>4.0.2</version>
-    </dependency>
-
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-api</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-engine</artifactId>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.junit.platform</groupId>
-      <artifactId>junit-platform-launcher</artifactId>
-      <optional>true</optional>
-    </dependency>
-
-    <dependency>
-      <groupId>org.junit.jupiter</groupId>
-      <artifactId>junit-jupiter-params</artifactId>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>org.assertj</groupId>
-      <artifactId>assertj-core</artifactId>
-      <version>3.27.3</version>
-      <scope>test</scope>
+      <groupId>com.github.build-system</groupId>
+      <artifactId>lib</artifactId>
+      <version>0.1.0</version>
     </dependency>
     <dependency>
       <groupId>ch.qos.logback</groupId>
       <artifactId>logback-classic</artifactId>
-      <version>1.5.18</version>
-      <scope>test</scope>
+      <version>1.5.21</version>
     </dependency>
     <dependency>
       <groupId>com.sun.xml.bind</groupId>
       <artifactId>jaxb-impl</artifactId>
       <version>4.0.5</version>
-      <scope>test</scope>
     </dependency>
     <dependency>
-      <groupId>com.fasterxml.jackson.dataformat</groupId>
-      <artifactId>jackson-dataformat-yaml</artifactId>
-      <version>2.20.0</version>
-      <scope>test</scope>
+      <groupId>org.glassfish.jaxb</groupId>
+      <artifactId>jaxb-xjc</artifactId>
+      <version>4.0.6</version>
     </dependency>
   </dependencies>
 
@@ -107,9 +53,6 @@
         <groupId>org.jvnet.jaxb</groupId>
         <artifactId>jaxb-maven-plugin</artifactId>
         <version>4.0.8</version>
-        <configuration>
-          <schemaDirectory>./</schemaDirectory>
-        </configuration>
         <executions>
           <execution>
             <goals>
