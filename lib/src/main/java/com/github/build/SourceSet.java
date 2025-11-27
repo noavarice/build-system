@@ -8,6 +8,7 @@ import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -122,6 +123,22 @@ public record SourceSet(
       return this;
     }
 
+    // TODO: support dependencies without versions
+    public Builder compileWith(final String gavStr, final String... other) {
+      final var gavStrs = new HashSet<String>();
+      gavStrs.add(gavStr);
+      if (other != null) {
+        gavStrs.addAll(Arrays.asList(other));
+      }
+
+      for (final String value : gavStrs) {
+        final var gav = GroupArtifactVersion.parse(value);
+        final var dependency = new Dependency.Remote.WithVersion(gav);
+        compileClasspath.add(dependency);
+      }
+      return this;
+    }
+
     public Builder compileWith(final GroupArtifactVersion gav) {
       compileClasspath.add(new Dependency.Remote.WithVersion(gav));
       return this;
@@ -144,6 +161,22 @@ public record SourceSet(
 
     public Builder runWithLocalJar(final Path jarPath) {
       runtimeClasspath.add(new Dependency.Jar(jarPath));
+      return this;
+    }
+
+    // TODO: support dependencies without versions
+    public Builder runWith(final String gavStr, final String... other) {
+      final var gavStrs = new HashSet<String>();
+      gavStrs.add(gavStr);
+      if (other != null) {
+        gavStrs.addAll(Arrays.asList(other));
+      }
+
+      for (final String value : gavStrs) {
+        final var gav = GroupArtifactVersion.parse(value);
+        final var dependency = new Dependency.Remote.WithVersion(gav);
+        runtimeClasspath.add(dependency);
+      }
       return this;
     }
 
@@ -175,6 +208,23 @@ public record SourceSet(
       final var dependency = new Dependency.Jar(jarPath);
       compileClasspath.add(dependency);
       runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    // TODO: support dependencies without versions
+    public Builder compileAndRunWith(final String gavStr, final String... other) {
+      final var gavStrs = new HashSet<String>();
+      gavStrs.add(gavStr);
+      if (other != null) {
+        gavStrs.addAll(Arrays.asList(other));
+      }
+
+      for (final String value : gavStrs) {
+        final var gav = GroupArtifactVersion.parse(value);
+        final var dependency = new Dependency.Remote.WithVersion(gav);
+        compileClasspath.add(dependency);
+        runtimeClasspath.add(dependency);
+      }
       return this;
     }
 

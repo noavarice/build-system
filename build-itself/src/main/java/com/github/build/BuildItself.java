@@ -2,7 +2,6 @@ package com.github.build;
 
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
-import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepository;
 import com.github.build.test.TestResults;
@@ -80,36 +79,27 @@ public class BuildItself {
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
-        .compileWith(GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"))
-        .compileWith(GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"))
-        .compileWith(GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"))
-        .compileWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
-        .compileWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-engine:5.13.4"))
         .compileWith(
-            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+            "org.jspecify:jspecify:1.0.0",
+            "org.slf4j:slf4j-api:2.0.17",
+            "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2",
+            "org.junit.platform:junit-platform-launcher:1.13.4"
         )
         .build();
     final var test = SourceSet
         .withTestDefaults()
         .compileAndRunWith(main)
-        // TODO: add batch dependency API
-        .compileAndRunWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
-        .runWith(
-            GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-engine:5.13.4")
-        )
         .compileAndRunWith(
-            GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-params:5.13.4")
+            "org.junit.jupiter:junit-jupiter-api:5.13.4",
+            "org.junit.jupiter:junit-jupiter-params:5.13.4",
+            "org.assertj:assertj-core:3.27.3",
+            "ch.qos.logback:logback-classic:1.5.21",
+            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
         )
         .runWith(
-            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
-        )
-        .compileAndRunWith(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"))
-        .compileAndRunWith(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"))
-        .runWith(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"))
-        .compileAndRunWith(
-            GroupArtifactVersion.parse(
-                "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
-            )
+            "org.junit.jupiter:junit-jupiter-engine:5.13.4",
+            "org.junit.platform:junit-platform-launcher:1.13.4",
+            "com.sun.xml.bind:jaxb-impl:4.0.5"
         )
         .build();
     final var project = Project
