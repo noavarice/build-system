@@ -11,11 +11,7 @@
     </encoder>
   </appender>
 
-  <logger name="org.eclipse.aether" level="WARN"/>
-  <logger name="org.eclipse.sisu" level="WARN"/>
-  <logger name="org.apache.http" level="WARN"/>
-
-  <root level="debug">
+  <root level="info">
     <appender-ref ref="STDOUT"/>
   </root>
 </configuration>

@@ -61,7 +61,7 @@ public final class DependencyService {
       // or explicitly but via POM property)
       final Pom pom = poms.computeIfAbsent(current, this::findPom);
       final List<Pom> parents = resolveParents(pom);
-      log.info("Resolved {} parents: {}", current, parents.stream().map(Pom::gav).toList());
+      log.debug("Resolved {} parents: {}", current, parents.stream().map(Pom::gav).toList());
 
       final var properties = new HashMap<String, String>();
       final var dependencyManagement = new HashMap<GroupArtifact, String>();
@@ -96,7 +96,7 @@ public final class DependencyService {
         // resolving and accumulating explicit dependencies
         for (final Pom.Dependency d : parent.dependencies()) {
           if (d.optional()) {
-            log.info("Skipping optional dependency {}", d.groupArtifact());
+            log.debug("Skipping optional dependency {}", d.groupArtifact());
             continue;
           }
 
@@ -110,7 +110,7 @@ public final class DependencyService {
                   currentPath
               );
             }
-            default -> log.info("Skipping non-compile, non-runtime dependency {} (scope {})",
+            default -> log.debug("Skipping non-compile, non-runtime dependency {} (scope {})",
                 d.groupArtifact(),
                 d.scope()
             );
@@ -124,7 +124,7 @@ public final class DependencyService {
         moreToResolve.add(gav);
       });
 
-      log.info("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
+      log.debug("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
       moreToResolve
           .stream()
           .map(currentPath::addLast)
@@ -185,7 +185,7 @@ public final class DependencyService {
   }
 
   private List<Pom> resolveParents(final Pom pom) {
-    log.info("Resolving parents for {}", pom.gav());
+    log.debug("Resolving parents for {}", pom.gav());
     final var result = new ArrayList<Pom>();
     Pom.Parent parent = pom.parent();
     while (parent != null) {
