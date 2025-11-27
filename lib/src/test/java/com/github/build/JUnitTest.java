@@ -33,11 +33,6 @@ class JUnitTest {
   private final BuildService buildService;
 
   JUnitTest(@TempDir final Path localRepositoryBasePath) {
-    final var nexusLocal = new RemoteRepository(
-        // TODO: externalize
-        URI.create("http://localhost:8081/repository/maven-central"),
-        HttpClient.newHttpClient()
-    );
     final var nexusDocker = new RemoteRepository(
         URI.create("http://nexus:8081/repository/maven-central"),
         HttpClient.newHttpClient()
@@ -48,7 +43,7 @@ class JUnitTest {
     );
     final var compileService = new CompileService();
     final var dependencyService = new DependencyService(
-        List.of(nexusLocal, nexusDocker),
+        List.of(nexusDocker),
         localRepository
     );
     testService = new TestService(dependencyService);
@@ -73,7 +68,7 @@ class JUnitTest {
         .build();
     final var test = SourceSet
         .withTestDefaults()
-        .compileWith(main)
+        .compileAndRunWith(main)
         .compileAndRunWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
         .runWith(
             GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-engine:5.13.4")
@@ -88,7 +83,10 @@ class JUnitTest {
 
     // compile main and test source sets
     assertTrue(buildService.compileMain(tempDir, project));
+    buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
+
     assertTrue(buildService.compileTest(tempDir, project));
+    buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
     final TestResults result = testService.withJUnit(tempDir, project);
     return new DynamicTest[]{

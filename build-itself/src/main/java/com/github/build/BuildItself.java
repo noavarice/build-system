@@ -86,7 +86,7 @@ public class BuildItself {
         .build();
     final var test = SourceSet
         .withTestDefaults()
-        .compileWith(main)
+        .compileAndRunWith(main)
         // TODO: add batch dependency API
         .compileAndRunWith(GroupArtifactVersion.parse("org.junit.jupiter:junit-jupiter-api:5.13.4"))
         .runWith(
@@ -116,7 +116,10 @@ public class BuildItself {
 
     generateSourcesFromMavenXsd(workdir, project);
     service.compileMain(workdir, project);
+    service.copyResources(workdir, project, SourceSet.Id.MAIN);
+
     service.compileTest(workdir, project);
+    service.copyResources(workdir, project, SourceSet.Id.TEST);
 
     final TestResults results = testService.withJUnit(workdir, project);
     if (results.testsFailedCount() > 0) {

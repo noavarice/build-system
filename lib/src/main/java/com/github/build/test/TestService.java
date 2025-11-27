@@ -1,38 +1,25 @@
 package com.github.build.test;
 
 import static java.util.stream.Collectors.joining;
-import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClasspathRoots;
 
 import com.github.build.Project;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.util.ParentLastClassLoader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
-import java.time.Duration;
-import java.time.Instant;
 import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
+import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
-import org.junit.platform.engine.TestExecutionResult;
-import org.junit.platform.launcher.Launcher;
-import org.junit.platform.launcher.LauncherDiscoveryRequest;
-import org.junit.platform.launcher.LauncherSession;
-import org.junit.platform.launcher.TestExecutionListener;
-import org.junit.platform.launcher.TestIdentifier;
-import org.junit.platform.launcher.TestPlan;
-import org.junit.platform.launcher.core.LauncherDiscoveryRequestBuilder;
-import org.junit.platform.launcher.core.LauncherFactory;
-import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
-import org.junit.platform.launcher.listeners.TestExecutionSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -55,34 +42,43 @@ public final class TestService {
     Objects.requireNonNull(project);
     log.info("[project={}] Setting up tests", project.id());
 
-    final var originalClassLoader = Thread.currentThread().getContextClassLoader();
     final Path mainClasses = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
+        .resolve("main");
+    final Path mainResources = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
         .resolve("main");
     final Path testClasses = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
         .resolve("test");
+    final Path testResources = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
+        .resolve("test");
 
     final var testRuntimeClasspath = new HashSet<Path>();
     // adding user classes
-    testRuntimeClasspath.add(mainClasses);
     testRuntimeClasspath.add(testClasses);
+    testRuntimeClasspath.add(testResources);
 
     // adding JUnit Platform
-//    {
-//      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
-//          GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
-//      );
-//      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-//          artifacts
-//      );
-//
-//      testRuntimeClasspath.addAll(localArtifacts.values());
-//    }
+    {
+      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
+          GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+      );
+      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+          artifacts
+      );
+
+      testRuntimeClasspath.addAll(localArtifacts.values());
+    }
 
     for (final Dependency dependency : project.testSourceSet().runtimeClasspath()) {
       switch (dependency) {
@@ -94,6 +90,12 @@ public final class TestService {
               .resolve(dependingProject.artifactLayout().classesDir())
               .resolve(dependingProject.mainSourceSet().id().toString());
           testRuntimeClasspath.add(mainSourceSetClassesDir);
+          final Path mainSourceSetResourcesDir = workdir
+              .resolve(dependingProject.path())
+              .resolve(dependingProject.artifactLayout().rootDir())
+              .resolve(dependingProject.artifactLayout().resourcesDir())
+              .resolve(dependingProject.mainSourceSet().id().toString());
+          testRuntimeClasspath.add(mainSourceSetResourcesDir);
         }
         case Dependency.OnSourceSet onSourceSet -> {
           final Path sourceSetClassesDir = workdir
@@ -102,6 +104,12 @@ public final class TestService {
               .resolve(project.artifactLayout().classesDir())
               .resolve(onSourceSet.sourceSet().id().toString());
           testRuntimeClasspath.add(sourceSetClassesDir);
+          final Path sourceSetResourcesDir = workdir
+              .resolve(project.path())
+              .resolve(project.artifactLayout().rootDir())
+              .resolve(project.artifactLayout().resourcesDir())
+              .resolve(onSourceSet.sourceSet().id().toString());
+          testRuntimeClasspath.add(sourceSetResourcesDir);
         }
         case Dependency.Jar file -> testRuntimeClasspath.add(file.path());
         case Dependency.Remote.WithVersion withVersion -> {
@@ -139,70 +147,31 @@ public final class TestService {
       log.debug("Run tests with classpath {}", prettyPrintedClasspath);
     }
 
+    final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
     try (final var classLoader = createModifiedClassLoader(
-        originalClassLoader.getParent(),
+        // TODO: consider isolating test classpath from build program classpath
+        getClass().getClassLoader(),
         testRuntimeClasspath
     )) {
+      // setting classpath for JUnit test engine search algorithm
       Thread.currentThread().setContextClassLoader(classLoader);
-      final var summaryListener = new SummaryGeneratingListener();
-      try (final LauncherSession session = LauncherFactory.openSession()) {
-        final Launcher launcher = session.getLauncher();
-        launcher.registerTestExecutionListeners(summaryListener);
-
-        final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder
-            .request()
-            .selectors(selectClasspathRoots(Set.of(testClasses)))
-            .build();
-        final TestPlan testPlan = launcher.discover(request);
-        if (!testPlan.containsTests()) {
-          log.warn("[project={}] No tests found", project.id());
-          return TestResults.NO_TESTS_FOUND;
-        }
-
-        final TestExecutionListener executionListener = new TestExecutionListener() {
-          @Override
-          public void executionFinished(
-              final TestIdentifier testIdentifier,
-              final TestExecutionResult testExecutionResult
-          ) {
-            final Optional<Throwable> t = testExecutionResult.getThrowable();
-            if (t.isPresent()) {
-              log.info("{} {}",
-                  testIdentifier.getUniqueId(),
-                  testExecutionResult.getStatus(),
-                  t.get()
-              );
-            } else {
-              log.info("{} {}",
-                  testIdentifier.getUniqueId(),
-                  testExecutionResult.getStatus()
-              );
-            }
-          }
-        };
-        launcher.execute(testPlan, executionListener);
-      }
-
-      final TestExecutionSummary summary = summaryListener.getSummary();
-      final Duration duration = Duration.between(
-          Instant.ofEpochMilli(summary.getTimeStarted()),
-          Instant.ofEpochMilli(summary.getTimeFinished())
+      @SuppressWarnings("unchecked")
+      final var taskType = (Class<Function<Map<String, Object>, Map<String, Object>>>) classLoader.loadClass(
+          "com.github.build.test.JUnitTestTask"
       );
-      log.info("[project={}] Tests finished in {}, succeeded {}, failed {}, skipped {}",
-          project.id(),
-          duration,
-          summary.getTestsSucceededCount(),
-          summary.getTestsFailedCount(),
-          summary.getTestsSkippedCount()
-      );
-
+      final var taskConstructor = taskType.getDeclaredConstructor();
+      final var task = taskConstructor.newInstance();
+      final Map<String, Object> args = Map.of("testClassesDir", testClasses);
+      final Map<String, Object> result = task.apply(args);
       return new TestResults(
-          summary.getTestsSucceededCount(),
-          summary.getTestsFailedCount(),
-          summary.getTestsSkippedCount()
+          (Long) result.getOrDefault("succeeded", 0L),
+          (Long) result.getOrDefault("failed", 0L),
+          (Long) result.getOrDefault("skipped", 0L)
       );
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
+    } catch (final ReflectiveOperationException e) {
+      throw new IllegalStateException(e);
     } finally {
       Thread.currentThread().setContextClassLoader(originalClassLoader);
     }
@@ -222,6 +191,6 @@ public final class TestService {
           }
         })
         .toArray(URL[]::new);
-    return URLClassLoader.newInstance(additionalTestClasspathEntries, parent);
+    return new ParentLastClassLoader(additionalTestClasspathEntries, parent);
   }
 }
