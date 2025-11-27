@@ -10,6 +10,7 @@ import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import java.net.URI;
 import java.net.http.HttpClient;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
@@ -28,8 +29,12 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Tests for remote repository")
 class RemoteRepositoryIT {
 
-  // TODO: externalize
-  private final URI baseUri = URI.create("http://nexus:8081/repository/maven-central");
+  private final String nexusHost = Objects.requireNonNullElse(
+      System.getenv("NEXUS_HOST"),
+      "localhost"
+  );
+
+  private final URI baseUri = URI.create("http://" + nexusHost + ":8081/repository/maven-central");
 
   private final HttpClient client = HttpClient.newHttpClient();
 

@@ -30,6 +30,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
@@ -43,8 +44,12 @@ public class BuildItself {
     final var compileService = new CompileService();
 
     final var httpClient = HttpClient.newHttpClient();
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
     final var nexusDocker = new RemoteRepository(
-        URI.create("http://nexus:8081/repository/maven-central"),
+        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
         httpClient
     );
 

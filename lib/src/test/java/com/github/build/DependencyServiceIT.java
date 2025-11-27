@@ -14,6 +14,7 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.DisplayName;
@@ -61,9 +62,14 @@ class DependencyServiceIT {
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
     );
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+
     final RemoteRepository mavenCentral = new RemoteRepository(
-        // TODO: externalize
-        URI.create("http://nexus:8081/repository/maven-central"),
+        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
         HttpClient.newHttpClient()
     );
     service = new DependencyService(List.of(mavenCentral), localRepository);

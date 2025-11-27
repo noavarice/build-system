@@ -17,6 +17,8 @@ services:
     configs:
       - source: settings.xml
         target: /root/.m2/settings.xml
+    environment:
+      NEXUS_HOST: nexus
     networks:
       - default
     volumes:
@@ -31,6 +33,8 @@ services:
       dockerfile: build-itself/Dockerfile
       context: .
     container_name: build-itself
+    environment:
+      NEXUS_HOST: nexus
     volumes:
       - ./:/app
     security_opt:

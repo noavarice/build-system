@@ -18,6 +18,7 @@ import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -34,9 +35,13 @@ class BuildServiceTest {
 
   BuildServiceTest(@TempDir final Path localRepositoryBasePath) {
     final var compileService = new CompileService();
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
     final var remoteRepository = new RemoteRepository(
-        // TODO: externalize
-        URI.create("http://nexus:8081/repository/maven-central"),
+        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
         HttpClient.newHttpClient()
     );
     final var localRepository = new LocalRepository(
