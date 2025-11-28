@@ -25,6 +25,10 @@ public final class DependencyConstraints {
     this.constraints = Map.copyOf(constraints);
   }
 
+  public Builder copy() {
+    return new Builder(constraints);
+  }
+
   // TODO: add specific type for version constraints (exact version, ranges, etc.)
   @Nullable
   public String getConstraint(final GroupArtifact artifact) {
@@ -43,9 +47,14 @@ public final class DependencyConstraints {
 
   public static final class Builder {
 
-    private final Map<GroupArtifact, String> constraints = new HashMap<>();
+    private final Map<GroupArtifact, String> constraints;
 
     private Builder() {
+      constraints = new HashMap<>();
+    }
+
+    private Builder(final Map<GroupArtifact, String> values) {
+      this.constraints = new HashMap<>(values);
     }
 
     public Builder withExactVersion(final String artifactStr, final String... other) {

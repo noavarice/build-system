@@ -12,5 +12,6 @@
   <modules>
     <module>lib</module>
     <module>build-itself</module>
+    <module>build-spring-security</module>
   </modules>
 </project>

@@ -142,6 +142,8 @@ public final class Project {
 
     private final Map<SourceSet.Id, SourceSet> sourceSets = new HashMap<>();
 
+    private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
+
     public Builder(final Id id) {
       this.id = id;
     }
@@ -163,12 +165,18 @@ public final class Project {
       return this;
     }
 
+    public Builder withArtifactLayout(final ArtifactLayout artifactLayout) {
+      Objects.requireNonNull(artifactLayout);
+      this.artifactLayout = artifactLayout;
+      return this;
+    }
+
     public Project build() {
       return new Project(
           id,
           path,
           sourceSets,
-          ArtifactLayout.DEFAULT
+          artifactLayout
       );
     }
   }
