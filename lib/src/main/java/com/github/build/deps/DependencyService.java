@@ -184,34 +184,6 @@ public final class DependencyService {
     importTo.putAll(dependencyManagement);
   }
 
-  private List<Pom> resolveParents(final Pom pom) {
-    log.debug("Resolving parents for {}", pom.gav());
-    final var result = new ArrayList<Pom>();
-    Pom.Parent parent = pom.parent();
-    while (parent != null) {
-      final Pom parentPom = poms.computeIfAbsent(parent.gav(), this::findPom);
-      parent = parentPom.parent();
-      result.addFirst(parentPom);
-    }
-
-    return result;
-  }
-
-  private Pom findPom(final GroupArtifactVersion gav) {
-    for (final RemoteRepository repository : remoteRepositories) {
-      final Optional<Pom> pomOpt = repository.getPom(gav);
-      if (pomOpt.isPresent()) {
-        return pomOpt.get();
-      }
-    }
-
-    log.error("Failed to find POM for {} in the following repositories: {}",
-        gav,
-        remoteRepositories
-    );
-    throw new IllegalStateException();
-  }
-
   /**
    * Resolves dependency version as a value placeholder or as part of dependency management.
    *
@@ -321,5 +293,72 @@ public final class DependencyService {
     }
 
     return Map.copyOf(result);
+  }
+
+  public DependencyConstraints getConstraints(
+      final GroupArtifactVersion bom,
+      final GroupArtifactVersion... other
+  ) {
+    final List<GroupArtifactVersion> boms = new ArrayList<>();
+    Objects.requireNonNull(bom);
+    boms.add(bom);
+    if (other != null) {
+      for (final GroupArtifactVersion gav : other) {
+        Objects.requireNonNull(gav);
+        boms.add(gav);
+      }
+    }
+
+    log.debug("Getting dependency constraints from {}", boms);
+    final var builder = DependencyConstraints.builder();
+    for (final GroupArtifactVersion gav : boms) {
+      final Pom current = findPom(gav);
+      final List<Pom> parents = resolveParents(current);
+      if (log.isDebugEnabled()) {
+        final List<GroupArtifactVersion> parentGavs = parents
+            .stream()
+            .map(Pom::gav)
+            .toList();
+        log.debug("Getting constraints from {} and its parents {}", gav, parentGavs);
+      }
+
+      final List<Pom> all = new ArrayList<>(parents);
+      all.add(current);
+
+      for (final Pom pom : all) {
+        for (final Pom.Dependency dependency : pom.dependencyManagement()) {
+          builder.withExactVersion(dependency.groupArtifact(), dependency.version());
+        }
+      }
+    }
+    return builder.build();
+  }
+
+  private List<Pom> resolveParents(final Pom pom) {
+    log.debug("Resolving parents for {}", pom.gav());
+    final var result = new ArrayList<Pom>();
+    Pom.Parent parent = pom.parent();
+    while (parent != null) {
+      final Pom parentPom = poms.computeIfAbsent(parent.gav(), this::findPom);
+      parent = parentPom.parent();
+      result.addFirst(parentPom);
+    }
+
+    return result;
+  }
+
+  private Pom findPom(final GroupArtifactVersion gav) {
+    for (final RemoteRepository repository : remoteRepositories) {
+      final Optional<Pom> pomOpt = repository.getPom(gav);
+      if (pomOpt.isPresent()) {
+        return pomOpt.get();
+      }
+    }
+
+    log.error("Failed to find POM for {} in the following repositories: {}",
+        gav,
+        remoteRepositories
+    );
+    throw new IllegalStateException();
   }
 }

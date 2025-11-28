@@ -2,9 +2,11 @@ package com.github.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
@@ -247,6 +249,109 @@ class DependencyServiceIT {
               )
           ),
       };
+    }
+  }
+
+  @DisplayName("Getting dependency constraints tests")
+  @Nested
+  class GetConstraints {
+
+    // TODO: test BOM with parent
+    @DisplayName("Check getting constraints from single BOM without parent works")
+    @Test
+    void testGettingSingleBomWithoutParentWorks() {
+      final var springBom = GroupArtifactVersion.parse(
+          "org.springframework:spring-framework-bom:7.0.0"
+      );
+      final DependencyConstraints expected = DependencyConstraints
+          .builder()
+          .withExactVersion(
+              "org.springframework:spring-aop:7.0.0",
+              "org.springframework:spring-aspects:7.0.0",
+              "org.springframework:spring-beans:7.0.0",
+              "org.springframework:spring-context:7.0.0",
+              "org.springframework:spring-context-indexer:7.0.0",
+              "org.springframework:spring-context-support:7.0.0",
+              "org.springframework:spring-core:7.0.0",
+              "org.springframework:spring-core-test:7.0.0",
+              "org.springframework:spring-expression:7.0.0",
+              "org.springframework:spring-instrument:7.0.0",
+              "org.springframework:spring-jdbc:7.0.0",
+              "org.springframework:spring-jms:7.0.0",
+              "org.springframework:spring-messaging:7.0.0",
+              "org.springframework:spring-orm:7.0.0",
+              "org.springframework:spring-oxm:7.0.0",
+              "org.springframework:spring-r2dbc:7.0.0",
+              "org.springframework:spring-test:7.0.0",
+              "org.springframework:spring-tx:7.0.0",
+              "org.springframework:spring-web:7.0.0",
+              "org.springframework:spring-webflux:7.0.0",
+              "org.springframework:spring-webmvc:7.0.0",
+              "org.springframework:spring-websocket:7.0.0"
+          )
+          .build();
+      final DependencyConstraints actual = service.getConstraints(springBom);
+      assertEquals(expected, actual);
+    }
+
+    @DisplayName("Check getting constraints from multiple BOMs works")
+    @Test
+    void testGettingMultipleBomWorks() {
+      final var springBom = GroupArtifactVersion.parse(
+          "org.springframework:spring-framework-bom:7.0.0"
+      );
+      final var springDataBom = GroupArtifactVersion.parse(
+          "org.springframework.data:spring-data-bom:2025.1.0"
+      );
+      final DependencyConstraints expected = DependencyConstraints
+          .builder()
+          .withExactVersion(
+              // Spring Framework BOM
+              "org.springframework:spring-aop:7.0.0",
+              "org.springframework:spring-aspects:7.0.0",
+              "org.springframework:spring-beans:7.0.0",
+              "org.springframework:spring-context:7.0.0",
+              "org.springframework:spring-context-indexer:7.0.0",
+              "org.springframework:spring-context-support:7.0.0",
+              "org.springframework:spring-core:7.0.0",
+              "org.springframework:spring-core-test:7.0.0",
+              "org.springframework:spring-expression:7.0.0",
+              "org.springframework:spring-instrument:7.0.0",
+              "org.springframework:spring-jdbc:7.0.0",
+              "org.springframework:spring-jms:7.0.0",
+              "org.springframework:spring-messaging:7.0.0",
+              "org.springframework:spring-orm:7.0.0",
+              "org.springframework:spring-oxm:7.0.0",
+              "org.springframework:spring-r2dbc:7.0.0",
+              "org.springframework:spring-test:7.0.0",
+              "org.springframework:spring-tx:7.0.0",
+              "org.springframework:spring-web:7.0.0",
+              "org.springframework:spring-webflux:7.0.0",
+              "org.springframework:spring-webmvc:7.0.0",
+              "org.springframework:spring-websocket:7.0.0",
+
+              // Spring Data BOM
+              "org.springframework.data:spring-data-cassandra:5.0.0",
+              "org.springframework.data:spring-data-commons:4.0.0",
+              "org.springframework.data:spring-data-couchbase:6.0.0",
+              "org.springframework.data:spring-data-elasticsearch:6.0.0",
+              "org.springframework.data:spring-data-jdbc:4.0.0",
+              "org.springframework.data:spring-data-r2dbc:4.0.0",
+              "org.springframework.data:spring-data-relational:4.0.0",
+              "org.springframework.data:spring-data-jpa:4.0.0",
+              "org.springframework.data:spring-data-envers:4.0.0",
+              "org.springframework.data:spring-data-mongodb:5.0.0",
+              "org.springframework.data:spring-data-neo4j:8.0.0",
+              "org.springframework.data:spring-data-redis:4.0.0",
+              "org.springframework.data:spring-data-rest-webmvc:5.0.0",
+              "org.springframework.data:spring-data-rest-core:5.0.0",
+              "org.springframework.data:spring-data-rest-hal-explorer:5.0.0",
+              "org.springframework.data:spring-data-keyvalue:4.0.0",
+              "org.springframework.data:spring-data-ldap:4.0.0"
+          )
+          .build();
+      final DependencyConstraints actual = service.getConstraints(springBom, springDataBom);
+      assertEquals(expected, actual);
     }
   }
 }

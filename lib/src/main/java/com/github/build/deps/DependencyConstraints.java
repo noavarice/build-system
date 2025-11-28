@@ -1,5 +1,6 @@
 package com.github.build.deps;
 
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
@@ -31,11 +32,44 @@ public final class DependencyConstraints {
     return constraints.get(artifact);
   }
 
+  @Override
+  public boolean equals(final Object obj) {
+    if (obj instanceof DependencyConstraints other) {
+      return constraints.equals(other.constraints);
+    } else {
+      return false;
+    }
+  }
+
   public static final class Builder {
 
     private final Map<GroupArtifact, String> constraints = new HashMap<>();
 
     private Builder() {
+    }
+
+    public Builder withExactVersion(final String artifactStr, final String... other) {
+      Objects.requireNonNull(artifactStr);
+
+      final var artifacts = new ArrayList<GroupArtifactVersion>();
+      artifacts.add(GroupArtifactVersion.parse(artifactStr));
+      if (other != null) {
+        for (final String s : other) {
+          artifacts.add(GroupArtifactVersion.parse(s));
+        }
+      }
+
+      for (final GroupArtifactVersion artifact : artifacts) {
+        constraints.put(artifact.groupArtifact(), artifact.version());
+      }
+
+      return this;
+    }
+
+    public Builder withExactVersion(final GroupArtifactVersion artifact) {
+      Objects.requireNonNull(artifact);
+      constraints.put(artifact.groupArtifact(), artifact.version());
+      return this;
     }
 
     public Builder withExactVersion(final GroupArtifact artifact, final String version) {
