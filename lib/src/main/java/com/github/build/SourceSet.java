@@ -132,8 +132,7 @@ public record SourceSet(
       }
 
       for (final String value : gavStrs) {
-        final var gav = GroupArtifactVersion.parse(value);
-        final var dependency = new Dependency.Remote.WithVersion(gav);
+        final Dependency dependency = parseDependency(value);
         compileClasspath.add(dependency);
       }
       return this;
@@ -164,7 +163,6 @@ public record SourceSet(
       return this;
     }
 
-    // TODO: support dependencies without versions
     public Builder runWith(final String gavStr, final String... other) {
       final var gavStrs = new HashSet<String>();
       gavStrs.add(gavStr);
@@ -173,8 +171,7 @@ public record SourceSet(
       }
 
       for (final String value : gavStrs) {
-        final var gav = GroupArtifactVersion.parse(value);
-        final var dependency = new Dependency.Remote.WithVersion(gav);
+        final Dependency dependency = parseDependency(value);
         runtimeClasspath.add(dependency);
       }
       return this;
@@ -211,7 +208,6 @@ public record SourceSet(
       return this;
     }
 
-    // TODO: support dependencies without versions
     public Builder compileAndRunWith(final String gavStr, final String... other) {
       final var gavStrs = new HashSet<String>();
       gavStrs.add(gavStr);
@@ -220,8 +216,7 @@ public record SourceSet(
       }
 
       for (final String value : gavStrs) {
-        final var gav = GroupArtifactVersion.parse(value);
-        final var dependency = new Dependency.Remote.WithVersion(gav);
+        final Dependency dependency = parseDependency(value);
         compileClasspath.add(dependency);
         runtimeClasspath.add(dependency);
       }
@@ -256,6 +251,16 @@ public record SourceSet(
           runtimeClasspath,
           dependencyConstraints
       );
+    }
+
+    private static Dependency parseDependency(final String value) {
+      try {
+        final GroupArtifact ga = GroupArtifact.parse(value);
+        return new Dependency.Remote.WithoutVersion(ga);
+      } catch (final IllegalStateException e) { // TODO: consider specific exception
+        final var gav = GroupArtifactVersion.parse(value);
+        return new Dependency.Remote.WithVersion(gav);
+      }
     }
   }
 

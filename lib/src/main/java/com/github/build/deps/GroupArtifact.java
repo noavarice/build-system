@@ -8,6 +8,15 @@ import java.util.Objects;
  */
 public record GroupArtifact(String groupId, String artifactId) {
 
+  public static GroupArtifact parse(final String value) {
+    Objects.requireNonNull(value);
+    final String[] parts = value.split(":", -1);
+    if (parts.length != 2) {
+      throw new IllegalStateException("Unexpected part count " + parts.length);
+    }
+    return new GroupArtifact(parts[0], parts[1]);
+  }
+
   public GroupArtifact {
     groupId = Objects.requireNonNull(groupId).strip();
     if (groupId.isBlank()) {
