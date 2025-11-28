@@ -6,7 +6,6 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
-import jakarta.xml.bind.Unmarshaller;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -21,12 +20,21 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
+import javax.xml.parsers.ParserConfigurationException;
+import javax.xml.parsers.SAXParserFactory;
+import javax.xml.transform.sax.SAXSource;
 import org.apache.maven.pom._4_0.DependencyManagement;
 import org.apache.maven.pom._4_0.Model;
 import org.apache.maven.pom._4_0.Parent;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.w3c.dom.Node;
+import org.xml.sax.Attributes;
+import org.xml.sax.InputSource;
+import org.xml.sax.SAXException;
+import org.xml.sax.XMLFilter;
+import org.xml.sax.XMLReader;
+import org.xml.sax.helpers.XMLFilterImpl;
 
 /**
  * Works with remote artifact repositories.
@@ -108,27 +116,60 @@ public final class RemoteRepository {
       return Optional.empty();
     }
 
-    final Unmarshaller unmarshaller;
-    try {
-      final var context = JAXBContext.newInstance(Model.class);
-      unmarshaller = context.createUnmarshaller();
-    } catch (final JAXBException e) {
-      throw new IllegalStateException(e);
-    }
-
     final Model model;
     try (final InputStream is = response.body()) {
+      final var spf = SAXParserFactory.newInstance();
+      spf.setNamespaceAware(true);
+
+      final XMLReader xmlReader = spf
+          .newSAXParser()
+          .getXMLReader();
+
+      // some POMs may lack namespace declaration
+      // which is necessary for JAXB unmarshalling to succeed
+      final XMLFilter filter = new NamespaceAddingFilter();
+      filter.setParent(xmlReader);
+
+      final var inputSource = new InputSource(is);
+      final var saxSource = new SAXSource(filter, inputSource);
+
+      final var context = JAXBContext.newInstance(Model.class);
+      final var unmarshaller = context.createUnmarshaller();
       @SuppressWarnings("unchecked")
-      final var element = (JAXBElement<Model>) unmarshaller.unmarshal(is);
+      final var element = (JAXBElement<Model>) unmarshaller.unmarshal(saxSource);
       model = element.getValue();
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    } catch (final JAXBException e) {
+    } catch (final JAXBException | ParserConfigurationException | SAXException e) {
       throw new IllegalStateException(e);
     }
 
     final Pom result = toPom(model);
     return Optional.of(result);
+  }
+
+  /**
+   * XML filter that adds Maven namespace if it's missing.
+   * <p>
+   * This way it's not necessary to change received XML.
+   */
+  public static final class NamespaceAddingFilter extends XMLFilterImpl {
+
+    @Override
+    public void startElement(
+        final String uri,
+        final String localName,
+        final String qName,
+        final Attributes attributes
+    ) throws SAXException {
+      final boolean uriPresent = uri != null && !uri.isBlank();
+      super.startElement(
+          uriPresent ? uri : "http://maven.apache.org/POM/4.0.0",
+          localName,
+          qName,
+          attributes
+      );
+    }
   }
 
   private static Pom toPom(final Model model) {

@@ -2,6 +2,7 @@ package com.github.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
+import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.ArtifactDownloadResult;
@@ -95,6 +96,16 @@ class RemoteRepositoryIT {
     @Test
     void testGettingPomForNonExistentDependency() {
       assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
+    }
+
+    @DisplayName("Check getting POM without namespace works")
+    @Test
+    void testGettingPomWithoutNamespaceWorks() {
+      // does not contain namespace declaration
+      final var bouncyCastle = GroupArtifactVersion.parse(
+          "org.bouncycastle:bcpkix-jdk18on:1.80"
+      );
+      assertDoesNotThrow(() -> repo.getPom(bouncyCastle));
     }
 
     @DisplayName("Check downloading existing dependency POM works")
