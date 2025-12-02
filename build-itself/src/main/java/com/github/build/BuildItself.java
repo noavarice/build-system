@@ -34,6 +34,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXParseException;
+import tools.jackson.databind.ObjectMapper;
 
 public class BuildItself {
 
@@ -49,7 +50,8 @@ public class BuildItself {
     );
     final var nexusDocker = new RemoteRepository(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient
+        httpClient,
+        new ObjectMapper()
     );
 
     final Path localRepositoryBasePath;

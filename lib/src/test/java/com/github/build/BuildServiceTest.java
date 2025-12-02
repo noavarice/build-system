@@ -24,6 +24,7 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * @author noavarice
@@ -42,7 +43,8 @@ class BuildServiceTest {
     );
     final var remoteRepository = new RemoteRepository(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        HttpClient.newHttpClient()
+        HttpClient.newHttpClient(),
+        new ObjectMapper()
     );
     final var localRepository = new LocalRepository(
         localRepositoryBasePath,

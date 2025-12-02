@@ -22,6 +22,7 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Tests for copying files (e.g. resources).
@@ -39,7 +40,8 @@ class CopyTest {
     final var remoteRepository = new RemoteRepository(
         // TODO: externalize
         URI.create("http://localhost:8081/repository/maven-central"),
-        HttpClient.newHttpClient()
+        HttpClient.newHttpClient(),
+        new ObjectMapper()
     );
     final var localRepository = new LocalRepository(
         localRepoBase,

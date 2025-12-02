@@ -21,6 +21,7 @@ import java.util.Objects;
 import java.util.Set;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * @author noavarice
@@ -43,7 +44,8 @@ public final class BuildSpringSecurity {
     );
     final var nexusDocker = new RemoteRepository(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient
+        httpClient,
+        new ObjectMapper()
     );
 
     final Path localRepositoryBasePath;

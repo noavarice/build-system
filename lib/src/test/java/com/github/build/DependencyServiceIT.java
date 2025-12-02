@@ -26,6 +26,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * {@link DependencyService} tests.
@@ -72,7 +73,8 @@ class DependencyServiceIT {
 
     final RemoteRepository mavenCentral = new RemoteRepository(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        HttpClient.newHttpClient()
+        HttpClient.newHttpClient(),
+        new ObjectMapper()
     );
     service = new DependencyService(List.of(mavenCentral), localRepository);
   }
@@ -204,6 +206,15 @@ class DependencyServiceIT {
           .sorted()
           .toList();
       assertThat(actualSorted).isEqualTo(expectedSorted);
+    }
+
+    @DisplayName("Check resolving dependencies with hard version requirements")
+    @Test
+    void testResolvingWithHardVersionRequirements() {
+      final var bcpkix = GroupArtifactVersion.parse(
+          "org.bouncycastle:bcpkix-jdk18on:1.80"
+      );
+      assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
     }
   }
 

@@ -1,15 +1,16 @@
 package com.github.build.deps;
 
 import java.util.Objects;
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.jspecify.annotations.Nullable;
 
 /**
  * @author noavarice
  * @since 1.0.0
  */
-public sealed interface Version {
+public sealed interface MavenVersion {
 
-  static Version parse(final String value) {
+  static MavenVersion parse(final String value) {
     Objects.requireNonNull(value);
     if (value.isBlank()) {
       throw new IllegalArgumentException();
@@ -66,7 +67,7 @@ public sealed interface Version {
     };
   }
 
-  record Exact(String value) implements Version {
+  record Exact(String value) implements MavenVersion {
 
     public Exact {
       Objects.requireNonNull(value);
@@ -78,7 +79,7 @@ public sealed interface Version {
     }
   }
 
-  record Range(@Nullable Bound lower, @Nullable Bound upper) implements Version {
+  record Range(@Nullable Bound lower, @Nullable Bound upper) implements MavenVersion {
 
     public Range {
       if (lower == null && upper == null) {
@@ -86,7 +87,45 @@ public sealed interface Version {
       }
     }
 
-    record Bound(String value, boolean including) {
+    public boolean exactVersion() {
+      if (lower == null || upper == null) {
+        return false;
+      }
+
+      if (!lower.including || !upper.including) {
+        return false;
+      }
+
+      final var comparableLower = new ComparableVersion(lower.value);
+      final var comparableUpper = new ComparableVersion(upper.value);
+      return comparableLower.compareTo(comparableUpper) == 0;
+    }
+
+    public boolean invalid() {
+      final var comparableLower = new ComparableVersion(lower.value);
+      final var comparableUpper = new ComparableVersion(upper.value);
+      return comparableLower.compareTo(comparableUpper) > 0;
+    }
+
+    public boolean contains(final ComparableVersion version) {
+      // TODO: suboptimal performance because of constructing the same ComparableVersion instances
+      if (lower != null) {
+        final int comparison = version.compareTo(new ComparableVersion(lower.value));
+        final boolean moreThanLower = comparison > 0 || comparison == 0 && lower.including;
+        if (!moreThanLower) {
+          return false;
+        }
+      }
+
+      if (upper != null) {
+        final int comparison = version.compareTo(new ComparableVersion(upper.value));
+        return comparison < 0 || comparison == 0 && upper.including;
+      }
+
+      return true;
+    }
+
+    public record Bound(String value, boolean including) {
 
       public Bound {
         Objects.requireNonNull(value);
@@ -96,6 +135,25 @@ public sealed interface Version {
 
         value = value.strip();
       }
+    }
+
+    @Override
+    public String toString() {
+      final var sb = new StringBuilder();
+
+      if (lower == null) {
+        sb.append("(,");
+      } else {
+        sb.append(lower.including ? '[' : '(').append(lower.value);
+      }
+
+      if (upper == null) {
+        sb.append(",)");
+      } else {
+        sb.append(upper.value).append(upper.including ? ']' : ')');
+      }
+
+      return sb.toString();
     }
   }
 }

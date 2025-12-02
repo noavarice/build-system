@@ -1,8 +1,10 @@
 package com.github.build.deps;
 
+import static java.util.Comparator.reverseOrder;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
@@ -14,6 +16,7 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -23,6 +26,7 @@ import java.util.Set;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.sax.SAXSource;
+import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.apache.maven.pom._4_0.DependencyManagement;
 import org.apache.maven.pom._4_0.Model;
 import org.apache.maven.pom._4_0.Parent;
@@ -35,6 +39,7 @@ import org.xml.sax.SAXException;
 import org.xml.sax.XMLFilter;
 import org.xml.sax.XMLReader;
 import org.xml.sax.helpers.XMLFilterImpl;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * Works with remote artifact repositories.
@@ -50,9 +55,16 @@ public final class RemoteRepository {
 
   private final HttpClient client;
 
-  public RemoteRepository(final URI baseUri, final HttpClient client) {
+  private final ObjectMapper objectMapper;
+
+  public RemoteRepository(
+      final URI baseUri,
+      final HttpClient client,
+      final ObjectMapper objectMapper
+  ) {
     this.baseUri = Objects.requireNonNull(baseUri);
     this.client = Objects.requireNonNull(client);
+    this.objectMapper = objectMapper;
   }
 
   @Override
@@ -283,6 +295,106 @@ public final class RemoteRepository {
       return new URI(result);
     } catch (final URISyntaxException e) {
       throw new IllegalStateException(e);
+    }
+  }
+
+  public Optional<String> findMax(final GroupArtifact ga, final MavenVersion.Range range) {
+    if (range.exactVersion()) {
+      final String result = Objects.requireNonNull(range.lower()).value();
+      return Optional.of(result);
+    }
+
+    if (range.invalid()) {
+      log.warn("Invalid range {}:{}", ga, range);
+      return Optional.empty();
+    }
+
+    final int pageSize = 50;
+    final String baseUri = "https://search.maven.org/solrsearch/select"
+        + "?q=g:" + ga.groupId()
+        + "+AND+a:" + ga.artifactId()
+        + "&rows=" + pageSize
+        + "&core=gav&wt=json";
+    log.debug("Listing {} versions", ga);
+    final VersionSearchResponse firstResponse = queryVersions(baseUri);
+    int start = pageSize;
+    int searchLimit = firstResponse.response().numFound();
+
+    final List<ComparableVersion> versions = new ArrayList<>(searchLimit);
+    versions.addAll(
+        firstResponse.response().docs()
+            .stream()
+            .map(VersionSearchResponse.Doc::version)
+            .map(ComparableVersion::new)
+            .toList()
+    );
+
+    while (start < searchLimit) {
+      final String uri = baseUri + "&start=" + start;
+      final VersionSearchResponse response = queryVersions(uri);
+      versions.addAll(
+          response.response().docs()
+              .stream()
+              .map(VersionSearchResponse.Doc::version)
+              .map(ComparableVersion::new)
+              .toList()
+      );
+      start += pageSize;
+    }
+
+    versions.sort(reverseOrder());
+
+    for (final ComparableVersion version : versions) {
+      if (range.contains(version)) {
+        return Optional.of(version.getCanonical());
+      }
+    }
+
+    return Optional.empty();
+  }
+
+  private VersionSearchResponse queryVersions(final String uriStr) {
+    final var request = HttpRequest
+        .newBuilder(URI.create(uriStr))
+        .GET()
+        .build();
+    final HttpResponse<InputStream> response;
+    try {
+      response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+
+    final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
+    if (!is2xx) {
+      log.error("Request {} failed with status {}", uriStr, response.statusCode());
+      throw new IllegalStateException();
+    }
+
+    return objectMapper.readValue(response.body(), VersionSearchResponse.class);
+  }
+
+  private record VersionSearchResponse(Response response) {
+
+    private VersionSearchResponse {
+      Objects.requireNonNull(response);
+    }
+
+    private record Response(int numFound, List<Doc> docs) {
+
+      private Response {
+        Objects.requireNonNull(docs);
+      }
+    }
+
+    private record Doc(@JsonProperty("v") String version) {
+
+      private Doc {
+        Objects.requireNonNull(version);
+      }
     }
   }
 }

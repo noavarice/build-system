@@ -81,7 +81,7 @@ public final class DependencyService {
         // resolving dependency management versions and accumulating them
         for (final Pom.Dependency d : parent.dependencyManagement()) {
           if (d.scope() == Pom.Dependency.Scope.IMPORT) {
-            final String version = resolveExactVersion(d, properties, dependencyManagement);
+            final String version = resolveVersionString(d, properties, dependencyManagement);
             final GroupArtifactVersion gav = d.groupArtifact()
                 .withVersion(version);
             importDependencyManagement(gav, dependencyManagement);
@@ -89,7 +89,7 @@ public final class DependencyService {
           }
 
           final String version = Objects.requireNonNull(d.version());
-          final String exactVersion = resolveExactVersion(version, properties);
+          final String exactVersion = resolveVersionString(version, properties);
           dependencyManagement.put(d.groupArtifact(), exactVersion);
         }
 
@@ -102,7 +102,30 @@ public final class DependencyService {
 
           switch (d.scope()) {
             case COMPILE, RUNTIME -> {
-              final String exactVersion = resolveExactVersion(d, properties, dependencyManagement);
+              final String versionString = resolveVersionString(
+                  d, properties, dependencyManagement
+              );
+              final var mavenVersion = MavenVersion.parse(versionString);
+              final String exactVersion = switch (mavenVersion) {
+                case MavenVersion.Exact exact -> exact.value();
+                case MavenVersion.Range range -> {
+                  // FIXME: temporary solution, does not account for conflicts
+                  for (final RemoteRepository remoteRepository : remoteRepositories) {
+                    final Optional<String> exactVersionOpt = remoteRepository.findMax(
+                        d.groupArtifact(),
+                        range
+                    );
+                    if (exactVersionOpt.isPresent()) {
+                      yield exactVersionOpt.get();
+                    }
+                  }
+
+                  throw new IllegalStateException(
+                      "Failed to find suitable version in any repository for range " + range
+                  );
+                }
+              };
+
               dependencies.put(d.groupArtifact(), exactVersion);
               graph.add(
                   d.groupArtifact().withVersion(exactVersion),
@@ -158,7 +181,7 @@ public final class DependencyService {
       // resolving dependency management versions and accumulating them
       for (final Pom.Dependency d : parent.dependencyManagement()) {
         if (d.scope() == Pom.Dependency.Scope.IMPORT) {
-          final String version = resolveExactVersion(d, properties, dependencyManagement);
+          final String version = resolveVersionString(d, properties, dependencyManagement);
           final GroupArtifactVersion gav = d.groupArtifact()
               .withVersion(version);
           importDependencyManagement(gav, dependencyManagement);
@@ -166,7 +189,7 @@ public final class DependencyService {
         }
 
         final String version = Objects.requireNonNull(d.version());
-        final String exactVersion = resolveExactVersion(version, properties);
+        final String exactVersion = resolveVersionString(version, properties);
         dependencyManagement.put(d.groupArtifact(), exactVersion);
       }
     }
@@ -192,7 +215,7 @@ public final class DependencyService {
    * @param dependencyManagement Dependency management resolved and accumulated from parent POMs
    * @return Exact (non-placeholder, non-null) dependency version
    */
-  private static String resolveExactVersion(
+  private static String resolveVersionString(
       final Pom.Dependency dependency,
       final Map<String, String> properties,
       final Map<GroupArtifact, String> dependencyManagement
@@ -211,10 +234,10 @@ public final class DependencyService {
       return exactVersion;
     }
 
-    return resolveExactVersion(version, properties);
+    return resolveVersionString(version, properties);
   }
 
-  private static String resolveExactVersion(
+  private static String resolveVersionString(
       final String version,
       final Map<String, String> properties
   ) {

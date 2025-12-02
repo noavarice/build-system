@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
+import tools.jackson.databind.ObjectMapper;
 
 /**
  * {@link RemoteRepository} test.
@@ -39,7 +40,7 @@ class RemoteRepositoryIT {
 
   private final HttpClient client = HttpClient.newHttpClient();
 
-  private final RemoteRepository repo = new RemoteRepository(baseUri, client);
+  private final RemoteRepository repo = new RemoteRepository(baseUri, client, new ObjectMapper());
 
   private final GroupArtifactVersion slf4j = GroupArtifactVersion.parse(
       "org.slf4j:slf4j-api:2.0.17"

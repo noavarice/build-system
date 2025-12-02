@@ -14,7 +14,7 @@ import org.junit.jupiter.params.provider.ValueSource;
  * @since 1.0.0
  */
 @DisplayName("Version domain object test")
-class VersionTest {
+class MavenVersionTest {
 
   @DisplayName("Parsing tests")
   @Nested
@@ -23,8 +23,8 @@ class VersionTest {
     @DisplayName("Parsing exact version works")
     @Test
     void parsingExactVersionWorks() {
-      final Version parsed = Version.parse("1.0.0");
-      assertEquals(new Version.Exact("1.0.0"), parsed);
+      final MavenVersion parsed = MavenVersion.parse("1.0.0");
+      assertEquals(new MavenVersion.Exact("1.0.0"), parsed);
     }
 
     @DisplayName("Parsing invalid range fails")
@@ -37,7 +37,7 @@ class VersionTest {
         "[1.0.0",
     })
     void parsingExactVersionWorks(final String invalidRange) {
-      assertThrows(IllegalArgumentException.class, () -> Version.parse(invalidRange));
+      assertThrows(IllegalArgumentException.class, () -> MavenVersion.parse(invalidRange));
     }
 
     @DisplayName("Parsing single version range works")
@@ -49,11 +49,11 @@ class VersionTest {
         "[ 1.0.0 ]",
     })
     void parsingSingleVersionRangeWorks(final String value) {
-      final Version parsed = Version.parse(value);
+      final MavenVersion parsed = MavenVersion.parse(value);
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", true),
-              new Version.Range.Bound("1.0.0", true)
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", true),
+              new MavenVersion.Range.Bound("1.0.0", true)
           ),
           parsed
       );
@@ -68,10 +68,10 @@ class VersionTest {
         "[ 1.0.0 , )",
     })
     void parsingRightHalfOpenUnboundedRangeWorks(final String value) {
-      final Version parsed = Version.parse(value);
+      final MavenVersion parsed = MavenVersion.parse(value);
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", true),
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", true),
               null
           ),
           parsed
@@ -87,11 +87,11 @@ class VersionTest {
         "( , 1.0.0 ]",
     })
     void parsingLeftHalfOpenUnboundedRangeWorks(final String value) {
-      final Version parsed = Version.parse(value);
+      final MavenVersion parsed = MavenVersion.parse(value);
       assertEquals(
-          new Version.Range(
+          new MavenVersion.Range(
               null,
-              new Version.Range.Bound("1.0.0", true)
+              new MavenVersion.Range.Bound("1.0.0", true)
           ),
           parsed
       );
@@ -106,11 +106,11 @@ class VersionTest {
         "[ 1.0.0 , 1.1.0 )",
     })
     void parsingRightHalfOpenBoundedRangeWorks(final String value) {
-      final Version parsed = Version.parse(value);
+      final MavenVersion parsed = MavenVersion.parse(value);
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", true),
-              new Version.Range.Bound("1.1.0", false)
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", true),
+              new MavenVersion.Range.Bound("1.1.0", false)
           ),
           parsed
       );
@@ -125,11 +125,11 @@ class VersionTest {
         "( 1.0.0 , 1.1.0 ]",
     })
     void parsingLeftHalfOpenBoundedRangeWorks() {
-      final Version parsed = Version.parse("(1.0.0,1.1.0]");
+      final MavenVersion parsed = MavenVersion.parse("(1.0.0,1.1.0]");
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", false),
-              new Version.Range.Bound("1.1.0", true)
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", false),
+              new MavenVersion.Range.Bound("1.1.0", true)
           ),
           parsed
       );
@@ -144,11 +144,11 @@ class VersionTest {
         "[ 1.0.0 , 1.1.0 ]",
     })
     void parsingClosedRangeWorks() {
-      final Version parsed = Version.parse("[1.0.0,1.1.0]");
+      final MavenVersion parsed = MavenVersion.parse("[1.0.0,1.1.0]");
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", true),
-              new Version.Range.Bound("1.1.0", true)
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", true),
+              new MavenVersion.Range.Bound("1.1.0", true)
           ),
           parsed
       );
@@ -163,11 +163,11 @@ class VersionTest {
         "( 1.0.0 , 1.1.0 )",
     })
     void parsingOpenRangeWorks() {
-      final Version parsed = Version.parse("(1.0.0,1.1.0)");
+      final MavenVersion parsed = MavenVersion.parse("(1.0.0,1.1.0)");
       assertEquals(
-          new Version.Range(
-              new Version.Range.Bound("1.0.0", false),
-              new Version.Range.Bound("1.1.0", false)
+          new MavenVersion.Range(
+              new MavenVersion.Range.Bound("1.0.0", false),
+              new MavenVersion.Range.Bound("1.1.0", false)
           ),
           parsed
       );
