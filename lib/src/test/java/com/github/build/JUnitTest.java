@@ -8,7 +8,7 @@ import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepository;
+import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import java.net.URI;
@@ -39,7 +39,7 @@ class JUnitTest {
         System.getenv("NEXUS_HOST"),
         "localhost"
     );
-    final var nexusDocker = new RemoteRepository(
+    final var nexusDocker = new RemoteRepositoryImpl(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
         HttpClient.newHttpClient(),
         new ObjectMapper()

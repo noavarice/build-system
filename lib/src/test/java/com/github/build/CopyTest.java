@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepository;
+import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.util.FileUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -37,7 +37,7 @@ class CopyTest {
 
   CopyTest(@TempDir final Path localRepoBase) {
     final CompileService compileService = new CompileService();
-    final var remoteRepository = new RemoteRepository(
+    final var remoteRepository = new RemoteRepositoryImpl(
         // TODO: externalize
         URI.create("http://localhost:8081/repository/maven-central"),
         HttpClient.newHttpClient(),

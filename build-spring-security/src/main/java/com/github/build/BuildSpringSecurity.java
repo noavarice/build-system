@@ -5,7 +5,7 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepository;
+import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import java.io.IOException;
@@ -42,7 +42,7 @@ public final class BuildSpringSecurity {
         System.getenv("NEXUS_HOST"),
         "localhost"
     );
-    final var nexusDocker = new RemoteRepository(
+    final var nexusDocker = new RemoteRepositoryImpl(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
         httpClient,
         new ObjectMapper()

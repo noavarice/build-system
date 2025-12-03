@@ -9,6 +9,7 @@ import com.github.build.deps.ArtifactDownloadResult;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
+import com.github.build.deps.RemoteRepositoryImpl;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.util.Objects;
@@ -23,7 +24,7 @@ import org.junit.jupiter.api.TestFactory;
 import tools.jackson.databind.ObjectMapper;
 
 /**
- * {@link RemoteRepository} test.
+ * {@link RemoteRepositoryImpl} test.
  *
  * @author noavarice
  * @since 1.0.0
@@ -40,7 +41,8 @@ class RemoteRepositoryIT {
 
   private final HttpClient client = HttpClient.newHttpClient();
 
-  private final RemoteRepository repo = new RemoteRepository(baseUri, client, new ObjectMapper());
+  private final RemoteRepository repo = new RemoteRepositoryImpl(baseUri, client,
+      new ObjectMapper());
 
   private final GroupArtifactVersion slf4j = GroupArtifactVersion.parse(
       "org.slf4j:slf4j-api:2.0.17"
