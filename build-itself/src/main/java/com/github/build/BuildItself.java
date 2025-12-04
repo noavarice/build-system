@@ -136,6 +136,7 @@ public class BuildItself {
 
       final Path xsdPath = workdir
           .resolve(project.path())
+          .resolve("maven-schemas")
           .resolve("maven-4.0.0.xsd");
 
       final var inputSource = new InputSource();

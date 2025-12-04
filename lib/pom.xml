@@ -119,7 +119,7 @@
         <artifactId>jaxb-maven-plugin</artifactId>
         <version>4.0.8</version>
         <configuration>
-          <schemaDirectory>./</schemaDirectory>
+          <schemaDirectory>./maven-schemas</schemaDirectory>
         </configuration>
         <executions>
           <execution>

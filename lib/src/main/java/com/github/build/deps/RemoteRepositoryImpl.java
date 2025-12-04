@@ -1,10 +1,9 @@
 package com.github.build.deps;
 
-import static java.util.Comparator.reverseOrder;
+import static java.util.Comparator.naturalOrder;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
-import com.fasterxml.jackson.annotation.JsonProperty;
 import jakarta.xml.bind.JAXBContext;
 import jakarta.xml.bind.JAXBElement;
 import jakarta.xml.bind.JAXBException;
@@ -16,7 +15,6 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -27,6 +25,7 @@ import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.sax.SAXSource;
 import org.apache.maven.artifact.versioning.ComparableVersion;
+import org.apache.maven.metadata._1_1.Metadata;
 import org.apache.maven.pom._4_0.DependencyManagement;
 import org.apache.maven.pom._4_0.Model;
 import org.apache.maven.pom._4_0.Parent;
@@ -141,7 +140,7 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
       // some POMs may lack namespace declaration
       // which is necessary for JAXB unmarshalling to succeed
-      final XMLFilter filter = new NamespaceAddingFilter();
+      final XMLFilter filter = new NamespaceAddingFilter("http://maven.apache.org/POM/4.0.0");
       filter.setParent(xmlReader);
 
       final var inputSource = new InputSource(is);
@@ -160,30 +159,6 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
     final Pom result = toPom(model);
     return Optional.of(result);
-  }
-
-  /**
-   * XML filter that adds Maven namespace if it's missing.
-   * <p>
-   * This way it's not necessary to change received XML.
-   */
-  public static final class NamespaceAddingFilter extends XMLFilterImpl {
-
-    @Override
-    public void startElement(
-        final String uri,
-        final String localName,
-        final String qName,
-        final Attributes attributes
-    ) throws SAXException {
-      final boolean uriPresent = uri != null && !uri.isBlank();
-      super.startElement(
-          uriPresent ? uri : "http://maven.apache.org/POM/4.0.0",
-          localName,
-          qName,
-          attributes
-      );
-    }
   }
 
   private static Pom toPom(final Model model) {
@@ -307,58 +282,21 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
       return Optional.of(result);
     }
 
-    if (range.invalid()) {
-      log.warn("Invalid range {}:{}", ga, range);
-      return Optional.empty();
+    // TODO: fragile - use dedicated URI builder
+    final URI uri;
+    try {
+      final String uriStr = baseUri
+          + "/" + ga.groupId().replace('.', '/')
+          + '/' + ga.artifactId()
+          + "/maven-metadata.xml";
+      uri = new URI(uriStr);
+    } catch (final URISyntaxException e) {
+      throw new IllegalStateException(e);
     }
 
-    final int pageSize = 50;
-    final String baseUri = "https://search.maven.org/solrsearch/select"
-        + "?q=g:" + ga.groupId()
-        + "+AND+a:" + ga.artifactId()
-        + "&rows=" + pageSize
-        + "&core=gav&wt=json";
-    log.debug("Listing {} versions", ga);
-    final VersionSearchResponse firstResponse = queryVersions(baseUri);
-    int start = pageSize;
-    int searchLimit = firstResponse.response().numFound();
-
-    final List<ComparableVersion> versions = new ArrayList<>(searchLimit);
-    versions.addAll(
-        firstResponse.response().docs()
-            .stream()
-            .map(VersionSearchResponse.Doc::version)
-            .map(ComparableVersion::new)
-            .toList()
-    );
-
-    while (start < searchLimit) {
-      final String uri = baseUri + "&start=" + start;
-      final VersionSearchResponse response = queryVersions(uri);
-      versions.addAll(
-          response.response().docs()
-              .stream()
-              .map(VersionSearchResponse.Doc::version)
-              .map(ComparableVersion::new)
-              .toList()
-      );
-      start += pageSize;
-    }
-
-    versions.sort(reverseOrder());
-
-    for (final ComparableVersion version : versions) {
-      if (range.contains(version)) {
-        return Optional.of(version.getCanonical());
-      }
-    }
-
-    return Optional.empty();
-  }
-
-  private VersionSearchResponse queryVersions(final String uriStr) {
+    log.debug("Downloading {} metadata from {}", ga, uri);
     final var request = HttpRequest
-        .newBuilder(URI.create(uriStr))
+        .newBuilder(uri)
         .GET()
         .build();
     final HttpResponse<InputStream> response;
@@ -373,31 +311,73 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
     final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
     if (!is2xx) {
-      log.error("Request {} failed with status {}", uriStr, response.statusCode());
-      throw new IllegalStateException();
+      log.warn("Downloading {} metadata failed, response status: {}", ga, response.statusCode());
+      return Optional.empty();
     }
 
-    return objectMapper.readValue(response.body(), VersionSearchResponse.class);
+    final Metadata metadata;
+    try (final InputStream is = response.body()) {
+      final var spf = SAXParserFactory.newInstance();
+      spf.setNamespaceAware(true);
+
+      final XMLReader xmlReader = spf
+          .newSAXParser()
+          .getXMLReader();
+
+      // some POMs may lack namespace declaration
+      // which is necessary for JAXB unmarshalling to succeed
+      final XMLFilter filter = new NamespaceAddingFilter("http://maven.apache.org/METADATA/1.1.0");
+      filter.setParent(xmlReader);
+
+      final var inputSource = new InputSource(is);
+      final var saxSource = new SAXSource(filter, inputSource);
+
+      final var context = JAXBContext.newInstance("org.apache.maven.metadata._1_1");
+      final var unmarshaller = context.createUnmarshaller();
+      @SuppressWarnings("unchecked")
+      final var element = (JAXBElement<Metadata>) unmarshaller.unmarshal(saxSource);
+      metadata = element.getValue();
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    } catch (final JAXBException | ParserConfigurationException | SAXException e) {
+      throw new IllegalStateException(e);
+    }
+
+    return metadata.getVersioning().getVersions().getVersion()
+        .stream()
+        .map(ComparableVersion::new)
+        .filter(range::contains)
+        .max(naturalOrder())
+        .map(ComparableVersion::getCanonical);
   }
 
-  private record VersionSearchResponse(Response response) {
+  /**
+   * XML filter that adds Maven namespace if it's missing.
+   * <p>
+   * This way it's not necessary to change received XML.
+   */
+  public static final class NamespaceAddingFilter extends XMLFilterImpl {
 
-    private VersionSearchResponse {
-      Objects.requireNonNull(response);
+    private final String namespace;
+
+    public NamespaceAddingFilter(final String namespace) {
+      this.namespace = namespace;
     }
 
-    private record Response(int numFound, List<Doc> docs) {
-
-      private Response {
-        Objects.requireNonNull(docs);
-      }
-    }
-
-    private record Doc(@JsonProperty("v") String version) {
-
-      private Doc {
-        Objects.requireNonNull(version);
-      }
+    @Override
+    public void startElement(
+        final String uri,
+        final String localName,
+        final String qName,
+        final Attributes attributes
+    ) throws SAXException {
+      final boolean uriPresent = uri != null && !uri.isBlank();
+      super.startElement(
+          uriPresent ? uri : namespace,
+          localName,
+          qName,
+          attributes
+      );
     }
   }
 }
