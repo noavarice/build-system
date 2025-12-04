@@ -42,16 +42,6 @@ public final class TestService {
     Objects.requireNonNull(project);
     log.info("[project={}] Setting up tests", project.id());
 
-    final Path mainClasses = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().classesDir())
-        .resolve("main");
-    final Path mainResources = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().resourcesDir())
-        .resolve("main");
     final Path testClasses = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())

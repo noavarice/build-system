@@ -81,11 +81,13 @@ public class BuildItself {
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
+        .compileAndRunWith("org.apache.maven:maven-artifact:3.9.11")
         .compileWith(
             "org.jspecify:jspecify:1.0.0",
             "org.slf4j:slf4j-api:2.0.17",
             "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2",
-            "org.junit.platform:junit-platform-launcher:1.13.4"
+            "org.junit.platform:junit-platform-launcher:1.13.4",
+            "tools.jackson.core:jackson-databind:3.0.3"
         )
         .build();
     final var test = SourceSet
@@ -96,7 +98,8 @@ public class BuildItself {
             "org.junit.jupiter:junit-jupiter-params:5.13.4",
             "org.assertj:assertj-core:3.27.3",
             "ch.qos.logback:logback-classic:1.5.21",
-            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
+            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0",
+            "tools.jackson.core:jackson-databind:3.0.3"
         )
         .runWith(
             "org.junit.jupiter:junit-jupiter-engine:5.13.4",
@@ -112,10 +115,20 @@ public class BuildItself {
         .build();
 
     generateSourcesFromMavenXsd(workdir, project);
-    service.compileMain(workdir, project);
+    final boolean mainCompiled = service.compileMain(workdir, project);
+    if (!mainCompiled) {
+      log.error("Build failed");
+      System.exit(1);
+      return;
+    }
     service.copyResources(workdir, project, SourceSet.Id.MAIN);
 
-    service.compileTest(workdir, project);
+    final boolean testCompiled = service.compileTest(workdir, project);
+    if (!testCompiled) {
+      log.error("Build failed");
+      System.exit(1);
+      return;
+    }
     service.copyResources(workdir, project, SourceSet.Id.TEST);
 
     final TestResults results = testService.withJUnit(workdir, project);
@@ -129,57 +142,63 @@ public class BuildItself {
     log.info("[project={}] Generating Maven XSD sources with XJC", project.id());
 
     final var errorReceiver = new LoggingErrorReceiver();
+    final var files = List.of(
+        workdir
+            .resolve(project.path())
+            .resolve("maven-schemas")
+            .resolve("maven-4.0.0.xsd"),
+        workdir
+            .resolve(project.path())
+            .resolve("maven-schemas")
+            .resolve("repository-metadata-1.1.0.xsd")
+    );
+    final Path targetDir = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve("generated-sources")
+        .resolve("xjc");
+    try {
+      Files.createDirectories(targetDir);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
 
-    final Options options;
-    {
-      options = new Options();
+    for (final Path xsdPath : files) {
+      final Options options;
+      {
+        options = new Options();
 
-      final Path xsdPath = workdir
-          .resolve(project.path())
-          .resolve("maven-schemas")
-          .resolve("maven-4.0.0.xsd");
+        final var inputSource = new InputSource();
+        inputSource.setSystemId(xsdPath.toString());
+        options.addGrammar(inputSource);
+        options.targetDir = targetDir.toFile();
+        options.encoding = StandardCharsets.UTF_8.name();
+        options.setSchemaLanguage(Language.XMLSCHEMA);
+      }
 
-      final var inputSource = new InputSource();
-      inputSource.setSystemId(xsdPath.toString());
-      options.addGrammar(inputSource);
+      final Model model = ModelLoader.load(options, new JCodeModel(), errorReceiver);
+      if (model == null) {
+        throw new IllegalStateException();
+      }
 
-      final Path targetDir = workdir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve("generated-sources")
-          .resolve("xjc");
+      options.classNameReplacer.forEach(model.codeModel::addClassNameReplacer);
+      final Outline outline = model.generateCode(model.options, errorReceiver);
+      if (outline == null) {
+        throw new IllegalStateException();
+      }
+
+      final CodeWriter codeWriter;
       try {
-        Files.createDirectories(targetDir);
+        codeWriter = outline.getModel().options.createCodeWriter();
+      } catch (IOException e) {
+        throw new UncheckedIOException(e);
+      }
+
+      try {
+        outline.getModel().codeModel.build(new LoggingCodeWriter(codeWriter));
       } catch (final IOException e) {
         throw new UncheckedIOException(e);
       }
-      options.targetDir = targetDir.toFile();
-      options.encoding = StandardCharsets.UTF_8.name();
-      options.setSchemaLanguage(Language.XMLSCHEMA);
-    }
-
-    final Model model = ModelLoader.load(options, new JCodeModel(), errorReceiver);
-    if (model == null) {
-      throw new IllegalStateException();
-    }
-
-    options.classNameReplacer.forEach(model.codeModel::addClassNameReplacer);
-    final Outline outline = model.generateCode(model.options, errorReceiver);
-    if (outline == null) {
-      throw new IllegalStateException();
-    }
-
-    final CodeWriter codeWriter;
-    try {
-      codeWriter = outline.getModel().options.createCodeWriter();
-    } catch (IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    try {
-      outline.getModel().codeModel.build(new LoggingCodeWriter(codeWriter));
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
     }
   }
 
