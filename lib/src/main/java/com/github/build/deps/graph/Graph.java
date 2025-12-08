@@ -4,6 +4,7 @@ import static java.util.stream.Collectors.toUnmodifiableMap;
 
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.deps.MavenVersion;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -27,19 +28,19 @@ public final class Graph {
   private final List<Node> nodes = new ArrayList<>();
 
   public void add(
-      final GroupArtifactVersion gav,
+      final GraphValue value,
       final Set<GroupArtifact> exclusions,
       final GraphPath path
   ) {
-    Objects.requireNonNull(gav);
+    Objects.requireNonNull(value);
     Objects.requireNonNull(exclusions);
     Objects.requireNonNull(path);
 
     var currentNodes = this.nodes;
-    for (final GroupArtifactVersion value : path) {
+    for (final GraphValue pathPart : path) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
-        if (currentNode.value.equals(value)) {
+        if (currentNode.value.equals(pathPart)) {
           currentNodes = currentNode.nodes;
           found = true;
           break;
@@ -47,13 +48,13 @@ public final class Graph {
       }
 
       if (!found) {
-        final var missingTransitiveNode = new Node(value, exclusions);
+        final var missingTransitiveNode = new Node(pathPart, exclusions);
         currentNodes.add(missingTransitiveNode);
         currentNodes = missingTransitiveNode.nodes;
       }
     }
 
-    final var newNode = new Node(gav, exclusions);
+    final var newNode = new Node(value, exclusions);
     currentNodes.add(newNode);
   }
 
@@ -64,7 +65,7 @@ public final class Graph {
     }
 
     var currentNodes = this.nodes;
-    for (final GroupArtifactVersion value : path.removeLast()) {
+    for (final GraphValue value : path.removeLast()) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(value)) {
@@ -79,7 +80,7 @@ public final class Graph {
       }
     }
 
-    final GroupArtifactVersion toRemove = path.getLast();
+    final GraphValue toRemove = path.getLast();
     return currentNodes.removeIf(node -> node.value.equals(toRemove));
   }
 
@@ -87,7 +88,7 @@ public final class Graph {
     Objects.requireNonNull(path);
 
     var currentNodes = nodes;
-    for (final GroupArtifactVersion value : path) {
+    for (final GraphValue value : path) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(value)) {
@@ -105,17 +106,12 @@ public final class Graph {
     return true;
   }
 
-  public Set<GraphPath> findAllPaths(final GroupArtifactVersion gav) {
-    Objects.requireNonNull(gav);
-    return findAllPaths(c -> c.equals(gav));
-  }
-
   public Set<GraphPath> findAllPaths(final GroupArtifact groupArtifact) {
     Objects.requireNonNull(groupArtifact);
     return findAllPaths(c -> c.groupArtifact().equals(groupArtifact));
   }
 
-  private Set<GraphPath> findAllPaths(final Predicate<GroupArtifactVersion> condition) {
+  private Set<GraphPath> findAllPaths(final Predicate<GraphValue> condition) {
     Objects.requireNonNull(condition);
 
     record State(GraphPath path, List<Node> nodes) {
@@ -137,7 +133,7 @@ public final class Graph {
     while (!queue.isEmpty()) {
       final State state = queue.removeFirst();
       for (final Node node : state.nodes) {
-        final GroupArtifactVersion gav = node.value;
+        final GraphValue gav = node.value;
         if (condition.test(gav)) {
           result.add(state.path.addLast(gav));
         } else if (!node.nodes.isEmpty()) {
@@ -154,7 +150,7 @@ public final class Graph {
         GraphPath path,
         List<Node> nodes,
         Set<GroupArtifact> exclusions,
-        Map<GroupArtifact, String> overrides
+        Map<GroupArtifact, MavenVersion> overrides
     ) {
 
       State {
@@ -195,7 +191,7 @@ public final class Graph {
         }
 
         final boolean overridden = currentState.overrides.containsKey(groupArtifact);
-        final String currentVersion = node.value.version();
+        final MavenVersion currentVersion = node.value.version();
         if (overridden) {
           log.info("{} version {} is overridden by version {}",
               groupArtifact,
@@ -207,7 +203,7 @@ public final class Graph {
 
         final List<GraphPath> paths = artifactPaths
             .computeIfAbsent(groupArtifact, ignored -> new ArrayList<>());
-        final Set<GroupArtifactVersion> coordinates = paths
+        final Set<GraphValue> coordinates = paths
             .stream()
             .map(GraphPath::getLast)
             .collect(Collectors.toUnmodifiableSet());
@@ -255,7 +251,12 @@ public final class Graph {
 
     do {
       final Node currentNode = queue.removeFirst();
-      result.add(currentNode.value);
+      switch (currentNode.value.version()) {
+        case MavenVersion.Exact exact ->
+            result.add(currentNode.value.groupArtifact().withVersion(exact.value()));
+        case MavenVersion.Range range ->
+            throw new UnsupportedOperationException(); // FIXME: handle ranges
+      }
       queue.addAll(currentNode.nodes);
     } while (!queue.isEmpty());
 
@@ -264,13 +265,13 @@ public final class Graph {
 
   private static final class Node {
 
-    private final GroupArtifactVersion value;
+    private final GraphValue value;
 
     private final Set<GroupArtifact> exclusions;
 
     private final List<Node> nodes = new ArrayList<>();
 
-    private Node(final GroupArtifactVersion value, final Set<GroupArtifact> exclusions) {
+    private Node(final GraphValue value, final Set<GroupArtifact> exclusions) {
       this.value = Objects.requireNonNull(value);
       this.exclusions = Set.copyOf(exclusions);
     }

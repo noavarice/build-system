@@ -3,7 +3,6 @@ package com.github.build.deps.graph;
 import static java.util.stream.Collectors.joining;
 
 import com.github.build.deps.GroupArtifact;
-import com.github.build.deps.GroupArtifactVersion;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -13,23 +12,23 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public final class GraphPath implements Iterable<GroupArtifactVersion> {
+public final class GraphPath implements Iterable<GraphValue> {
 
   public static final GraphPath ROOT = new GraphPath();
 
-  private final List<GroupArtifactVersion> nodes;
+  private final List<GraphValue> nodes;
 
-  public GraphPath(final GroupArtifactVersion... values) {
+  public GraphPath(final GraphValue... values) {
     this(List.of(values));
   }
 
-  public GraphPath(final List<GroupArtifactVersion> nodes) {
+  public GraphPath(final List<GraphValue> nodes) {
     this.nodes = List.copyOf(nodes);
   }
 
-  public GraphPath addLast(final GroupArtifactVersion node) {
+  public GraphPath addLast(final GraphValue value) {
     final var result = new ArrayList<>(nodes);
-    result.add(node);
+    result.add(value);
     return new GraphPath(result);
   }
 
@@ -39,7 +38,7 @@ public final class GraphPath implements Iterable<GroupArtifactVersion> {
     return new GraphPath(result);
   }
 
-  public GroupArtifactVersion getLast() {
+  public GraphValue getLast() {
     return nodes.getLast();
   }
 
@@ -57,8 +56,8 @@ public final class GraphPath implements Iterable<GroupArtifactVersion> {
     }
 
     for (int i = 0; i < nodes.size() - 1; i++) {
-      final GroupArtifactVersion c1 = nodes.get(i);
-      final GroupArtifactVersion c2 = other.nodes.get(i);
+      final GraphValue c1 = nodes.get(i);
+      final GraphValue c2 = other.nodes.get(i);
       if (!c1.equals(c2)) {
         return false;
       }
@@ -73,12 +72,12 @@ public final class GraphPath implements Iterable<GroupArtifactVersion> {
   public String toString() {
     return nodes
         .stream()
-        .map(GroupArtifactVersion::toString)
+        .map(GraphValue::toString)
         .collect(joining(" -> "));
   }
 
   @Override
-  public Iterator<GroupArtifactVersion> iterator() {
+  public Iterator<GraphValue> iterator() {
     return nodes.stream().iterator();
   }
 

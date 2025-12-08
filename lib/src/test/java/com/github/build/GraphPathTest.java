@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.graph.GraphPath;
+import com.github.build.deps.graph.GraphValue;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Test;
@@ -13,20 +14,20 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Graph path tests")
 class GraphPathTest {
 
-  private final GroupArtifactVersion slf4jApi = GroupArtifactVersion.parse(
-      "org.slf4j:slf4j-api:2.0.17"
+  private final GraphValue slf4jApi = GraphValue.of(
+      GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17")
   );
 
-  private final GroupArtifactVersion slf4jApiPrevious = GroupArtifactVersion.parse(
-      "org.slf4j:slf4j-api:2.0.16"
+  private final GraphValue slf4jApiPrevious = GraphValue.of(
+      GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.16")
   );
 
-  private final GroupArtifactVersion logbackCore = GroupArtifactVersion.parse(
-      "ch.qos.logback:logback-core:1.5.18"
+  private final GraphValue logbackCore = GraphValue.of(
+      GroupArtifactVersion.parse("ch.qos.logback:logback-core:1.5.18")
   );
 
-  private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
-      "ch.qos.logback:logback-classic:1.5.18"
+  private final GraphValue logbackClassic = GraphValue.of(
+      GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.18")
   );
 
   @DisplayName("Check adding to empty path works")

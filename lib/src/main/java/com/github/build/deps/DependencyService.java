@@ -2,6 +2,7 @@ package com.github.build.deps;
 
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
+import com.github.build.deps.graph.GraphValue;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -45,21 +46,27 @@ public final class DependencyService {
 
   public Set<GroupArtifactVersion> resolveTransitive(final GroupArtifactVersion artifact) {
     final var queue = new ArrayList<GraphPath>();
-    queue.addLast(new GraphPath(artifact));
+    queue.addLast(new GraphPath(GraphValue.of(artifact)));
 
     final var graph = new Graph();
-    graph.add(artifact, Set.of(), GraphPath.ROOT);
+    graph.add(GraphValue.of(artifact), Set.of(), GraphPath.ROOT);
 
     while (!queue.isEmpty()) {
       final GraphPath currentPath = queue.removeLast();
-      final GroupArtifactVersion current = currentPath.getLast();
+      final GraphValue current = currentPath.getLast();
 
       log.info("Resolving direct dependencies for {}", current);
 
       // resolve POM and all of its parents, so it's possible to resolve versions
       // for transitive dependencies (e.g., when dependency version is set implicitly
       // or explicitly but via POM property)
-      final Pom pom = poms.computeIfAbsent(current, this::findPom);
+      final GroupArtifactVersion currentGav = switch (current.version()) {
+        case MavenVersion.Exact exact -> current.groupArtifact().withVersion(exact.value());
+        case MavenVersion.Range ignored -> throw new IllegalStateException(
+            "Only exact versions can be resolved"
+        );
+      };
+      final Pom pom = poms.computeIfAbsent(currentGav, this::findPom);
       final List<Pom> parents = resolveParents(pom);
       log.debug("Resolved {} parents: {}", current, parents.stream().map(Pom::gav).toList());
 
@@ -128,7 +135,7 @@ public final class DependencyService {
 
               dependencies.put(d.groupArtifact(), exactVersion);
               graph.add(
-                  d.groupArtifact().withVersion(exactVersion),
+                  GraphValue.of(d.groupArtifact().withVersion(exactVersion)),
                   d.exclusions(),
                   currentPath
               );
@@ -150,6 +157,7 @@ public final class DependencyService {
       log.debug("Found {} dependencies for resolution: {}", moreToResolve.size(), moreToResolve);
       moreToResolve
           .stream()
+          .map(GraphValue::of)
           .map(currentPath::addLast)
           .forEach(queue::addLast);
     }

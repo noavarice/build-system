@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
+import com.github.build.deps.graph.GraphValue;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -22,29 +23,41 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Dependency graph model test")
 class GraphTest {
 
-  private final GroupArtifactVersion starterTomcat = GroupArtifactVersion.parse(
+  private final GroupArtifactVersion starterTomcatGav = GroupArtifactVersion.parse(
       "org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"
   );
 
-  private final GroupArtifactVersion tomcatEmbedCore = GroupArtifactVersion.parse(
+  private final GraphValue starterTomcat = GraphValue.of(starterTomcatGav);
+
+  private final GroupArtifactVersion tomcatEmbedCoreGav = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"
   );
 
-  private final GroupArtifactVersion tomcatEmbedEl = GroupArtifactVersion.parse(
+  private final GraphValue tomcatEmbedCore = GraphValue.of(tomcatEmbedCoreGav);
+
+  private final GroupArtifactVersion tomcatEmbedElGav = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"
   );
 
-  private final GroupArtifactVersion tomcatEmbedWebsocket = GroupArtifactVersion.parse(
+  private final GraphValue tomcatEmbedEl = GraphValue.of(tomcatEmbedElGav);
+
+  private final GroupArtifactVersion tomcatEmbedWebsocketGav = GroupArtifactVersion.parse(
       "org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"
   );
 
-  private final GroupArtifactVersion tomcatAnnotations = GroupArtifactVersion.parse(
+  private final GraphValue tomcatEmbedWebsocket = GraphValue.of(tomcatEmbedWebsocketGav);
+
+  private final GroupArtifactVersion tomcatAnnotationsGav = GroupArtifactVersion.parse(
       "org.apache.tomcat:tomcat-annotations-api:jar:10.1.20"
   );
 
-  private final GroupArtifactVersion jakartaAnnotations = GroupArtifactVersion.parse(
+  private final GraphValue tomcatAnnotations = GraphValue.of(tomcatAnnotationsGav);
+
+  private final GroupArtifactVersion jakartaAnnotationsGav = GroupArtifactVersion.parse(
       "jakarta.annotation:jakarta.annotation-api:2.1.1"
   );
+
+  private final GraphValue jakartaAnnotations = GraphValue.of(jakartaAnnotationsGav);
 
   @DisplayName("Adding graph path works")
   @TestFactory
@@ -284,11 +297,11 @@ class GraphTest {
     );
 
     final Set<GroupArtifactVersion> expected = Set.of(
-        starterTomcat,
-        jakartaAnnotations,
-        tomcatEmbedEl,
-        tomcatEmbedCore,
-        tomcatEmbedWebsocket
+        starterTomcatGav,
+        jakartaAnnotationsGav,
+        tomcatEmbedElGav,
+        tomcatEmbedCoreGav,
+        tomcatEmbedWebsocketGav
     );
     final Set<GroupArtifactVersion> actual = graph.toDependencies();
     assertThat(actual).isEqualTo(expected);
