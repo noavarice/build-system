@@ -10,6 +10,7 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
+import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
 import java.net.URI;
@@ -58,6 +59,8 @@ class DependencyServiceIT {
 
   private final Path localRepositoryBasePath;
 
+  private final RemoteRepositoryMock remoteRepository;
+
   private final DependencyService service;
 
   DependencyServiceIT(@TempDir final Path localRepositoryBasePath) {
@@ -77,7 +80,8 @@ class DependencyServiceIT {
         HttpClient.newHttpClient(),
         new ObjectMapper()
     );
-    service = new DependencyService(List.of(mavenCentral), localRepository);
+    remoteRepository = new RemoteRepositoryMock(mavenCentral);
+    service = new DependencyService(List.of(remoteRepository), localRepository);
   }
 
   @Nested
@@ -216,6 +220,93 @@ class DependencyServiceIT {
           "org.bouncycastle:bcpkix-jdk18on:1.80"
       );
       assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
+    }
+
+    @DisplayName("Check resolving dependencies with multiple hard version requirements")
+    @Test
+    void testResolvingWithMultipleHardVersionRequirements() {
+      final var app = GroupArtifactVersion.parse(
+          "resolve-multiple-hard-version-requirements:app:1.0.0"
+      );
+      final var lib1 = GroupArtifactVersion.parse(
+          "resolve-multiple-hard-version-requirements:lib-1:1.0.0"
+      );
+      final var lib2 = GroupArtifactVersion.parse(
+          "resolve-multiple-hard-version-requirements:lib-2:1.0.0"
+      );
+      remoteRepository.mockPom(app, new Pom(
+          app.groupId(),
+          app.artifactId(),
+          app.version(),
+          null,
+          Map.of(),
+          List.of(),
+          List.of(
+              new Pom.Dependency(
+                  lib1.groupId(),
+                  lib1.artifactId(),
+                  lib1.version(),
+                  Pom.Dependency.Scope.COMPILE,
+                  Set.of(),
+                  false
+              ),
+              new Pom.Dependency(
+                  lib2.groupId(),
+                  lib2.artifactId(),
+                  lib2.version(),
+                  Pom.Dependency.Scope.COMPILE,
+                  Set.of(),
+                  false
+              )
+          )
+      ));
+      remoteRepository.mockPom(lib1, new Pom(
+          lib1.groupId(),
+          lib1.artifactId(),
+          lib1.version(),
+          null,
+          Map.of(),
+          List.of(),
+          List.of(
+              new Pom.Dependency(
+                  "org.bouncycastle",
+                  "bcpkix-jdk18on",
+                  "[1.78,1.79)", // alone resolves to 1.78.1
+                  Pom.Dependency.Scope.COMPILE,
+                  Set.of(),
+                  false
+              )
+          )
+      ));
+      remoteRepository.mockPom(lib2, new Pom(
+          lib2.groupId(),
+          lib2.artifactId(),
+          lib2.version(),
+          null,
+          Map.of(),
+          List.of(),
+          List.of(
+              new Pom.Dependency(
+                  "org.bouncycastle",
+                  "bcpkix-jdk18on",
+                  "[1.77,1.78]",
+                  Pom.Dependency.Scope.COMPILE,
+                  Set.of(),
+                  false
+              )
+          )
+      ));
+
+      final Set<GroupArtifactVersion> expected = Set.of(
+          app,
+          lib1,
+          lib2,
+          GroupArtifactVersion.parse("org.bouncycastle:bcpkix-jdk18on:1.78"),
+          GroupArtifactVersion.parse("org.bouncycastle:bcprov-jdk18on:1.78"),
+          GroupArtifactVersion.parse("org.bouncycastle:bcutil-jdk18on:1.78")
+      );
+      final Set<GroupArtifactVersion> actual = service.resolveTransitive(app);
+      assertEquals(expected, actual);
     }
   }
 
