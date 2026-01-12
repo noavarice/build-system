@@ -77,6 +77,11 @@ public sealed interface MavenVersion {
 
       value = value.strip();
     }
+
+    @Override
+    public String toString() {
+      return value;
+    }
   }
 
   record Range(@Nullable Bound lower, @Nullable Bound upper) implements MavenVersion {
@@ -85,6 +90,7 @@ public sealed interface MavenVersion {
       if (lower == null && upper == null) {
         throw new IllegalStateException();
       }
+      // TODO: check bounds are ordered
     }
 
     public boolean exactVersion() {
@@ -147,8 +153,10 @@ public sealed interface MavenVersion {
         sb.append(lower.including ? '[' : '(').append(lower.value);
       }
 
+      sb.append(',');
+
       if (upper == null) {
-        sb.append(",)");
+        sb.append(")");
       } else {
         sb.append(upper.value).append(upper.including ? ']' : ')');
       }
