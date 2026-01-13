@@ -1,7 +1,5 @@
 package com.github.build.deps.graph;
 
-import static java.util.stream.Collectors.toUnmodifiableMap;
-
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.MavenVersion;
@@ -13,7 +11,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Predicate;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -149,33 +146,24 @@ public final class Graph {
     record State(
         GraphPath path,
         List<Node> nodes,
-        Set<GroupArtifact> exclusions,
-        Map<GroupArtifact, MavenVersion> overrides
+        Set<GroupArtifact> exclusions
     ) {
 
       State {
         Objects.requireNonNull(path);
         nodes = List.copyOf(nodes);
         exclusions = Set.copyOf(exclusions);
-        overrides = Map.copyOf(overrides);
       }
 
       State next(final Node node) {
         final var nextExclusions = new HashSet<>(exclusions);
         nextExclusions.addAll(node.exclusions);
-
-        final var nextOverrides = new HashMap<>(overrides);
-        final var currentLevel = nodes
-            .stream()
-            .collect(toUnmodifiableMap(n -> n.value.groupArtifact(), n -> n.value.version()));
-        nextOverrides.putAll(currentLevel);
-
-        return new State(path.addLast(node.value), node.nodes, nextExclusions, nextOverrides);
+        return new State(path.addLast(node.value), node.nodes, nextExclusions);
       }
     }
 
     final var queue = new ArrayList<State>();
-    queue.add(new State(GraphPath.ROOT, nodes, Set.of(), Map.of()));
+    queue.add(new State(GraphPath.ROOT, nodes, Set.of()));
 
     final var result = new Graph();
 
@@ -190,27 +178,9 @@ public final class Graph {
           continue;
         }
 
-        final boolean overridden = currentState.overrides.containsKey(groupArtifact);
-        final MavenVersion currentVersion = node.value.version();
-        if (overridden) {
-          log.info("{} version {} is overridden by version {}",
-              groupArtifact,
-              currentVersion,
-              currentState.overrides.get(groupArtifact)
-          );
-          continue;
-        }
-
         final List<GraphPath> paths = artifactPaths
             .computeIfAbsent(groupArtifact, ignored -> new ArrayList<>());
-        final Set<GraphValue> coordinates = paths
-            .stream()
-            .map(GraphPath::getLast)
-            .collect(Collectors.toUnmodifiableSet());
-        if (!coordinates.contains(node.value)) {
-          final GraphPath anotherPath = currentState.path.addLast(node.value);
-          paths.add(anotherPath);
-        }
+        paths.add(currentState.path.addLast(node.value));
         result.add(node.value, node.exclusions, currentState.path);
         queue.add(currentState.next(node));
       }
