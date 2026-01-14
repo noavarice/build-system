@@ -65,6 +65,9 @@ class GraphTest {
     final var graph = new Graph();
 
     final var annotationsPath = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+    graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
+    graph.add(tomcatEmbedWebsocket, Set.of(), new GraphPath(starterTomcat));
+    graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
     graph.add(tomcatAnnotations, Set.of(), annotationsPath);
 
     final var elPath = new GraphPath(starterTomcat);
@@ -86,6 +89,11 @@ class GraphTest {
   @TestFactory
   DynamicTest[] testRemove() {
     final var graph = new Graph();
+    graph.add(
+        starterTomcat,
+        Set.of(),
+        GraphPath.ROOT
+    );
     graph.add(
         jakartaAnnotations,
         Set.of(),
@@ -110,6 +118,11 @@ class GraphTest {
         tomcatEmbedWebsocket,
         Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(),
+        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
     );
     graph.add(
         tomcatAnnotations,
@@ -184,6 +197,11 @@ class GraphTest {
   DynamicTest[] testSpringBootStarterTomcatResolvedGraph() {
     final var graph = new Graph();
     graph.add(
+        starterTomcat,
+        Set.of(),
+        GraphPath.ROOT
+    );
+    graph.add(
         jakartaAnnotations,
         Set.of(),
         new GraphPath(starterTomcat)
@@ -207,6 +225,11 @@ class GraphTest {
         tomcatEmbedWebsocket,
         Set.of(tomcatAnnotations.groupArtifact()),
         new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedCore,
+        Set.of(),
+        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
     );
     graph.add(
         tomcatAnnotations,
@@ -276,6 +299,11 @@ class GraphTest {
   void testSpringBootStarterTomcatDependencySet() {
     final var graph = new Graph();
     graph.add(
+        starterTomcat,
+        Set.of(),
+        GraphPath.ROOT
+    );
+    graph.add(
         jakartaAnnotations,
         Set.of(),
         new GraphPath(starterTomcat)
@@ -287,6 +315,11 @@ class GraphTest {
     );
     graph.add(
         tomcatEmbedCore,
+        Set.of(),
+        new GraphPath(starterTomcat)
+    );
+    graph.add(
+        tomcatEmbedWebsocket,
         Set.of(),
         new GraphPath(starterTomcat)
     );

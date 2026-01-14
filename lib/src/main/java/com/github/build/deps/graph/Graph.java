@@ -33,11 +33,22 @@ public final class Graph {
     Objects.requireNonNull(exclusions);
     Objects.requireNonNull(path);
 
+    var currentPath = GraphPath.ROOT;
     var currentNodes = this.nodes;
+
+    final var exclusionsDuringPath = new HashSet<>();
+    final var excludedBy = new HashSet<GraphPath>();
+
     for (final GraphValue pathPart : path) {
       boolean found = false;
       for (final Node currentNode : currentNodes) {
         if (currentNode.value.equals(pathPart)) {
+          currentPath = currentPath.addLast(pathPart);
+          if (exclusionsDuringPath.contains(pathPart.groupArtifact())) {
+            excludedBy.add(currentPath);
+          }
+
+          exclusionsDuringPath.addAll(currentNode.exclusions);
           currentNodes = currentNode.nodes;
           found = true;
           break;
@@ -45,13 +56,15 @@ public final class Graph {
       }
 
       if (!found) {
-        final var missingTransitiveNode = new Node(pathPart, exclusions);
-        currentNodes.add(missingTransitiveNode);
-        currentNodes = missingTransitiveNode.nodes;
+        throw new IllegalArgumentException("Path not found");
       }
     }
 
-    final var newNode = new Node(value, exclusions);
+    if (exclusionsDuringPath.contains(value.groupArtifact())) {
+      excludedBy.add(path);
+    }
+
+    final var newNode = new Node(value, exclusions, excludedBy);
     currentNodes.add(newNode);
   }
 
@@ -81,6 +94,7 @@ public final class Graph {
     return currentNodes.removeIf(node -> node.value.equals(toRemove));
   }
 
+  // TODO: should this method account for exclusions?
   public boolean contains(final GraphPath path) {
     Objects.requireNonNull(path);
 
@@ -143,27 +157,20 @@ public final class Graph {
   }
 
   public Graph resolve() {
-    record State(
-        GraphPath path,
-        List<Node> nodes,
-        Set<GroupArtifact> exclusions
-    ) {
+    record State(GraphPath path, List<Node> nodes) {
 
       State {
         Objects.requireNonNull(path);
         nodes = List.copyOf(nodes);
-        exclusions = Set.copyOf(exclusions);
       }
 
       State next(final Node node) {
-        final var nextExclusions = new HashSet<>(exclusions);
-        nextExclusions.addAll(node.exclusions);
-        return new State(path.addLast(node.value), node.nodes, nextExclusions);
+        return new State(path.addLast(node.value), node.nodes);
       }
     }
 
     final var queue = new ArrayList<State>();
-    queue.add(new State(GraphPath.ROOT, nodes, Set.of()));
+    queue.add(new State(GraphPath.ROOT, nodes));
 
     final var result = new Graph();
 
@@ -172,9 +179,13 @@ public final class Graph {
       final State currentState = queue.removeFirst();
       for (final Node node : currentState.nodes) {
         final GroupArtifact groupArtifact = node.value.groupArtifact();
-        final boolean excluded = currentState.exclusions.contains(groupArtifact);
+        final boolean excluded = !node.excludedBy.isEmpty();
         if (excluded) {
-          log.info("{} is excluded", groupArtifact);
+          if (log.isDebugEnabled()) {
+            log.debug("{} is excluded by {}", groupArtifact, node.excludedBy);
+          } else {
+            log.info("{} is excluded", groupArtifact);
+          }
           continue;
         }
 
@@ -239,11 +250,18 @@ public final class Graph {
 
     private final Set<GroupArtifact> exclusions;
 
+    private final Set<GraphPath> excludedBy;
+
     private final List<Node> nodes = new ArrayList<>();
 
-    private Node(final GraphValue value, final Set<GroupArtifact> exclusions) {
+    private Node(
+        final GraphValue value,
+        final Set<GroupArtifact> exclusions,
+        final Set<GraphPath> excludedBy
+    ) {
       this.value = Objects.requireNonNull(value);
       this.exclusions = Set.copyOf(exclusions);
+      this.excludedBy = Set.copyOf(excludedBy);
     }
 
     @Override
