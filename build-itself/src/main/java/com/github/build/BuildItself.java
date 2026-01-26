@@ -2,7 +2,9 @@ package com.github.build;
 
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.LocalRepository;
+import com.github.build.deps.MavenArtifactResolverDependencyService;
 import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
@@ -30,6 +32,10 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
@@ -43,38 +49,7 @@ public class BuildItself {
   public static void main(final String[] args) {
     final var compileService = new CompileService();
 
-    final var httpClient = HttpClient.newHttpClient();
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-    final var nexusDocker = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient,
-        new ObjectMapper()
-    );
-
-    final Path localRepositoryBasePath;
-    try {
-      localRepositoryBasePath = Files.createTempDirectory("build-local");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-    try {
-      Files.createDirectory(localRepositoryBasePath);
-    } catch (final IOException e) {
-      if (!(e instanceof FileAlreadyExistsException)) {
-        throw new UncheckedIOException(e);
-      }
-    }
-    final var localRepository = new LocalRepository(
-        localRepositoryBasePath,
-        Map.of("sha256", "SHA-256")
-    );
-    final var dependencyService = new DependencyService(
-        List.of(nexusDocker),
-        localRepository
-    );
+    final DependencyService dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
     final BuildService service = new BuildService(compileService, dependencyService);
     final Path workdir = Path.of(args[0]);
@@ -85,6 +60,8 @@ public class BuildItself {
         .compileWith(
             "org.jspecify:jspecify:1.0.0",
             "org.slf4j:slf4j-api:2.0.17",
+            "org.apache.maven:maven-resolver-provider:3.9.9",
+            "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
             "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2",
             "org.junit.platform:junit-platform-launcher:1.13.4",
             "tools.jackson.core:jackson-databind:3.0.3"
@@ -94,6 +71,8 @@ public class BuildItself {
         .withTestDefaults()
         .compileAndRunWith(main)
         .compileAndRunWith(
+            "org.apache.maven:maven-resolver-provider:3.9.9",
+            "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
             "org.junit.jupiter:junit-jupiter-api:5.13.4",
             "org.junit.jupiter:junit-jupiter-params:5.13.4",
             "org.assertj:assertj-core:3.27.3",
@@ -242,5 +221,71 @@ public class BuildItself {
       log.debug("XJC writing binary {} {}", pkg, fileName);
       return super.openBinary(pkg, fileName);
     }
+  }
+
+  private static DependencyService nativeDependencyService() {
+    final var httpClient = HttpClient.newHttpClient();
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+    final var nexusDocker = new RemoteRepositoryImpl(
+        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
+        httpClient,
+        new ObjectMapper()
+    );
+
+    final Path localRepositoryBasePath;
+    try {
+      localRepositoryBasePath = Files.createTempDirectory("build-local");
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    try {
+      Files.createDirectory(localRepositoryBasePath);
+    } catch (final IOException e) {
+      if (!(e instanceof FileAlreadyExistsException)) {
+        throw new UncheckedIOException(e);
+      }
+    }
+    final var localRepository = new LocalRepository(
+        localRepositoryBasePath,
+        Map.of("sha256", "SHA-256")
+    );
+    return new DependencyServiceImpl(
+        List.of(nexusDocker),
+        localRepository
+    );
+  }
+
+  private static DependencyService mavenArtifactResolver() {
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+
+    final Path localRepositoryBasePath;
+    try {
+      localRepositoryBasePath = Files.createTempDirectory("build-local");
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
+    );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
+    );
+    return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
   }
 }

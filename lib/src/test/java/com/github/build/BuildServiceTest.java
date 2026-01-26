@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyConstraints;
-import com.github.build.deps.DependencyService;
+import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
@@ -50,7 +50,8 @@ class BuildServiceTest {
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
     );
-    final var dependencyService = new DependencyService(List.of(remoteRepository), localRepository);
+    final var dependencyService = new DependencyServiceImpl(List.of(remoteRepository),
+        localRepository);
     service = new BuildService(compileService, dependencyService);
   }
 

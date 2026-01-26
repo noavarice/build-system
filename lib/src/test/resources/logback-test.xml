@@ -11,6 +11,7 @@
     </encoder>
   </appender>
 
+  <!--  <logger name="org.eclipse.aether" level="debug"/>-->
   <root level="info">
     <appender-ref ref="STDOUT"/>
   </root>

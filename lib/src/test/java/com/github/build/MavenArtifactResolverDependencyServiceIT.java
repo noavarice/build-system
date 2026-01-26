@@ -8,21 +8,18 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
-import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.LocalRepository;
-import com.github.build.deps.Pom;
-import com.github.build.deps.RemoteRepository;
-import com.github.build.deps.RemoteRepositoryImpl;
-import java.net.URI;
-import java.net.http.HttpClient;
+import com.github.build.deps.MavenArtifactResolverDependencyService;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import org.junit.jupiter.api.Disabled;
+import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -30,18 +27,16 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import tools.jackson.databind.ObjectMapper;
 
 /**
- * {@link DependencyService} tests.
+ * {@link MavenArtifactResolverDependencyService} tests.
  *
  * @author noavarice
  * @since 1.0.0
  */
 // TODO: setup proxy repository
-// TODO: move to integration tests
-@DisplayName("Tests for dependency service")
-class DependencyServiceIT {
+@DisplayName("Tests for dependency service over Maven Artifact Resolver")
+class MavenArtifactResolverDependencyServiceIT {
 
   private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
       "ch.qos.logback:logback-classic:1.5.18"
@@ -61,29 +56,29 @@ class DependencyServiceIT {
 
   private final Path localRepositoryBasePath;
 
-  private final RemoteRepositoryMock remoteRepository;
-
   private final DependencyService service;
 
-  DependencyServiceIT(@TempDir final Path localRepositoryBasePath) {
+  MavenArtifactResolverDependencyServiceIT(@TempDir final Path localRepositoryBasePath) {
     this.localRepositoryBasePath = localRepositoryBasePath;
-    final var localRepository = new LocalRepository(
-        localRepositoryBasePath,
-        Map.of("sha256", "SHA-256")
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
     );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
 
     final String nexusHost = Objects.requireNonNullElse(
         System.getenv("NEXUS_HOST"),
         "localhost"
     );
-
-    final RemoteRepository mavenCentral = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        HttpClient.newHttpClient(),
-        new ObjectMapper()
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
     );
-    remoteRepository = new RemoteRepositoryMock(mavenCentral);
-    service = new DependencyServiceImpl(List.of(remoteRepository), localRepository);
+    service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
   }
 
   @Nested
@@ -223,94 +218,6 @@ class DependencyServiceIT {
       );
       assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
     }
-
-    @DisplayName("Check resolving dependencies with multiple hard version requirements")
-    @Test
-    @Disabled("Because handling hard version requirements is not implemented yet")
-    void testResolvingWithMultipleHardVersionRequirements() {
-      final var app = GroupArtifactVersion.parse(
-          "resolve-multiple-hard-version-requirements:app:1.0.0"
-      );
-      final var lib1 = GroupArtifactVersion.parse(
-          "resolve-multiple-hard-version-requirements:lib-1:1.0.0"
-      );
-      final var lib2 = GroupArtifactVersion.parse(
-          "resolve-multiple-hard-version-requirements:lib-2:1.0.0"
-      );
-      remoteRepository.mockPom(app, new Pom(
-          app.groupId(),
-          app.artifactId(),
-          app.version(),
-          null,
-          Map.of(),
-          List.of(),
-          List.of(
-              new Pom.Dependency(
-                  lib1.groupId(),
-                  lib1.artifactId(),
-                  lib1.version(),
-                  Pom.Dependency.Scope.COMPILE,
-                  Set.of(),
-                  false
-              ),
-              new Pom.Dependency(
-                  lib2.groupId(),
-                  lib2.artifactId(),
-                  lib2.version(),
-                  Pom.Dependency.Scope.COMPILE,
-                  Set.of(),
-                  false
-              )
-          )
-      ));
-      remoteRepository.mockPom(lib1, new Pom(
-          lib1.groupId(),
-          lib1.artifactId(),
-          lib1.version(),
-          null,
-          Map.of(),
-          List.of(),
-          List.of(
-              new Pom.Dependency(
-                  "org.bouncycastle",
-                  "bcpkix-jdk18on",
-                  "[1.78,1.79)", // alone resolves to 1.78.1
-                  Pom.Dependency.Scope.COMPILE,
-                  Set.of(),
-                  false
-              )
-          )
-      ));
-      remoteRepository.mockPom(lib2, new Pom(
-          lib2.groupId(),
-          lib2.artifactId(),
-          lib2.version(),
-          null,
-          Map.of(),
-          List.of(),
-          List.of(
-              new Pom.Dependency(
-                  "org.bouncycastle",
-                  "bcpkix-jdk18on",
-                  "[1.77,1.78]",
-                  Pom.Dependency.Scope.COMPILE,
-                  Set.of(),
-                  false
-              )
-          )
-      ));
-
-      final Set<GroupArtifactVersion> expected = Set.of(
-          app,
-          lib1,
-          lib2,
-          GroupArtifactVersion.parse("org.bouncycastle:bcpkix-jdk18on:1.78"),
-          GroupArtifactVersion.parse("org.bouncycastle:bcprov-jdk18on:1.78"),
-          GroupArtifactVersion.parse("org.bouncycastle:bcutil-jdk18on:1.78")
-      );
-      final Set<GroupArtifactVersion> actual = service.resolveTransitive(app);
-      assertEquals(expected, actual);
-    }
   }
 
   @DisplayName("""
@@ -337,6 +244,7 @@ class DependencyServiceIT {
 
     @DisplayName("Check fetching single dependency works")
     @TestFactory
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     DynamicTest[] testFetchingSingleDependencyWorks() {
       final var gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
       final Set<GroupArtifactVersion> dependencies = Set.of(gav);

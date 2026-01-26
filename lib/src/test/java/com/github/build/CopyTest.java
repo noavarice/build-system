@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.util.FileUtils;
@@ -47,7 +48,7 @@ class CopyTest {
         localRepoBase,
         Map.of("sha256", "SHA-256")
     );
-    final DependencyService dependencyService = new DependencyService(
+    final DependencyService dependencyService = new DependencyServiceImpl(
         List.of(remoteRepository),
         localRepository
     );

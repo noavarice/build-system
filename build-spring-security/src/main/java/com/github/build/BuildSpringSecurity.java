@@ -3,6 +3,7 @@ package com.github.build;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
@@ -65,7 +66,7 @@ public final class BuildSpringSecurity {
         localRepositoryBasePath,
         Map.of("sha256", "SHA-256")
     );
-    final var dependencyService = new DependencyService(
+    final var dependencyService = new DependencyServiceImpl(
         List.of(nexusDocker),
         localRepository
     );

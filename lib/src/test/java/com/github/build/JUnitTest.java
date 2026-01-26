@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
-import com.github.build.deps.DependencyService;
+import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
@@ -49,7 +49,7 @@ class JUnitTest {
         Map.of("sha256", "SHA-256")
     );
     final var compileService = new CompileService();
-    final var dependencyService = new DependencyService(
+    final var dependencyService = new DependencyServiceImpl(
         List.of(nexusDocker),
         localRepository
     );
