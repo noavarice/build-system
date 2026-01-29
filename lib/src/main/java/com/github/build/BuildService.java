@@ -17,6 +17,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -75,9 +76,10 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
-    final SourceSet mainSourceSet = project.sourceSet(sourceSetId);
+    final SourceSet sourceSet = project.sourceSet(sourceSetId);
     final Set<Path> classpath = new HashSet<>();
-    for (final Dependency dependency : mainSourceSet.compileClasspath()) {
+    final List<GroupArtifactVersion> toResolveTransitive = new ArrayList<>();
+    for (final Dependency dependency : sourceSet.compileClasspath()) {
       switch (dependency) {
         case Dependency.OnProject onProject -> {
           final Project dependingProject = onProject.project();
@@ -97,16 +99,10 @@ public final class BuildService {
           classpath.add(sourceSetClassesDir);
         }
         case Dependency.Jar file -> classpath.add(file.path());
-        case Dependency.Remote.WithVersion withVersion -> {
-          final GroupArtifactVersion gav = withVersion.gav();
-          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
-          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-              artifacts
-          );
-          classpath.addAll(localArtifacts.values());
-        }
+        case Dependency.Remote.WithVersion withVersion ->
+            toResolveTransitive.add(withVersion.gav());
         case Dependency.Remote.WithoutVersion withoutVersion -> {
-          final DependencyConstraints constraints = mainSourceSet.dependencyConstraints();
+          final DependencyConstraints constraints = sourceSet.dependencyConstraints();
           @Nullable
           final String version = constraints.getConstraint(withoutVersion.ga());
           if (version == null) {
@@ -114,14 +110,20 @@ public final class BuildService {
             return false;
           }
 
-          final GroupArtifactVersion gav = withoutVersion.ga().withVersion(version);
-          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
-          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-              artifacts
-          );
-          classpath.addAll(localArtifacts.values());
+          toResolveTransitive.add(withoutVersion.ga().withVersion(version));
         }
       }
+    }
+
+    if (!toResolveTransitive.isEmpty()) {
+      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
+          toResolveTransitive,
+          sourceSet.dependencyConstraints()
+      );
+      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+          artifacts
+      );
+      classpath.addAll(localArtifacts.values());
     }
 
     final var compileArgs = new CompileArgs(sources, classesDir, classpath);

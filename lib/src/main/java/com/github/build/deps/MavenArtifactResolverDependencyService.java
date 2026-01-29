@@ -108,6 +108,75 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
   }
 
   @Override
+  public Set<GroupArtifactVersion> resolveTransitive(
+      final List<GroupArtifactVersion> artifacts,
+      final DependencyConstraints constraints
+  ) {
+    Objects.requireNonNull(artifacts);
+    Objects.requireNonNull(constraints);
+    if (artifacts.isEmpty()) {
+      return Set.of();
+    }
+
+    final List<Dependency> dependencies = artifacts
+        .stream()
+        .map(artifact -> new DefaultArtifact(
+            artifact.groupId(),
+            artifact.artifactId(),
+            null,
+            "jar",
+            artifact.version()
+        ))
+        .map(artifact -> new org.eclipse.aether.graph.Dependency(artifact, null))
+        .toList();
+    final List<Dependency> managedDependencies = constraints
+        .stream()
+        .map(artifact -> new DefaultArtifact(
+            artifact.groupId(),
+            artifact.artifactId(),
+            null,
+            "jar",
+            artifact.version()
+        ))
+        .map(artifact -> new org.eclipse.aether.graph.Dependency(artifact, null))
+        .toList();
+    final var request = new CollectRequest(
+        dependencies,
+        managedDependencies,
+        repositories
+    );
+    // Cannot set root dependency - this way Aether will incorrectly
+    // resolve optional dependencies (see OptionalDependencySelector).
+    // So we set root artifact (not root dependency) which works
+    // pretty much as a pseudo-dependency for entering resolved dependency
+    // graph. Without root artifact we cannot start iterating over results.
+    // Yet we don't have even a root artifact, so we're emulating its value.
+    request.setRootArtifact(new DefaultArtifact(null, null, null, null));
+    final CollectResult collectResult;
+    try {
+      collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+    } catch (DependencyCollectionException e) {
+      throw new IllegalStateException(e);
+    }
+
+    final var result = new HashSet<GroupArtifactVersion>();
+    final SequencedCollection<DependencyNode> queue = new ArrayList<>();
+    collectResult.getRoot().getChildren().forEach(queue::addLast);
+    while (!queue.isEmpty()) {
+      final DependencyNode node = queue.removeFirst();
+      final var gav = new GroupArtifactVersion(
+          node.getArtifact().getGroupId(),
+          node.getArtifact().getArtifactId(),
+          node.getArtifact().getVersion()
+      );
+      result.add(gav);
+      node.getChildren().forEach(queue::addLast);
+    }
+
+    return result;
+  }
+
+  @Override
   public Map<GroupArtifactVersion, Path> fetchToLocal(final Set<GroupArtifactVersion> artifacts) {
     Objects.requireNonNull(artifacts);
     final var artifactRequests = artifacts

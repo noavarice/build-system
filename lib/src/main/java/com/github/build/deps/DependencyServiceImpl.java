@@ -167,6 +167,15 @@ public final class DependencyServiceImpl implements DependencyService {
     return resolved.toDependencies();
   }
 
+  @Override
+  public Set<GroupArtifactVersion> resolveTransitive(
+      final List<GroupArtifactVersion> artifacts,
+      final DependencyConstraints constraints
+  ) {
+    // FIXME: implement
+    throw new UnsupportedOperationException();
+  }
+
   // TODO: add tests
   private void importDependencyManagement(
       final GroupArtifactVersion importing,

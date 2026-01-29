@@ -8,23 +8,21 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyConstraints;
-import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepositoryImpl;
-import java.net.URI;
-import java.net.http.HttpClient;
+import com.github.build.deps.MavenArtifactResolverDependencyService;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
+import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * @author noavarice
@@ -35,24 +33,30 @@ class BuildServiceTest {
   private final BuildService service;
 
   BuildServiceTest(@TempDir final Path localRepositoryBasePath) {
-    final var compileService = new CompileService();
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
+    );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
 
     final String nexusHost = Objects.requireNonNullElse(
         System.getenv("NEXUS_HOST"),
         "localhost"
     );
-    final var remoteRepository = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        HttpClient.newHttpClient(),
-        new ObjectMapper()
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
     );
-    final var localRepository = new LocalRepository(
-        localRepositoryBasePath,
-        Map.of("sha256", "SHA-256")
+    final var dependencyService = new MavenArtifactResolverDependencyService(
+        repoSystem,
+        session,
+        repositories
     );
-    final var dependencyService = new DependencyServiceImpl(List.of(remoteRepository),
-        localRepository);
-    service = new BuildService(compileService, dependencyService);
+    service = new BuildService(new CompileService(), dependencyService);
   }
 
   @DisplayName("Check compiling main source set")

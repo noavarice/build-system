@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
+import java.util.stream.Stream;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -27,6 +28,12 @@ public final class DependencyConstraints {
 
   public Builder copy() {
     return new Builder(constraints);
+  }
+
+  public Stream<GroupArtifactVersion> stream() {
+    final var list = new ArrayList<GroupArtifactVersion>(constraints.size());
+    constraints.forEach((ga, version) -> list.add(ga.withVersion(version)));
+    return list.stream();
   }
 
   // TODO: add specific type for version constraints (exact version, ranges, etc.)

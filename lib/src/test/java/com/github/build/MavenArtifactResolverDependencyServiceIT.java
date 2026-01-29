@@ -16,6 +16,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -143,7 +145,6 @@ class MavenArtifactResolverDependencyServiceIT {
       assertThat(actual).isEqualTo(expected);
     }
 
-    // TODO: copy this test for Graph
     @DisplayName("Check resolving even more transitive dependencies for a single dependency")
     @Test
     @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
@@ -217,6 +218,87 @@ class MavenArtifactResolverDependencyServiceIT {
           "org.bouncycastle:bcpkix-jdk18on:1.80"
       );
       assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
+    }
+
+    @DisplayName("Check resolving multiple dependencies")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingMultipleDependencies() {
+      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+      final var dependencies = List.of(
+          GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
+          GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22")
+      );
+      assertThatCode(
+          () -> ref.set(service.resolveTransitive(dependencies, DependencyConstraints.EMPTY))
+      ).doesNotThrowAnyException();
+
+      final Set<GroupArtifactVersion> actual = ref.get();
+      final Set<GroupArtifactVersion> expected = Stream
+          .of(new String[]{
+              "org.apache.maven.resolver:maven-resolver-api:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-util:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
+              "org.slf4j:slf4j-api:2.0.17",
+          })
+          .map(GroupArtifactVersion::parse)
+          .collect(Collectors.toUnmodifiableSet());
+
+      final var actualSorted = actual
+          .stream()
+          .map(c -> c.toString())
+          .sorted()
+          .toList();
+      final var expectedSorted = expected
+          .stream()
+          .map(c -> c.toString())
+          .sorted()
+          .toList();
+      assertThat(actualSorted).isEqualTo(expectedSorted);
+    }
+
+    @DisplayName("Check resolving multiple dependencies with constraints")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingMultipleDependenciesWithConstraints() {
+      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+      final var dependencies = List.of(
+          GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22")
+      );
+      final var constraints = DependencyConstraints
+          .builder()
+          .withExactVersion("org.slf4j:slf4j-api:2.0.15")
+          .build();
+      assertThatCode(
+          () -> ref.set(service.resolveTransitive(dependencies, constraints))
+      ).doesNotThrowAnyException();
+
+      final Set<GroupArtifactVersion> actual = ref.get();
+      final Set<GroupArtifactVersion> expected = Stream
+          .of(new String[]{
+              "org.apache.maven.resolver:maven-resolver-api:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-util:1.9.22",
+              "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
+              "org.slf4j:slf4j-api:2.0.15",
+          })
+          .map(GroupArtifactVersion::parse)
+          .collect(Collectors.toUnmodifiableSet());
+
+      final var actualSorted = actual
+          .stream()
+          .map(c -> c.toString())
+          .sorted()
+          .toList();
+      final var expectedSorted = expected
+          .stream()
+          .map(c -> c.toString())
+          .sorted()
+          .toList();
+      assertThat(actualSorted).isEqualTo(expectedSorted);
     }
   }
 
