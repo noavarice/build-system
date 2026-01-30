@@ -47,12 +47,18 @@ public class BuildItself {
   private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
 
   public static void main(final String[] args) {
+    final Path workdir;
+    if (args.length == 0) {
+      workdir = Path.of("").toAbsolutePath();
+    } else {
+      workdir = Path.of(args[0]);
+    }
+
     final var compileService = new CompileService();
 
     final DependencyService dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
     final BuildService service = new BuildService(compileService, dependencyService);
-    final Path workdir = Path.of(args[0]);
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
