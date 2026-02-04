@@ -240,6 +240,11 @@ public final class BuildService {
     return sources;
   }
 
+  public void createJar(final Path workdir, final Project project) {
+    // FIXME: add implementation
+    throw new UnsupportedOperationException();
+  }
+
   /**
    * {@link FileVisitor} for collecting source paths into list.
    *

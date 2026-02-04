@@ -15,6 +15,8 @@ public sealed interface Dependency {
 
   /**
    * Designates dependency on some other project.
+   * <p>
+   * TODO: make Project implement Dependency itself
    *
    * @param project Project
    */
