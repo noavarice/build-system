@@ -3,26 +3,24 @@ package com.github.build;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
-import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepositoryImpl;
+import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import java.io.IOException;
 import java.io.UncheckedIOException;
-import java.net.URI;
-import java.net.http.HttpClient;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * @author noavarice
@@ -36,43 +34,17 @@ public final class BuildSpringSecurity {
   }
 
   public static void main(final String[] args) {
+    final Path workdir;
+    if (args.length == 0) {
+      workdir = Path.of("").toAbsolutePath();
+    } else {
+      workdir = Path.of(args[0]);
+    }
+
     final var compileService = new CompileService();
-
-    final var httpClient = HttpClient.newHttpClient();
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-    final var nexusDocker = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient,
-        new ObjectMapper()
-    );
-
-    final Path localRepositoryBasePath;
-    try {
-      localRepositoryBasePath = Files.createTempDirectory("build-local");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-    try {
-      Files.createDirectory(localRepositoryBasePath);
-    } catch (final IOException e) {
-      if (!(e instanceof FileAlreadyExistsException)) {
-        throw new UncheckedIOException(e);
-      }
-    }
-    final var localRepository = new LocalRepository(
-        localRepositoryBasePath,
-        Map.of("sha256", "SHA-256")
-    );
-    final var dependencyService = new DependencyServiceImpl(
-        List.of(nexusDocker),
-        localRepository
-    );
+    final var dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
     final BuildService service = new BuildService(compileService, dependencyService);
-    final Path workdir = Path.of(args[0]);
 
     final DependencyConstraints platform = getPlatform(dependencyService);
     final Set<Project> projects = Set.of(
@@ -80,14 +52,26 @@ public final class BuildSpringSecurity {
     );
 
     for (final Project project : projects) {
-      log.info("Building {}", project.id());
-      service.compileMain(workdir, project);
+      final boolean mainCompiled = service.compileMain(workdir, project);
+      if (!mainCompiled) {
+        log.error("Build failed");
+        System.exit(1);
+        return;
+      }
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
 
-      service.compileTest(workdir, project);
+      final boolean testCompiled = service.compileTest(workdir, project);
+      if (!testCompiled) {
+        log.error("Build failed");
+        System.exit(1);
+        return;
+      }
       service.copyResources(workdir, project, SourceSet.Id.TEST);
 
-      final TestResults results = testService.withJUnit(workdir, project);
+      final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+      final Path buildRuntimePath = Path.of(buildRuntimePathStr);
+      final var testArgs = new JUnitTestArgs(Set.of(buildRuntimePath));
+      final TestResults results = testService.withJUnit(workdir, project, testArgs);
       if (results.testsFailedCount() > 0) {
         log.error("Build failed");
         System.exit(1);
@@ -171,7 +155,7 @@ public final class BuildSpringSecurity {
   private static Project createProjectCrypto(final DependencyConstraints platform) {
     final var main = SourceSet
         .withMainDefaults()
-        .compileWith(
+        .compileAndRunWith(
             "org.springframework:spring-core",
             "org.bouncycastle:bcpkix-jdk18on",
             "com.password4j:password4j"
@@ -204,5 +188,35 @@ public final class BuildSpringSecurity {
         .withSourceSet(main)
         .withSourceSet(test)
         .build();
+  }
+
+  private static DependencyService mavenArtifactResolver() {
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+
+    final Path localRepositoryBasePath;
+    try {
+      localRepositoryBasePath = Files.createTempDirectory("build-local");
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
+    );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
+    );
+    return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
   }
 }

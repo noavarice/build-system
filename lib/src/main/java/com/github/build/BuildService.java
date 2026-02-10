@@ -16,6 +16,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -78,6 +79,23 @@ public final class BuildService {
 
     final SourceSet sourceSet = project.sourceSet(sourceSetId);
     final Set<Path> classpath = new HashSet<>();
+    try {
+      addSourceSetCompileClasspath(workdir, project, sourceSet, classpath);
+    } catch (final IllegalStateException e) {
+      log.error("Failed to gather compilation classpath", e);
+      return false;
+    }
+
+    final var compileArgs = new CompileArgs(sources, classesDir, classpath);
+    return compileService.compile(compileArgs);
+  }
+
+  private void addSourceSetCompileClasspath(
+      final Path workdir,
+      final Project project,
+      final SourceSet sourceSet,
+      final Collection<Path> classpath
+  ) {
     final List<GroupArtifactVersion> toResolveTransitive = new ArrayList<>();
     for (final Dependency dependency : sourceSet.compileClasspath()) {
       switch (dependency) {
@@ -97,6 +115,8 @@ public final class BuildService {
               .resolve(project.artifactLayout().classesDir())
               .resolve(onSourceSet.sourceSet().id().toString());
           classpath.add(sourceSetClassesDir);
+          // TODO: make this clear whether we should add source set dependency compilation classpath
+          addSourceSetCompileClasspath(workdir, project, onSourceSet.sourceSet(), classpath);
         }
         case Dependency.Jar file -> classpath.add(file.path());
         case Dependency.Remote.WithVersion withVersion ->
@@ -107,7 +127,7 @@ public final class BuildService {
           final String version = constraints.getConstraint(withoutVersion.ga());
           if (version == null) {
             log.error("Dependency has no version and no associated source set-wise constraint");
-            return false;
+            throw new IllegalStateException();
           }
 
           toResolveTransitive.add(withoutVersion.ga().withVersion(version));
@@ -125,9 +145,6 @@ public final class BuildService {
       );
       classpath.addAll(localArtifacts.values());
     }
-
-    final var compileArgs = new CompileArgs(sources, classesDir, classpath);
-    return compileService.compile(compileArgs);
   }
 
   /**

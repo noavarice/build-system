@@ -1,11 +1,14 @@
 package com.github.build;
 
 import com.github.build.compile.CompileService;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
 import com.github.build.deps.RemoteRepositoryImpl;
+import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import com.sun.codemodel.CodeWriter;
@@ -32,6 +35,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -59,6 +63,9 @@ public class BuildItself {
     final DependencyService dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
     final BuildService service = new BuildService(compileService, dependencyService);
+    final DependencyConstraints junitBom = dependencyService.getConstraints(
+        GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
+    );
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
@@ -75,20 +82,20 @@ public class BuildItself {
         .build();
     final var test = SourceSet
         .withTestDefaults()
+        .withDependencyConstraints(junitBom)
         .compileAndRunWith(main)
         .compileAndRunWith(
             "org.apache.maven:maven-resolver-provider:3.9.9",
             "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
-            "org.junit.jupiter:junit-jupiter-api:5.13.4",
-            "org.junit.jupiter:junit-jupiter-params:5.13.4",
+            "org.junit.jupiter:junit-jupiter-api",
+            "org.junit.jupiter:junit-jupiter-params",
             "org.assertj:assertj-core:3.27.3",
             "ch.qos.logback:logback-classic:1.5.21",
             "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0",
             "tools.jackson.core:jackson-databind:3.0.3"
         )
         .runWith(
-            "org.junit.jupiter:junit-jupiter-engine:5.13.4",
-            "org.junit.platform:junit-platform-launcher:1.13.4",
+            "org.junit.jupiter:junit-jupiter-engine",
             "com.sun.xml.bind:jaxb-impl:4.0.5"
         )
         .build();
@@ -116,7 +123,10 @@ public class BuildItself {
     }
     service.copyResources(workdir, project, SourceSet.Id.TEST);
 
-    final TestResults results = testService.withJUnit(workdir, project);
+    final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+    final Path buildRuntimePath = Path.of(buildRuntimePathStr);
+    final var testArgs = new JUnitTestArgs(Set.of(buildRuntimePath));
+    final TestResults results = testService.withJUnit(workdir, project, testArgs);
     if (results.testsFailedCount() > 0) {
       log.error("Build failed");
       System.exit(1);

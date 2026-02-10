@@ -138,8 +138,27 @@
       </plugin>
       <plugin>
         <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <systemPropertyVariables>
+            <buildRuntimePath>
+              ${project.build.directory}/${project.build.finalName}.jar
+            </buildRuntimePath>
+          </systemPropertyVariables>
+        </configuration>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
         <artifactId>maven-failsafe-plugin</artifactId>
         <version>3.5.4</version>
+        <configuration>
+          <systemPropertyVariables>
+            <buildRuntimePath>
+              ${project.build.directory}/${project.build.finalName}.jar
+            </buildRuntimePath>
+          </systemPropertyVariables>
+        </configuration>
         <executions>
           <execution>
             <goals>

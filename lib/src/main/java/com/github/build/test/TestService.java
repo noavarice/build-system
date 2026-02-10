@@ -3,9 +3,11 @@ package com.github.build.test;
 import static java.util.stream.Collectors.joining;
 
 import com.github.build.Project;
+import com.github.build.SourceSet;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.ParentLastClassLoader;
 import java.io.IOException;
@@ -14,9 +16,12 @@ import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.file.Path;
-import java.util.HashSet;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ServiceLoader;
 import java.util.Set;
 import java.util.function.Function;
 import org.jspecify.annotations.Nullable;
@@ -37,7 +42,11 @@ public final class TestService {
   }
 
   // TODO: handle failed tests
-  public TestResults withJUnit(final Path workdir, final Project project) {
+  public TestResults withJUnit(
+      final Path workdir,
+      final Project project,
+      final JUnitTestArgs args
+  ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(project);
     log.info("[project={}] Setting up tests", project.id());
@@ -53,80 +62,52 @@ public final class TestService {
         .resolve(project.artifactLayout().resourcesDir())
         .resolve("test");
 
-    final var testRuntimeClasspath = new HashSet<Path>();
+    // adding build library runtime
+    final var remoteDependencies = new ArrayList<GroupArtifactVersion>();
+    final var testRuntimeClasspath = new ArrayList<>(args.buildRuntimeClasspath());
+
     // adding user classes
     testRuntimeClasspath.add(testClasses);
     testRuntimeClasspath.add(testResources);
 
+    final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
     // adding JUnit Platform
     {
+      // TODO: allow overriding launcher version (e.g., via method arguments)
+      final var ga = GroupArtifact.parse("org.junit.platform:junit-platform-launcher");
+      final String launcherVersion = constraints.getConstraint(ga);
+      remoteDependencies.add(ga.withVersion(launcherVersion));
+    }
+
+    addSourceSetRuntimeClasspath(
+        workdir, project, project.testSourceSet(), testRuntimeClasspath, remoteDependencies
+    );
+
+    // TODO: figure out how we can configure logging when there's no SLF4J provider in the test classpath.
+    // Remember that logging should be configurable and compatible
+    // with how the rest of the build program logs its progress
+    if (!classpathContainsSlf4jProvider(testRuntimeClasspath)) {
+      final GroupArtifact fallbackGa = args.slf4jProviderFallback().groupArtifact();
+      final String constrainedVersion = constraints.getConstraint(fallbackGa);
+      final GroupArtifactVersion slf4jProviderFallback = constrainedVersion != null
+          ? fallbackGa.withVersion(constrainedVersion)
+          : args.slf4jProviderFallback();
+      log.debug("Test runtime classpath has no SLF4J provider, adding fallback provider {}",
+          slf4jProviderFallback
+      );
+      remoteDependencies.addFirst(slf4jProviderFallback);
+    }
+
+    if (!remoteDependencies.isEmpty()) {
       final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
-          GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+          remoteDependencies,
+          // TODO: should we add constraints from main source set here too?
+          project.testSourceSet().dependencyConstraints()
       );
       final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
           artifacts
       );
-
       testRuntimeClasspath.addAll(localArtifacts.values());
-    }
-
-    for (final Dependency dependency : project.testSourceSet().runtimeClasspath()) {
-      switch (dependency) {
-        case Dependency.OnProject onProject -> {
-          final Project dependingProject = onProject.project();
-          final Path mainSourceSetClassesDir = workdir
-              .resolve(dependingProject.path())
-              .resolve(dependingProject.artifactLayout().rootDir())
-              .resolve(dependingProject.artifactLayout().classesDir())
-              .resolve(dependingProject.mainSourceSet().id().toString());
-          testRuntimeClasspath.add(mainSourceSetClassesDir);
-          final Path mainSourceSetResourcesDir = workdir
-              .resolve(dependingProject.path())
-              .resolve(dependingProject.artifactLayout().rootDir())
-              .resolve(dependingProject.artifactLayout().resourcesDir())
-              .resolve(dependingProject.mainSourceSet().id().toString());
-          testRuntimeClasspath.add(mainSourceSetResourcesDir);
-        }
-        case Dependency.OnSourceSet onSourceSet -> {
-          final Path sourceSetClassesDir = workdir
-              .resolve(project.path())
-              .resolve(project.artifactLayout().rootDir())
-              .resolve(project.artifactLayout().classesDir())
-              .resolve(onSourceSet.sourceSet().id().toString());
-          testRuntimeClasspath.add(sourceSetClassesDir);
-          final Path sourceSetResourcesDir = workdir
-              .resolve(project.path())
-              .resolve(project.artifactLayout().rootDir())
-              .resolve(project.artifactLayout().resourcesDir())
-              .resolve(onSourceSet.sourceSet().id().toString());
-          testRuntimeClasspath.add(sourceSetResourcesDir);
-        }
-        case Dependency.Jar file -> testRuntimeClasspath.add(file.path());
-        case Dependency.Remote.WithVersion withVersion -> {
-          final GroupArtifactVersion gav = withVersion.gav();
-          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
-          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-              artifacts
-          );
-          testRuntimeClasspath.addAll(localArtifacts.values());
-        }
-        case Dependency.Remote.WithoutVersion withoutVersion -> {
-          final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
-          @Nullable
-          final String version = constraints.getConstraint(withoutVersion.ga());
-          if (version == null) {
-            log.error("Dependency has no version and no associated source set-wise constraint");
-            throw new IllegalStateException();
-          }
-
-          final GroupArtifactVersion gav = withoutVersion.ga().withVersion(version);
-          final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(gav);
-          final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-              artifacts
-          );
-          testRuntimeClasspath.addAll(localArtifacts.values());
-        }
-      }
     }
 
     if (log.isDebugEnabled()) {
@@ -140,7 +121,7 @@ public final class TestService {
     final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
     try (final var classLoader = createModifiedClassLoader(
         // TODO: consider isolating test classpath from build program classpath
-        getClass().getClassLoader(),
+        ClassLoader.getPlatformClassLoader(),
         testRuntimeClasspath
     )) {
       // setting classpath for JUnit test engine search algorithm
@@ -151,8 +132,8 @@ public final class TestService {
       );
       final var taskConstructor = taskType.getDeclaredConstructor();
       final var task = taskConstructor.newInstance();
-      final Map<String, Object> args = Map.of("testClassesDir", testClasses);
-      final Map<String, Object> result = task.apply(args);
+      final Map<String, Object> taskArgs = Map.of("testClassesDir", testClasses);
+      final Map<String, Object> result = task.apply(taskArgs);
       return new TestResults(
           (Long) result.getOrDefault("succeeded", 0L),
           (Long) result.getOrDefault("failed", 0L),
@@ -167,9 +148,90 @@ public final class TestService {
     }
   }
 
+  private boolean classpathContainsSlf4jProvider(final Collection<Path> classpath) {
+    final URL[] urls = classpath
+        .stream()
+        .map(path -> {
+          try {
+            return path.toUri().toURL();
+          } catch (final MalformedURLException e) {
+            throw new IllegalStateException(e);
+          }
+        })
+        .toArray(URL[]::new);
+    final ClassLoader parent = ClassLoader.getPlatformClassLoader();
+    try (final var classLoader = new URLClassLoader(urls, parent)) {
+      try {
+        classLoader.loadClass("org.slf4j.Logger");
+      } catch (final ClassNotFoundException e) {
+        // no SLF4J API at all
+        return false;
+      }
+
+      final Class<?> slf4jServiceProviderClass;
+      try {
+        slf4jServiceProviderClass = classLoader.loadClass("org.slf4j.spi.SLF4JServiceProvider");
+      } catch (final ClassNotFoundException e) {
+        // probably SLF4J up to version 1.7.x
+        return false;
+      }
+      final var serviceLoader = ServiceLoader.load(slf4jServiceProviderClass, classLoader);
+      return serviceLoader.iterator().hasNext();
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private void addSourceSetRuntimeClasspath(
+      final Path workdir,
+      final Project project,
+      final SourceSet sourceSet,
+      final Collection<Path> classpath,
+      final List<GroupArtifactVersion> remoteDependencies
+  ) {
+
+    for (final Dependency dependency : sourceSet.runtimeClasspath()) {
+      switch (dependency) {
+        case Dependency.OnProject onProject -> {
+          final Project dependingProject = onProject.project();
+          final Path mainSourceSetClassesDir = workdir
+              .resolve(dependingProject.path())
+              .resolve(dependingProject.artifactLayout().rootDir())
+              .resolve(dependingProject.artifactLayout().classesDir())
+              .resolve(dependingProject.mainSourceSet().id().toString());
+          classpath.add(mainSourceSetClassesDir);
+        }
+        case Dependency.OnSourceSet onSourceSet -> {
+          final Path sourceSetClassesDir = workdir
+              .resolve(project.path())
+              .resolve(project.artifactLayout().rootDir())
+              .resolve(project.artifactLayout().classesDir())
+              .resolve(onSourceSet.sourceSet().id().toString());
+          classpath.add(sourceSetClassesDir);
+          addSourceSetRuntimeClasspath(
+              workdir, project, onSourceSet.sourceSet(), classpath, remoteDependencies
+          );
+        }
+        case Dependency.Jar file -> classpath.add(file.path());
+        case Dependency.Remote.WithVersion withVersion -> remoteDependencies.add(withVersion.gav());
+        case Dependency.Remote.WithoutVersion withoutVersion -> {
+          final DependencyConstraints constraints = sourceSet.dependencyConstraints();
+          @Nullable
+          final String version = constraints.getConstraint(withoutVersion.ga());
+          if (version == null) {
+            log.error("Dependency has no version and no associated source set-wise constraint");
+            throw new IllegalArgumentException();
+          }
+
+          remoteDependencies.add(withoutVersion.ga().withVersion(version));
+        }
+      }
+    }
+  }
+
   private static URLClassLoader createModifiedClassLoader(
       final ClassLoader parent,
-      final Set<Path> paths
+      final Collection<Path> paths
   ) throws MalformedURLException {
     final URL[] additionalTestClasspathEntries = paths
         .stream()
