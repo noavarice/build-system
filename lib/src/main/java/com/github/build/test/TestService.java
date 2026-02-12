@@ -9,7 +9,6 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.util.ParentLastClassLoader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
@@ -243,6 +242,6 @@ public final class TestService {
           }
         })
         .toArray(URL[]::new);
-    return new ParentLastClassLoader(additionalTestClasspathEntries, parent);
+    return new URLClassLoader(additionalTestClasspathEntries, parent);
   }
 }
