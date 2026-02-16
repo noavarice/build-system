@@ -125,7 +125,10 @@ public class BuildItself {
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final Path buildRuntimePath = Path.of(buildRuntimePathStr);
-    final var testArgs = new JUnitTestArgs(Set.of(buildRuntimePath));
+    final var testArgs = new JUnitTestArgs(
+        Set.of(buildRuntimePath),
+        ClassLoader.getPlatformClassLoader()
+    );
     final TestResults results = testService.withJUnit(workdir, project, testArgs);
     if (results.testsFailedCount() > 0) {
       log.error("Build failed");

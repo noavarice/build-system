@@ -29,8 +29,11 @@ public record JUnitTestArgs(
     Objects.requireNonNull(slf4jProviderFallback);
   }
 
-  public JUnitTestArgs(final Set<Path> buildRuntimeClasspath) {
-    this(buildRuntimeClasspath, null, DEFAULT_SLF4J_PROVIDER_FALLBACK);
+  public JUnitTestArgs(
+      final Set<Path> buildRuntimeClasspath,
+      @Nullable ClassLoader testRuntimeParentClassLoader
+  ) {
+    this(buildRuntimeClasspath, testRuntimeParentClassLoader, DEFAULT_SLF4J_PROVIDER_FALLBACK);
   }
 
   private static final GroupArtifactVersion DEFAULT_SLF4J_PROVIDER_FALLBACK = GroupArtifactVersion

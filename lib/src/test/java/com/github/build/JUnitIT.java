@@ -102,7 +102,10 @@ class JUnitIT {
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final Path buildRuntimePath = Path.of(buildRuntimePathStr);
-    final var testArgs = new JUnitTestArgs(Set.of(buildRuntimePath));
+    final var testArgs = new JUnitTestArgs(
+        Set.of(buildRuntimePath),
+        ClassLoader.getPlatformClassLoader()
+    );
     final TestResults result = testService.withJUnit(tempDir, project, testArgs);
     return new DynamicTest[]{
         dynamicTest("Check succeeded count", () -> assertEquals(3, result.testsSucceededCount())),
