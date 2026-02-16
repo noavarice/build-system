@@ -119,8 +119,7 @@ public final class TestService {
 
     final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
     try (final var classLoader = createModifiedClassLoader(
-        // TODO: consider isolating test classpath from build program classpath
-        ClassLoader.getPlatformClassLoader(),
+        args.testRuntimeParentClassLoader(),
         testRuntimeClasspath
     )) {
       // setting classpath for JUnit test engine search algorithm
