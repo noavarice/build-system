@@ -10,6 +10,7 @@ import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
+import com.github.build.jar.JarService;
 import com.github.build.util.FileUtils;
 import java.io.IOException;
 import java.net.URI;
@@ -52,7 +53,7 @@ class CopyTest {
         List.of(remoteRepository),
         localRepository
     );
-    buildService = new BuildService(compileService, dependencyService);
+    buildService = new BuildService(compileService, dependencyService, new JarService());
   }
 
   @DisplayName("Tests for copying directory")

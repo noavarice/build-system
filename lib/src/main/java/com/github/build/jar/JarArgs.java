@@ -3,6 +3,7 @@ package com.github.build.jar;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * @param path     Path where JAR file will be created, must be absolute
@@ -10,7 +11,7 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public record JarArgs(Path path, Map<Path, Content> contents) {
+public record JarArgs(Path path, Map<Path, Content> contents, @Nullable JarManifest manifest) {
 
   public JarArgs {
     path = Objects.requireNonNull(path).normalize().toAbsolutePath();

@@ -192,20 +192,26 @@ public final class TestService {
       switch (dependency) {
         case Dependency.OnProject onProject -> {
           final Project dependingProject = onProject.project();
-          final Path mainSourceSetClassesDir = workdir
+          final Path jarPath = workdir
               .resolve(dependingProject.path())
               .resolve(dependingProject.artifactLayout().rootDir())
-              .resolve(dependingProject.artifactLayout().classesDir())
-              .resolve(dependingProject.mainSourceSet().id().toString());
-          classpath.add(mainSourceSetClassesDir);
+              // TODO: customize JAR path/filename
+              .resolve(dependingProject.id() + ".jar");
+          classpath.add(jarPath);
         }
         case Dependency.OnSourceSet onSourceSet -> {
-          final Path sourceSetClassesDir = workdir
+          final Path classesDir = workdir
               .resolve(project.path())
               .resolve(project.artifactLayout().rootDir())
               .resolve(project.artifactLayout().classesDir())
-              .resolve(onSourceSet.sourceSet().id().toString());
-          classpath.add(sourceSetClassesDir);
+              .resolve(onSourceSet.sourceSet().id().value());
+          final Path resourcesDir = workdir
+              .resolve(project.path())
+              .resolve(project.artifactLayout().rootDir())
+              .resolve(project.artifactLayout().resourcesDir())
+              .resolve(onSourceSet.sourceSet().id().value());
+          classpath.add(classesDir);
+          classpath.add(resourcesDir);
           addSourceSetRuntimeClasspath(
               workdir, project, onSourceSet.sourceSet(), classpath, remoteDependencies
           );

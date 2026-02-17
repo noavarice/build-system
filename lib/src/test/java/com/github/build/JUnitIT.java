@@ -9,6 +9,7 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.jar.JarService;
 import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
@@ -62,7 +63,7 @@ class JUnitIT {
         repositories
     );
     testService = new TestService(dependencyService);
-    buildService = new BuildService(new CompileService(), dependencyService);
+    buildService = new BuildService(new CompileService(), dependencyService, new JarService());
   }
 
   @DisplayName("Check running tests work")

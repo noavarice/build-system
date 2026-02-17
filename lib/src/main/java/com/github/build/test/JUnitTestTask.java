@@ -23,6 +23,7 @@ import org.junit.platform.launcher.listeners.SummaryGeneratingListener;
 import org.junit.platform.launcher.listeners.TestExecutionSummary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.event.Level;
 
 /**
  * @author noavarice
@@ -57,15 +58,19 @@ public final class JUnitTestTask implements Function<Map<String, Object>, Map<St
             final TestIdentifier testIdentifier,
             final TestExecutionResult testExecutionResult
         ) {
+          final Level level = switch (testExecutionResult.getStatus()) {
+            case SUCCESSFUL, ABORTED -> Level.DEBUG;
+            case FAILED -> Level.ERROR;
+          };
           final Optional<Throwable> t = testExecutionResult.getThrowable();
           if (t.isPresent()) {
-            log.info("{} {}",
+            log.atLevel(level).log("{} {}",
                 testIdentifier.getUniqueId(),
                 testExecutionResult.getStatus(),
                 t.get()
             );
           } else {
-            log.info("{} {}",
+            log.atLevel(level).log("{} {}",
                 testIdentifier.getUniqueId(),
                 testExecutionResult.getStatus()
             );
@@ -81,7 +86,8 @@ public final class JUnitTestTask implements Function<Map<String, Object>, Map<St
         Instant.ofEpochMilli(summary.getTimeFinished())
     );
     // TODO: add project ID correlation
-    log.info("{} tests finished in {}, succeeded {}, failed {}, skipped {}",
+    final Level level = summary.getTestsFailedCount() > 0 ? Level.ERROR : Level.INFO;
+    log.atLevel(level).log("{} tests finished in {}, succeeded {}, failed {}, skipped {}",
         summary.getTestsFoundCount(),
         duration,
         summary.getTestsSucceededCount(),

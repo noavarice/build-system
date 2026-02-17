@@ -3,18 +3,27 @@ package com.github.build;
 import com.github.build.compile.CompileService;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.jar.JarArgs;
+import com.github.build.jar.JarManifest;
+import com.github.build.jar.JarService;
 import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.Callable;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -44,14 +53,17 @@ public final class BuildSpringSecurity {
     final var compileService = new CompileService();
     final var dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
-    final BuildService service = new BuildService(compileService, dependencyService);
+    final var jarService = new JarService();
+    final BuildService service = new BuildService(compileService, dependencyService, jarService);
 
     final DependencyConstraints platform = getPlatform(dependencyService);
-    final Set<Project> projects = Set.of(
-        createProjectCrypto(platform)
-    );
+    final Project crypto = createProjectCrypto(platform);
+    final Project core = createProjectCore(platform, crypto);
+    final List<Project> projects = List.of(crypto, core);
 
+    final Path license = workdir.resolve("LICENSE.txt");
     for (final Project project : projects) {
+      log.info("[project={}] Compiling main source set", project.id());
       final boolean mainCompiled = service.compileMain(workdir, project);
       if (!mainCompiled) {
         log.error("Build failed");
@@ -60,6 +72,38 @@ public final class BuildSpringSecurity {
       }
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
 
+      final var springCore = GroupArtifact.parse("org.springframework:spring-core");
+      final String springCoreVersion = platform.getConstraint(springCore);
+
+      final var additionalEntries = new HashMap<Path, JarArgs.Content>();
+      additionalEntries.put(Path.of("META-INF/LICENSE.txt"), new JarArgs.Content.File(license));
+
+      if (project == core) {
+        try (final var out = new ByteArrayOutputStream()) {
+          final var properties = new Properties();
+          properties.setProperty(springCore.toString(), springCoreVersion);
+          properties.store(out, null);
+          additionalEntries.put(
+              Path.of("META-INF/spring-security.versions"),
+              new JarArgs.Content.Bytes(out.toByteArray())
+          );
+        } catch (final IOException e) {
+          throw new UncheckedIOException(e);
+        }
+      }
+
+      final var manifest = JarManifest
+          .builder()
+          .setVersion("1.0")
+          .setCreatedBy(
+              System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ')'
+          )
+          .setImplementationTitle(project.id().value())
+          .setImplementationVersion("7.0.0")
+          .build();
+      service.createJar(workdir, project, additionalEntries, manifest);
+
+      log.info("[project={}] Compiling test source set", project.id());
       final boolean testCompiled = service.compileTest(workdir, project);
       if (!testCompiled) {
         log.error("Build failed");
@@ -74,10 +118,43 @@ public final class BuildSpringSecurity {
           Set.of(buildRuntimePath),
           ClassLoader.getPlatformClassLoader()
       );
-      final TestResults results = testService.withJUnit(workdir, project, testArgs);
+      log.info("[project={}] Running tests", project.id());
+
+      final var properties = Map.of(
+          "springSecurityVersion", "7.0.0",
+          "springVersion", springCoreVersion
+      );
+      final TestResults results = withSystemProperties(
+          () -> testService.withJUnit(workdir, project, testArgs),
+          properties
+      );
+
       if (results.testsFailedCount() > 0) {
         log.error("Build failed");
         System.exit(1);
+      }
+    }
+  }
+
+  private static <T> T withSystemProperties(
+      final Callable<T> task,
+      final Map<String, String> properties
+  ) {
+    final var oldValues = new HashMap<String, String>();
+    properties.forEach((name, value) -> oldValues.put(name, System.getProperty(name)));
+
+    try {
+      return task.call();
+    } catch (final Exception e) {
+      throw new IllegalStateException(e);
+    } finally {
+      for (final String name : properties.keySet()) {
+        final String oldValue = oldValues.get(name);
+        if (oldValue == null) {
+          System.clearProperty(name);
+        } else {
+          System.setProperty(name, oldValue);
+        }
       }
     }
   }
@@ -187,6 +264,76 @@ public final class BuildSpringSecurity {
     return Project
         .withId("spring-security-crypto")
         .withPath(Path.of("crypto"))
+        .withArtifactLayout(artifactLayout)
+        .withSourceSet(main)
+        .withSourceSet(test)
+        .build();
+  }
+
+  private static Project createProjectCore(
+      final DependencyConstraints platform,
+      final Project crypto
+  ) {
+    final var main = SourceSet
+        .withMainDefaults()
+        .compileAndRunWith(crypto)
+        .compileAndRunWith(
+            // api
+            "org.springframework:spring-aop",
+            "org.springframework:spring-beans",
+            "org.springframework:spring-context",
+            "org.springframework:spring-core",
+            "org.springframework:spring-expression",
+            "io.micrometer:micrometer-observation",
+
+            // optional
+            "com.fasterxml.jackson.core:jackson-databind",
+            "io.micrometer:context-propagation",
+            "io.projectreactor:reactor-core",
+            "jakarta.annotation:jakarta.annotation-api",
+            "org.aspectj:aspectjrt",
+            "org.springframework:spring-jdbc",
+            "org.springframework:spring-tx",
+            "org.jetbrains.kotlinx:kotlinx-coroutines-reactor",
+            "tools.jackson.core:jackson-databind"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var test = SourceSet
+        .withTestDefaults()
+        .compileAndRunWith(main)
+        .compileAndRunWith(
+            "org.assertj:assertj-core",
+            "org.junit.jupiter:junit-jupiter-api",
+            "org.junit.jupiter:junit-jupiter-params",
+            "org.junit.jupiter:junit-jupiter-engine",
+            "org.mockito:mockito-core",
+            "org.mockito:mockito-junit-jupiter",
+            "org.springframework:spring-test",
+            "commons-collections:commons-collections",
+            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310",
+            "io.projectreactor:reactor-test",
+            "org.springframework:spring-core-test",
+            "org.skyscreamer:jsonassert",
+            "org.springframework:spring-test",
+            "org.jetbrains.kotlin:kotlin-reflect",
+            "org.jetbrains.kotlin:kotlin-stdlib-jdk8",
+            "io.mockk:mockk"
+        )
+        .runWith(
+            "org.hsqldb:hsqldb",
+            "org.junit.platform:junit-platform-launcher"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var artifactLayout = new Project.ArtifactLayout(
+        Path.of("build-system"),
+        Path.of("classes"),
+        Path.of("resources")
+    );
+    return Project
+        .withId("spring-security-core")
+        .withPath(Path.of("core"))
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
         .withSourceSet(test)

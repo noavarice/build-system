@@ -11,6 +11,7 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.jar.JarService;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -56,7 +57,7 @@ class BuildServiceTest {
         session,
         repositories
     );
-    service = new BuildService(new CompileService(), dependencyService);
+    service = new BuildService(new CompileService(), dependencyService, new JarService());
   }
 
   @DisplayName("Check compiling main source set")

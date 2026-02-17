@@ -5,7 +5,9 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.HashSet;
 import java.util.Objects;
+import java.util.Set;
 import java.util.jar.JarOutputStream;
 import java.util.zip.ZipEntry;
 import org.slf4j.Logger;
@@ -15,26 +17,30 @@ import org.slf4j.LoggerFactory;
  * @author noavarice
  * @since 1.0.0
  */
-public final class Jar {
+public final class JarService {
 
-  private static final Logger log = LoggerFactory.getLogger(Jar.class);
-
-  private Jar() {
-  }
+  private static final Logger log = LoggerFactory.getLogger(JarService.class);
 
   /**
    * Creates JAR file.
    *
    * @param args JAR creation arguments
    */
-  public static void create(final JarArgs args) {
+  public void create(final JarArgs args) {
     Objects.requireNonNull(args);
     log.debug("Creating JAR file at {}", args.path());
     try (final OutputStream os = Files.newOutputStream(args.path())) {
-      final var jos = new JarOutputStream(os);
+      final JarOutputStream jos;
+      if (args.manifest() != null) {
+        jos = new JarOutputStream(os, args.manifest().toManifest());
+      } else {
+        jos = new JarOutputStream(os);
+      }
+
+      final var writtenDirectories = new HashSet<Path>();
       args.contents().forEach((path, content) -> {
         log.trace("Writing {} to JAR {}", path, args.path());
-        writeJarEntry(jos, path, content);
+        writeJarEntry(jos, path, content, writtenDirectories);
       });
       jos.finish();
     } catch (final IOException e) {
@@ -45,7 +51,8 @@ public final class Jar {
   private static void writeJarEntry(
       final JarOutputStream jos,
       final Path path,
-      final JarArgs.Content content
+      final JarArgs.Content content,
+      final Set<Path> writtenDirectories
   ) {
     final byte[] bytes = switch (content) {
       case JarArgs.Content.Bytes b -> b.value();
@@ -58,7 +65,28 @@ public final class Jar {
       }
     };
 
-    final var entry = new ZipEntry(path.normalize().toString());
+    final var normalized = path.normalize();
+
+    // writing intermediate directories
+    final Path parent = normalized.getParent();
+    if (parent != null) {
+      Path intermediate = Path.of("");
+      for (final Path segment : parent) {
+        intermediate = intermediate.resolve(segment);
+        if (!writtenDirectories.contains(intermediate)) {
+          writtenDirectories.add(intermediate);
+          final var entry = new ZipEntry(intermediate.toString() + '/');
+          try {
+            jos.putNextEntry(entry);
+            jos.closeEntry();
+          } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+          }
+        }
+      }
+    }
+
+    final var entry = new ZipEntry(normalized.toString());
     try {
       jos.putNextEntry(entry);
       jos.write(bytes);

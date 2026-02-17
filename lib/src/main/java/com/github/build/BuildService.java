@@ -6,6 +6,9 @@ import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.jar.JarArgs;
+import com.github.build.jar.JarManifest;
+import com.github.build.jar.JarService;
 import com.github.build.util.FileUtils;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
@@ -17,6 +20,7 @@ import java.nio.file.Path;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -39,12 +43,16 @@ public final class BuildService {
 
   private final DependencyService dependencyService;
 
+  private final JarService jarService;
+
   public BuildService(
       final CompileService compileService,
-      final DependencyService dependencyService
+      final DependencyService dependencyService,
+      final JarService jarService
   ) {
     this.compileService = Objects.requireNonNull(compileService);
     this.dependencyService = Objects.requireNonNull(dependencyService);
+    this.jarService = jarService;
   }
 
   public boolean compileMain(final Path workdir, final Project project) {
@@ -295,6 +303,95 @@ public final class BuildService {
           absolutePath
       );
       FileUtils.copyDirectory(absolutePath, targetDir);
+    }
+  }
+
+  public void createJar(
+      final Path workdir,
+      final Project project,
+      final Map<Path, JarArgs.Content> additionalEntries,
+      @Nullable final JarManifest manifest
+  ) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(project);
+    Objects.requireNonNull(additionalEntries);
+
+    PathUtils.checkAbsolute(workdir);
+    PathUtils.checkDirectory(workdir);
+
+    log.info("[project={}][sourceSet={}] Creating JAR", project.id(), SourceSet.Id.MAIN);
+    final Path jarPath = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        // TODO: customize JAR path/filename
+        .resolve(project.id() + ".jar");
+    final var content = new HashMap<Path, JarArgs.Content>();
+
+    // collect compiled classes
+    final Path classesDir = workdir
+        .resolve(project.path()).resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().classesDir())
+        .resolve(SourceSet.Id.MAIN.value());
+    try {
+      Files.walkFileTree(classesDir, new CollectJarContent(classesDir, content));
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    // collect resources
+    final Path resourcesDir = workdir
+        .resolve(project.path()).resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
+        .resolve(SourceSet.Id.MAIN.value());
+    try {
+      Files.walkFileTree(resourcesDir, new CollectJarContent(resourcesDir, content));
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    content.putAll(additionalEntries);
+
+    final var args = new JarArgs(jarPath, content, manifest);
+    jarService.create(args);
+  }
+
+  /**
+   * Collects files from specified directory to be put in the JAR relative to the same directory.
+   *
+   * @param rootDir Directory to collect files from
+   * @param content Future JAR content
+   */
+  private record CollectJarContent(
+      Path rootDir,
+      Map<Path, JarArgs.Content> content
+  ) implements FileVisitor<Path> {
+
+    private CollectJarContent {
+      Objects.requireNonNull(rootDir);
+      Objects.requireNonNull(content);
+    }
+
+    @Override
+    public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) {
+      return FileVisitResult.CONTINUE;
+    }
+
+    @Override
+    public FileVisitResult visitFile(final Path file, final BasicFileAttributes attrs) {
+      final Path pathInJar = rootDir.relativize(file);
+      final var fileContent = new JarArgs.Content.File(file);
+      content.put(pathInJar, fileContent);
+      return FileVisitResult.CONTINUE;
+    }
+
+    @Override
+    public FileVisitResult visitFileFailed(final Path file, final IOException exc) {
+      return FileVisitResult.TERMINATE;
+    }
+
+    @Override
+    public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) {
+      return FileVisitResult.CONTINUE;
     }
   }
 }

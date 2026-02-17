@@ -9,8 +9,8 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
-import com.github.build.jar.Jar;
 import com.github.build.jar.JarArgs;
+import com.github.build.jar.JarService;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -28,9 +28,11 @@ import org.junit.jupiter.api.io.TempDir;
  * @since 1.0.0
  */
 @DisplayName("JAR tests")
-class JarTest {
+class JarServiceTest {
 
   private final CompileService compileService = new CompileService();
+
+  private final JarService service = new JarService();
 
   @DisplayName("Creating JAR works")
   @TestFactory
@@ -39,12 +41,13 @@ class JarTest {
     final var content = "Hello, world!".getBytes(StandardCharsets.UTF_8);
     final var args = new JarArgs(
         jarPath,
-        Map.of(Path.of("README.txt"), new JarArgs.Content.Bytes(content))
+        Map.of(Path.of("README.txt"), new JarArgs.Content.Bytes(content)),
+        null
     );
     return new DynamicTest[]{
         dynamicTest(
             "Check creating JAR succeeds",
-            () -> assertDoesNotThrow(() -> Jar.create(args))
+            () -> assertDoesNotThrow(() -> service.create(args))
         ),
         dynamicTest(
             "Check class file generated",
@@ -69,7 +72,8 @@ class JarTest {
 
     final var args = new JarArgs(
         tempDir.resolve("app.jar"),
-        Map.of(Path.of("org/example/HelloWorld.class"), new JarArgs.Content.File(classFile))
+        Map.of(Path.of("org/example/HelloWorld.class"), new JarArgs.Content.File(classFile)),
+        null
     );
 
     return new DynamicTest[]{
@@ -79,7 +83,7 @@ class JarTest {
         ),
         dynamicTest(
             "Check creating JAR succeeds",
-            () -> assertThatCode(() -> Jar.create(args)).doesNotThrowAnyException()
+            () -> assertThatCode(() -> service.create(args)).doesNotThrowAnyException()
         ),
         dynamicTest(
             "Check JAR generated",

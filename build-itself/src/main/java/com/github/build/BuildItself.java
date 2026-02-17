@@ -8,6 +8,7 @@ import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
 import com.github.build.deps.RemoteRepositoryImpl;
+import com.github.build.jar.JarService;
 import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
@@ -62,7 +63,8 @@ public class BuildItself {
 
     final DependencyService dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
-    final BuildService service = new BuildService(compileService, dependencyService);
+    final var jarService = new JarService();
+    final BuildService service = new BuildService(compileService, dependencyService, jarService);
     final DependencyConstraints junitBom = dependencyService.getConstraints(
         GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
     );
