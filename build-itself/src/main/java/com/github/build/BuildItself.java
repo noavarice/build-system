@@ -1,6 +1,7 @@
 package com.github.build;
 
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
@@ -109,7 +110,7 @@ public class BuildItself {
         .build();
 
     generateSourcesFromMavenXsd(workdir, project);
-    final boolean mainCompiled = service.compileMain(workdir, project);
+    final boolean mainCompiled = service.compileMain(workdir, project, CompilerOptions.EMPTY);
     if (!mainCompiled) {
       log.error("Build failed");
       System.exit(1);
@@ -117,7 +118,7 @@ public class BuildItself {
     }
     service.copyResources(workdir, project, SourceSet.Id.MAIN);
 
-    final boolean testCompiled = service.compileTest(workdir, project);
+    final boolean testCompiled = service.compileTest(workdir, project, CompilerOptions.EMPTY);
     if (!testCompiled) {
       log.error("Build failed");
       System.exit(1);

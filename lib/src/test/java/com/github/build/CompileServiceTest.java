@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import java.nio.file.Path;
 import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
@@ -37,7 +38,12 @@ class CompileServiceTest {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
 
-      final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
+      final var args = new CompileArgs(
+          Set.of(source),
+          tempDir.resolve("classes"),
+          Set.of(),
+          CompilerOptions.EMPTY
+      );
       args.sources().forEach(path -> assumeThat(path).isRegularFile());
       assumeThat(args.classesDir()).doesNotExist();
 
@@ -76,7 +82,12 @@ class CompileServiceTest {
           dynamicTest(
               "Check compilation fails",
               () -> {
-                final var args = new CompileArgs(Set.of(source), classesDir, Set.of());
+                final var args = new CompileArgs(
+                    Set.of(source),
+                    classesDir,
+                    Set.of(),
+                    CompilerOptions.EMPTY
+                );
                 assertFalse(service.compile(args));
               }
           ),
@@ -109,7 +120,12 @@ class CompileServiceTest {
           dynamicTest(
               "Check build succeeds",
               () -> {
-                final var args = new CompileArgs(Set.of(source), classesDir, Set.of(jar));
+                final var args = new CompileArgs(
+                    Set.of(source),
+                    classesDir,
+                    Set.of(jar),
+                    CompilerOptions.EMPTY
+                );
                 assertTrue(service.compile(args));
               }
           ),

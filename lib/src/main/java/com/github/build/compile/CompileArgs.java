@@ -13,6 +13,7 @@ import java.util.Set;
  * @param classesDir Directory for storing generated class files (same as compiler's "-d"
  *                   command-line option)
  * @param classpath  Compilation classpath (same as "-cp", "-classpath" command-line options)
+ * @param options    Compiler options (e.g., "--release")
  * @author noavarice
  * @apiNote Upon object construction, all paths are normalized and resolved to an absolute path
  * according to {@link Path::toAbsolutePath()}, so it's recommended to pass absolute paths to avoid
@@ -22,7 +23,8 @@ import java.util.Set;
 public record CompileArgs(
     Set<Path> sources,
     Path classesDir,
-    Set<Path> classpath
+    Set<Path> classpath,
+    CompilerOptions options
 ) {
 
   public CompileArgs {
@@ -39,5 +41,6 @@ public record CompileArgs(
         .map(Path::normalize)
         .map(Path::toAbsolutePath)
         .collect(toUnmodifiableSet());
+    Objects.requireNonNull(options);
   }
 }

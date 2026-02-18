@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarService;
 import java.nio.charset.StandardCharsets;
@@ -65,7 +66,12 @@ class JarServiceTest {
     final Path classFile;
     {
       final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
-      final var args = new CompileArgs(Set.of(source), tempDir.resolve("classes"), Set.of());
+      final var args = new CompileArgs(
+          Set.of(source),
+          tempDir.resolve("classes"),
+          Set.of(),
+          CompilerOptions.EMPTY
+      );
       compileService.compile(args);
       classFile = tempDir.resolve("classes/org/example/HelloWorld.class");
     }

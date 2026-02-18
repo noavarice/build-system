@@ -2,6 +2,7 @@ package com.github.build;
 
 import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
@@ -55,21 +56,33 @@ public final class BuildService {
     this.jarService = jarService;
   }
 
-  public boolean compileMain(final Path workdir, final Project project) {
-    return compile(workdir, project, SourceSet.Id.MAIN);
+  public boolean compileMain(
+      final Path workdir,
+      final Project project,
+      final CompilerOptions compilerOptions
+  ) {
+    return compile(workdir, project, SourceSet.Id.MAIN, compilerOptions);
   }
 
-  public boolean compileTest(final Path workdir, final Project project) {
-    return compile(workdir, project, SourceSet.Id.TEST);
+  public boolean compileTest(
+      final Path workdir,
+      final Project project,
+      final CompilerOptions compilerOptions
+  ) {
+    return compile(workdir, project, SourceSet.Id.TEST, compilerOptions);
   }
 
   public boolean compile(
       final Path workdir,
       final Project project,
-      final SourceSet.Id sourceSetId
+      final SourceSet.Id sourceSetId,
+      final CompilerOptions compilerOptions
   ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(project);
+    Objects.requireNonNull(sourceSetId);
+    Objects.requireNonNull(compilerOptions);
+
     PathUtils.checkAbsolute(workdir);
 
     final Set<Path> sources = collectSources(workdir, project, sourceSetId);
@@ -94,7 +107,7 @@ public final class BuildService {
       return false;
     }
 
-    final var compileArgs = new CompileArgs(sources, classesDir, classpath);
+    final var compileArgs = new CompileArgs(sources, classesDir, classpath, compilerOptions);
     return compileService.compile(compileArgs);
   }
 

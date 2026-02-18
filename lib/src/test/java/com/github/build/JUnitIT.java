@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
@@ -95,10 +96,10 @@ class JUnitIT {
         .build();
 
     // compile main and test source sets
-    assertTrue(buildService.compileMain(tempDir, project));
+    assertTrue(buildService.compileMain(tempDir, project, CompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
 
-    assertTrue(buildService.compileTest(tempDir, project));
+    assertTrue(buildService.compileTest(tempDir, project, CompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");

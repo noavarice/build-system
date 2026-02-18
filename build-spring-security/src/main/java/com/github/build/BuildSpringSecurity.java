@@ -1,6 +1,7 @@
 package com.github.build;
 
 import com.github.build.compile.CompileService;
+import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
@@ -62,9 +63,14 @@ public final class BuildSpringSecurity {
     final List<Project> projects = List.of(crypto, core);
 
     final Path license = workdir.resolve("LICENSE.txt");
+    final var compilerOptions = CompilerOptions
+        .builder()
+        .release("17")
+        .parameters(true)
+        .build();
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.id());
-      final boolean mainCompiled = service.compileMain(workdir, project);
+      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -104,7 +110,7 @@ public final class BuildSpringSecurity {
       service.createJar(workdir, project, additionalEntries, manifest);
 
       log.info("[project={}] Compiling test source set", project.id());
-      final boolean testCompiled = service.compileTest(workdir, project);
+      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
       if (!testCompiled) {
         log.error("Build failed");
         System.exit(1);

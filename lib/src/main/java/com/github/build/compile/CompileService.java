@@ -73,11 +73,12 @@ public final class CompileService {
     }
 
     final var compUnits = fileManager.getJavaFileObjectsFromPaths(args.sources());
+    final List<String> compilerOptions = args.options().toList();
     final var task = compiler.getTask(
         new LogWriter(),
         fileManager,
         diagnosticListener,
-        null,
+        compilerOptions,
         null,
         compUnits
     );
