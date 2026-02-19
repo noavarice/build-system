@@ -5,6 +5,7 @@ import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.HashSet;
 import java.util.Objects;
 import java.util.Set;
@@ -87,6 +88,10 @@ public final class JarService {
     }
 
     final var entry = new ZipEntry(normalized.toString());
+    if (content instanceof JarArgs.Content.File file) {
+      setFileAttributes(entry, file.path());
+    }
+
     try {
       jos.putNextEntry(entry);
       jos.write(bytes);
@@ -94,5 +99,18 @@ public final class JarService {
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
     }
+  }
+
+  private static void setFileAttributes(final ZipEntry entry, final Path path) {
+    final BasicFileAttributes attributes;
+    try {
+      attributes = Files.readAttributes(path, BasicFileAttributes.class);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    entry.setCreationTime(attributes.creationTime());
+    entry.setLastModifiedTime(attributes.lastModifiedTime());
+    entry.setLastAccessTime(attributes.lastAccessTime());
   }
 }
