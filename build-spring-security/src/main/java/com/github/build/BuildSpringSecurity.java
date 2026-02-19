@@ -13,11 +13,11 @@ import com.github.build.jar.JarService;
 import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
-import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -68,6 +68,8 @@ public final class BuildSpringSecurity {
         .release("17")
         .parameters(true)
         .build();
+    final var springCore = GroupArtifact.parse("org.springframework:spring-core");
+    final String springCoreVersion = platform.getConstraint(springCore);
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.id());
       final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
@@ -77,26 +79,12 @@ public final class BuildSpringSecurity {
         return;
       }
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
-
-      final var springCore = GroupArtifact.parse("org.springframework:spring-core");
-      final String springCoreVersion = platform.getConstraint(springCore);
+      if (project == core) {
+        generateSpringVersionsFile(workdir, project, springCoreVersion);
+      }
 
       final var additionalEntries = new HashMap<Path, JarArgs.Content>();
       additionalEntries.put(Path.of("META-INF/LICENSE.txt"), new JarArgs.Content.File(license));
-
-      if (project == core) {
-        try (final var out = new ByteArrayOutputStream()) {
-          final var properties = new Properties();
-          properties.setProperty(springCore.toString(), springCoreVersion);
-          properties.store(out, null);
-          additionalEntries.put(
-              Path.of("META-INF/spring-security.versions"),
-              new JarArgs.Content.Bytes(out.toByteArray())
-          );
-        } catch (final IOException e) {
-          throw new UncheckedIOException(e);
-        }
-      }
 
       final var manifest = JarManifest
           .builder()
@@ -142,12 +130,38 @@ public final class BuildSpringSecurity {
     }
   }
 
+  private static void generateSpringVersionsFile(
+      final Path workdir,
+      final Project project,
+      final String springCoreVersion
+  ) {
+    final Path filePath = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().resourcesDir())
+        .resolve("main")
+        .resolve("META-INF")
+        .resolve("spring-security.versions");
+
+    final var properties = new Properties();
+    properties.setProperty("org.springframework:spring-core", springCoreVersion);
+
+    try (final var out = Files.newOutputStream(filePath, StandardOpenOption.CREATE)) {
+      properties.store(out, null);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
   private static <T> T withSystemProperties(
       final Callable<T> task,
       final Map<String, String> properties
   ) {
     final var oldValues = new HashMap<String, String>();
-    properties.forEach((name, value) -> oldValues.put(name, System.getProperty(name)));
+    properties.forEach((name, value) -> {
+      oldValues.put(name, System.getProperty(name));
+      System.setProperty(name, value);
+    });
 
     try {
       return task.call();
