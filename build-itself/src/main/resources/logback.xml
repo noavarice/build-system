@@ -4,10 +4,13 @@
 <configuration>
   <import class="ch.qos.logback.classic.encoder.PatternLayoutEncoder"/>
   <import class="ch.qos.logback.core.ConsoleAppender"/>
+  <import class="ch.qos.logback.classic.pattern.color.HighlightingCompositeConverter"/>
+
+  <conversionRule conversionWord="highlight" converterClass="HighlightingCompositeConverter"/>
 
   <appender name="STDOUT" class="ConsoleAppender">
     <encoder class="PatternLayoutEncoder">
-      <pattern>%d{HH:mm:ss.SSS} [%thread] %-5level %logger{36} -%kvp- %msg%n</pattern>
+      <pattern>%d{HH:mm:ss.SSS} [%thread] %highlight(%-5level) %logger{36} -%kvp- %msg%n</pattern>
     </encoder>
   </appender>
 

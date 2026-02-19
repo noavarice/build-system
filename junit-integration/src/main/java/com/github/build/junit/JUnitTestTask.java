@@ -1,12 +1,11 @@
-package com.github.build.test;
+package com.github.build.junit;
 
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClasspathRoots;
 
-import java.nio.file.Path;
+import com.github.build.test.JUnitTestTaskArgs;
+import com.github.build.test.TestResults;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -29,18 +28,17 @@ import org.slf4j.event.Level;
  * @author noavarice
  * @since 1.0.0
  */
-public final class JUnitTestTask implements Function<Map<String, Object>, Map<String, Object>> {
+public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResults> {
 
   private static final Logger log = LoggerFactory.getLogger(JUnitTestTask.class);
 
   @Override
-  public Map<String, Object> apply(final Map<String, Object> args) {
+  public TestResults apply(final JUnitTestTaskArgs args) {
     final var summaryListener = new SummaryGeneratingListener();
 
-    final var testClassesDir = (Path) Objects.requireNonNull(args.get("testClassesDir"));
     final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder
         .request()
-        .selectors(selectClasspathRoots(Set.of(testClassesDir)))
+        .selectors(selectClasspathRoots(Set.of(args.testClassesDir())))
         .build();
 
     try (final LauncherSession session = LauncherFactory.openSession()) {
@@ -49,7 +47,7 @@ public final class JUnitTestTask implements Function<Map<String, Object>, Map<St
       final TestPlan testPlan = launcher.discover(request);
       if (!testPlan.containsTests()) {
         log.warn("No tests found"); // TODO: add project ID correlation
-        return Map.of();
+        return TestResults.NO_TESTS_FOUND;
       }
 
       final TestExecutionListener executionListener = new TestExecutionListener() {
@@ -95,11 +93,10 @@ public final class JUnitTestTask implements Function<Map<String, Object>, Map<St
         summary.getTestsSkippedCount()
     );
 
-    return Map.of(
-        "succeeded", summary.getTestsSucceededCount(),
-        "failed", summary.getTestsFailedCount(),
-        // FIXME: skipped test count is incorrect
-        "skipped", summary.getTestsSkippedCount()
+    return new TestResults(
+        summary.getTestsSucceededCount(),
+        summary.getTestsFailedCount(),
+        summary.getTestsSkippedCount()
     );
   }
 }

@@ -125,18 +125,13 @@ public final class TestService {
       // setting classpath for JUnit test engine search algorithm
       Thread.currentThread().setContextClassLoader(classLoader);
       @SuppressWarnings("unchecked")
-      final var taskType = (Class<Function<Map<String, Object>, Map<String, Object>>>) classLoader.loadClass(
-          "com.github.build.test.JUnitTestTask"
+      final var taskType = (Class<Function<JUnitTestTaskArgs, TestResults>>) classLoader.loadClass(
+          "com.github.build.junit.JUnitTestTask"
       );
       final var taskConstructor = taskType.getDeclaredConstructor();
       final var task = taskConstructor.newInstance();
-      final Map<String, Object> taskArgs = Map.of("testClassesDir", testClasses);
-      final Map<String, Object> result = task.apply(taskArgs);
-      return new TestResults(
-          (Long) result.getOrDefault("succeeded", 0L),
-          (Long) result.getOrDefault("failed", 0L),
-          (Long) result.getOrDefault("skipped", 0L)
-      );
+      final var taskArgs = new JUnitTestTaskArgs(testClasses);
+      return task.apply(taskArgs);
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
     } catch (final ReflectiveOperationException e) {

@@ -130,7 +130,7 @@ public class BuildItself {
     final Path buildRuntimePath = Path.of(buildRuntimePathStr);
     final var testArgs = new JUnitTestArgs(
         Set.of(buildRuntimePath),
-        ClassLoader.getPlatformClassLoader()
+        ClassLoader.getSystemClassLoader()
     );
     final TestResults results = testService.withJUnit(workdir, project, testArgs);
     if (results.testsFailedCount() > 0) {

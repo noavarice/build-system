@@ -122,7 +122,7 @@ public final class BuildSpringSecurity {
       final Path buildRuntimePath = Path.of(buildRuntimePathStr);
       final var testArgs = new JUnitTestArgs(
           Set.of(buildRuntimePath),
-          ClassLoader.getPlatformClassLoader()
+          ClassLoader.getSystemClassLoader()
       );
       log.info("[project={}] Running tests", project.id());
 

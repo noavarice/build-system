@@ -22,6 +22,7 @@ import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.TestFactory;
@@ -31,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  */
 @DisplayName("Integration tests for JUnit test integration")
+@Disabled("Depends on junit-integration which depends on lib module")
 class JUnitIT {
 
   private final DependencyService dependencyService;

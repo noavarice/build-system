@@ -11,6 +11,7 @@
   <packaging>pom</packaging>
   <modules>
     <module>lib</module>
+    <module>junit-integration</module>
     <module>build-itself</module>
     <module>build-spring-security</module>
   </modules>
