@@ -33,7 +33,6 @@
       <groupId>com.github.build-system</groupId>
       <artifactId>lib</artifactId>
       <version>0.1.0</version>
-      <scope>provided</scope>
     </dependency>
     <dependency>
       <groupId>org.jspecify</groupId>
@@ -50,7 +49,52 @@
     <dependency>
       <groupId>org.junit.platform</groupId>
       <artifactId>junit-platform-launcher</artifactId>
-      <scope>provided</scope>
+    </dependency>
+
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-api</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-engine</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter-params</artifactId>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.assertj</groupId>
+      <artifactId>assertj-core</artifactId>
+      <version>3.27.3</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-resolver-provider</artifactId>
+      <version>3.9.9</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>org.apache.maven.resolver</groupId>
+      <artifactId>maven-resolver-supplier</artifactId>
+      <version>1.9.22</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>com.github.build-system</groupId>
+      <artifactId>test-utils</artifactId>
+      <version>0.1.0</version>
+      <scope>test</scope>
+    </dependency>
+    <dependency>
+      <groupId>ch.qos.logback</groupId>
+      <artifactId>logback-classic</artifactId>
+      <version>1.5.18</version>
+      <scope>test</scope>
     </dependency>
   </dependencies>
 

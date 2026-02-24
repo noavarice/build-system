@@ -1,9 +1,9 @@
-package com.github.build;
+package com.github.build.test.junit;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertTrue;
-import static org.junit.jupiter.api.DynamicTest.dynamicTest;
-
+import com.github.build.BuildService;
+import com.github.build.FsUtils;
+import com.github.build.Project;
+import com.github.build.SourceSet;
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
@@ -21,6 +21,7 @@ import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -31,7 +32,7 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  */
 @DisplayName("Integration tests for JUnit test integration")
-@Disabled("Depends on junit-integration which depends on lib module")
+@Disabled("Fix classpath issues")
 class JUnitIT {
 
   private final DependencyService dependencyService;
@@ -97,10 +98,10 @@ class JUnitIT {
         .build();
 
     // compile main and test source sets
-    assertTrue(buildService.compileMain(tempDir, project, CompilerOptions.EMPTY));
+    Assertions.assertTrue(buildService.compileMain(tempDir, project, CompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
 
-    assertTrue(buildService.compileTest(tempDir, project, CompilerOptions.EMPTY));
+    Assertions.assertTrue(buildService.compileTest(tempDir, project, CompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
@@ -111,9 +112,12 @@ class JUnitIT {
     );
     final TestResults result = testService.withJUnit(tempDir, project, testArgs);
     return new DynamicTest[]{
-        dynamicTest("Check succeeded count", () -> assertEquals(3, result.testsSucceededCount())),
-        dynamicTest("Check failed count", () -> assertEquals(0, result.testsFailedCount())),
-        dynamicTest("Check skipped count", () -> assertEquals(0, result.testsSkippedCount())),
+        DynamicTest.dynamicTest("Check succeeded count",
+            () -> Assertions.assertEquals(3, result.testsSucceededCount())),
+        DynamicTest.dynamicTest("Check failed count",
+            () -> Assertions.assertEquals(0, result.testsFailedCount())),
+        DynamicTest.dynamicTest("Check skipped count",
+            () -> Assertions.assertEquals(0, result.testsSkippedCount())),
     };
   }
 }

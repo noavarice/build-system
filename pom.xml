@@ -10,6 +10,7 @@
 
   <packaging>pom</packaging>
   <modules>
+    <module>test-utils</module>
     <module>lib</module>
     <module>junit-integration</module>
     <module>build-itself</module>
