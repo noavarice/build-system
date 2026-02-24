@@ -13,18 +13,18 @@ import com.github.build.jar.JarService;
 import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
+import com.github.build.util.JavaCommandBuilder;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.time.Duration;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
-import java.util.Set;
-import java.util.concurrent.Callable;
+import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -70,6 +70,19 @@ public final class BuildSpringSecurity {
         .build();
     final var springCore = GroupArtifact.parse("org.springframework:spring-core");
     final String springCoreVersion = platform.getConstraint(springCore);
+
+    final var mockitoGa = GroupArtifact.parse("org.mockito:mockito-core");
+    final GroupArtifactVersion mockito = mockitoGa.withVersion(platform.getConstraint(mockitoGa));
+
+    final var jacoco = GroupArtifactVersion.parse("org.jacoco:org.jacoco.agent:0.8.9");
+
+    final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
+    final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
+    final List<JavaCommandBuilder.Agent> agents = List.of(
+        new JavaCommandBuilder.Agent(mockitoPath, null),
+        new JavaCommandBuilder.Agent(jacocoPath, null)
+    );
+
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.id());
       final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
@@ -107,22 +120,28 @@ public final class BuildSpringSecurity {
       service.copyResources(workdir, project, SourceSet.Id.TEST);
 
       final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-      final Path buildRuntimePath = Path.of(buildRuntimePathStr);
-      final var testArgs = new JUnitTestArgs(
-          Set.of(buildRuntimePath),
-          ClassLoader.getSystemClassLoader()
-      );
+      final List<Path> buildRuntimePath = Stream
+          .of(buildRuntimePathStr.split(",", -1))
+          .map(Path::of)
+          .toList();
+      final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
       log.info("[project={}] Running tests", project.id());
 
-      final var properties = Map.of(
-          "springSecurityVersion", "7.0.0",
-          "springVersion", springCoreVersion
-      );
-      final TestResults results = withSystemProperties(
-          () -> testService.withJUnit(workdir, project, testArgs),
-          properties
+      final TestResults results = testService.withJUnitAsProcess(
+          workdir,
+          project,
+          testArgs,
+          agents,
+          List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
+          Duration.ofMinutes(10)
       );
 
+      log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
+          project.id(),
+          results.testsSucceededCount(),
+          results.testsFailedCount(),
+          results.testsSkippedCount()
+      );
       if (results.testsFailedCount() > 0) {
         log.error("Build failed");
         System.exit(1);
@@ -150,32 +169,6 @@ public final class BuildSpringSecurity {
       properties.store(out, null);
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    }
-  }
-
-  private static <T> T withSystemProperties(
-      final Callable<T> task,
-      final Map<String, String> properties
-  ) {
-    final var oldValues = new HashMap<String, String>();
-    properties.forEach((name, value) -> {
-      oldValues.put(name, System.getProperty(name));
-      System.setProperty(name, value);
-    });
-
-    try {
-      return task.call();
-    } catch (final Exception e) {
-      throw new IllegalStateException(e);
-    } finally {
-      for (final String name : properties.keySet()) {
-        final String oldValue = oldValues.get(name);
-        if (oldValue == null) {
-          System.clearProperty(name);
-        } else {
-          System.setProperty(name, oldValue);
-        }
-      }
     }
   }
 

@@ -17,7 +17,6 @@ import com.github.build.test.TestService;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -107,7 +106,7 @@ class JUnitIT {
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final Path buildRuntimePath = Path.of(buildRuntimePathStr);
     final var testArgs = new JUnitTestArgs(
-        Set.of(buildRuntimePath),
+        List.of(buildRuntimePath),
         ClassLoader.getPlatformClassLoader()
     );
     final TestResults result = testService.withJUnit(tempDir, project, testArgs);

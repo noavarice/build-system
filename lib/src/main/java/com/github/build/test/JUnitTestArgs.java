@@ -2,8 +2,8 @@ package com.github.build.test;
 
 import com.github.build.deps.GroupArtifactVersion;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -15,13 +15,13 @@ import org.jspecify.annotations.Nullable;
  * @since 1.0.0
  */
 public record JUnitTestArgs(
-    Set<Path> buildRuntimeClasspath,
+    List<Path> buildRuntimeClasspath,
     @Nullable ClassLoader testRuntimeParentClassLoader,
     GroupArtifactVersion slf4jProviderFallback
 ) {
 
   public JUnitTestArgs {
-    buildRuntimeClasspath = Set.copyOf(buildRuntimeClasspath);
+    buildRuntimeClasspath = List.copyOf(buildRuntimeClasspath);
     if (buildRuntimeClasspath.isEmpty()) {
       throw new IllegalArgumentException();
     }
@@ -30,7 +30,7 @@ public record JUnitTestArgs(
   }
 
   public JUnitTestArgs(
-      final Set<Path> buildRuntimeClasspath,
+      final List<Path> buildRuntimeClasspath,
       @Nullable ClassLoader testRuntimeParentClassLoader
   ) {
     this(buildRuntimeClasspath, testRuntimeParentClassLoader, DEFAULT_SLF4J_PROVIDER_FALLBACK);

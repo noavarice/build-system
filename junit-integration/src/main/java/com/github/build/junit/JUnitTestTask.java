@@ -4,9 +4,14 @@ import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClass
 
 import com.github.build.test.JUnitTestTaskArgs;
 import com.github.build.test.TestResults;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import java.util.function.Function;
 import org.junit.platform.engine.TestExecutionResult;
@@ -32,8 +37,31 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
 
   private static final Logger log = LoggerFactory.getLogger(JUnitTestTask.class);
 
+  public static void main(final String[] args) {
+    final Path testClassesDir = Path.of(args[0]);
+    final var taskArgs = new JUnitTestTaskArgs(testClassesDir);
+    final TestResults results = runTests(taskArgs);
+
+    final var properties = new Properties();
+    properties.setProperty("testsSucceededCount", Long.toString(results.testsSucceededCount()));
+    properties.setProperty("testsFailedCount", Long.toString(results.testsFailedCount()));
+    properties.setProperty("testsSkippedCount", Long.toString(results.testsSkippedCount()));
+
+    final Path writeResultsTo = Path.of(args[1]);
+    try (final var out = Files.newOutputStream(writeResultsTo, StandardOpenOption.WRITE)) {
+      properties.store(out, null);
+      System.exit(0);
+    } catch (final IOException e) {
+      System.exit(1);
+    }
+  }
+
   @Override
   public TestResults apply(final JUnitTestTaskArgs args) {
+    return runTests(args);
+  }
+
+  private static TestResults runTests(final JUnitTestTaskArgs args) {
     final var summaryListener = new SummaryGeneratingListener();
 
     final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder

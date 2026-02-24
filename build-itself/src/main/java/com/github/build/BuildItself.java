@@ -37,7 +37,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
+import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -127,11 +127,11 @@ public class BuildItself {
     service.copyResources(workdir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-    final Path buildRuntimePath = Path.of(buildRuntimePathStr);
-    final var testArgs = new JUnitTestArgs(
-        Set.of(buildRuntimePath),
-        ClassLoader.getSystemClassLoader()
-    );
+    final List<Path> buildRuntimePath = Stream
+        .of(buildRuntimePathStr.split(",", -1))
+        .map(Path::of)
+        .toList();
+    final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
     final TestResults results = testService.withJUnit(workdir, project, testArgs);
     if (results.testsFailedCount() > 0) {
       log.error("Build failed");

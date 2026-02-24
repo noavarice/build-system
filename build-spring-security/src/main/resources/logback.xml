@@ -14,7 +14,7 @@
     </encoder>
   </appender>
 
-  <logger name="com.github.build.test" level="warn"/>
+  <logger name="com.github.build.test" level="debug"/>
   <root level="info">
     <appender-ref ref="STDOUT"/>
   </root>
