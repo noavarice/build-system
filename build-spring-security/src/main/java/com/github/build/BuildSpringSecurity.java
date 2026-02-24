@@ -78,10 +78,6 @@ public final class BuildSpringSecurity {
 
     final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
-    final List<JavaCommandBuilder.Agent> agents = List.of(
-        new JavaCommandBuilder.Agent(mockitoPath, null),
-        new JavaCommandBuilder.Agent(jacocoPath, null)
-    );
 
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.id());
@@ -127,6 +123,15 @@ public final class BuildSpringSecurity {
       final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
       log.info("[project={}] Running tests", project.id());
 
+      final var jacocoExecReportPath = workdir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir())
+          .resolve("jacoco")
+          .resolve("test.exec");
+      final List<JavaCommandBuilder.Agent> agents = List.of(
+          new JavaCommandBuilder.Agent(mockitoPath, null),
+          new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath)
+      );
       final TestResults results = testService.withJUnitAsProcess(
           workdir,
           project,
