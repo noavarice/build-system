@@ -338,6 +338,11 @@ public final class DependencyServiceImpl implements DependencyService {
   }
 
   @Override
+  public Path fetchToLocal(final GroupArtifactVersion artifact, final String classifier) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public DependencyConstraints getConstraints(
       final GroupArtifactVersion bom,
       final GroupArtifactVersion... other

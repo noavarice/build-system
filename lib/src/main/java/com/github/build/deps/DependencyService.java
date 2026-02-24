@@ -23,6 +23,8 @@ public interface DependencyService {
 
   Map<GroupArtifactVersion, Path> fetchToLocal(Set<GroupArtifactVersion> artifacts);
 
+  Path fetchToLocal(GroupArtifactVersion artifact, String classifier);
+
   DependencyConstraints getConstraints(
       GroupArtifactVersion bom,
       GroupArtifactVersion... other

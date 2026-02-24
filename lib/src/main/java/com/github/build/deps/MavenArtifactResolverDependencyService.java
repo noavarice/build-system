@@ -27,6 +27,7 @@ import org.eclipse.aether.resolution.ArtifactDescriptorResult;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
+import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -225,6 +226,43 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     }
 
     return result;
+  }
+
+  @Override
+  public Path fetchToLocal(final GroupArtifactVersion gav, @Nullable final String classifier) {
+    Objects.requireNonNull(gav);
+    final var artifact = new DefaultArtifact(
+        gav.groupId(),
+        gav.artifactId(),
+        classifier,
+        "jar",
+        gav.version()
+    );
+    final var artifactRequest = new ArtifactRequest(artifact, repositories, null);
+
+    // Cannot set root dependency - this way Aether will incorrectly
+    // resolve optional dependencies (see OptionalDependencySelector).
+    // So we set root artifact (not root dependency) which works
+    // pretty much as a pseudo-dependency for entering resolved dependency
+    // graph. Without root artifact we cannot start iterating over results.
+    // Yet we don't have even a root artifact, so we're emulating its value.
+    final ArtifactResult resolveResult;
+    try {
+      resolveResult = repositorySystem.resolveArtifact(
+          repositorySystemSession,
+          artifactRequest
+      );
+    } catch (ArtifactResolutionException e) {
+      throw new IllegalStateException(e);
+    }
+
+    final Artifact a = resolveResult.getArtifact();
+    final var localArtifactRequest = new LocalArtifactRequest(a, repositories, null);
+    return repositorySystemSession
+        .getLocalRepositoryManager()
+        .find(repositorySystemSession, localArtifactRequest)
+        .getFile()
+        .toPath();
   }
 
   @Override
