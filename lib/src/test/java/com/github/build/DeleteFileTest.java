@@ -22,7 +22,7 @@ import org.junit.jupiter.api.io.TempDir;
  * @since 1.0.0
  */
 @DisplayName("Tests for deleting directory with content")
-class DeleteDirectoryTest {
+class DeleteFileTest {
 
   @DisplayName("Check deleting non-existent directory works")
   @Test
@@ -30,22 +30,21 @@ class DeleteDirectoryTest {
     final Path nonExistentDirectory = path.resolve("does-not-exist");
     assumeThat(nonExistentDirectory).doesNotExist();
     assertThatCode(
-        () -> FileUtils.deleteDirectory(nonExistentDirectory)).doesNotThrowAnyException();
+        () -> FileUtils.delete(nonExistentDirectory)).doesNotThrowAnyException();
   }
 
-  @DisplayName("Check deleting path that is file works without deleting the file")
+  @DisplayName("Check deleting regular file works")
   @TestFactory
-  DynamicTest[] testDeletingFileWorksWithoutDeletingFile(
+  DynamicTest[] testDeletingFileWorks(
       @TempDir final Path path
   ) throws IOException {
     final Path filePath = Files.writeString(path.resolve("greeting.txt"), "Hello, world!");
     return new DynamicTest[]{
-        dynamicTest("Check method works without exception",
-            () -> assertThatCode(
-                () -> FileUtils.deleteDirectory(filePath)).doesNotThrowAnyException()
+        dynamicTest("Check method works without exception", () ->
+            assertThatCode(() -> FileUtils.delete(filePath)).doesNotThrowAnyException()
         ),
         dynamicTest("Check file hasn't been touched",
-            () -> assertThat(filePath).hasContent("Hello, world!")
+            () -> assertThat(filePath).doesNotExist()
         ),
     };
   }
@@ -58,7 +57,7 @@ class DeleteDirectoryTest {
     return new DynamicTest[]{
         dynamicTest("Check method works without exception",
             () -> assertThatCode(
-                () -> FileUtils.deleteDirectory(emptyDir)).doesNotThrowAnyException()
+                () -> FileUtils.delete(emptyDir)).doesNotThrowAnyException()
         ),
         dynamicTest("Check directory removed", () -> assertThat(emptyDir).doesNotExist()),
     };
@@ -72,7 +71,7 @@ class DeleteDirectoryTest {
     assumeThat(dir).isNotEmptyDirectory();
     return new DynamicTest[]{
         dynamicTest("Check method works without exception",
-            () -> assertThatCode(() -> FileUtils.deleteDirectory(dir)).doesNotThrowAnyException()
+            () -> assertThatCode(() -> FileUtils.delete(dir)).doesNotThrowAnyException()
         ),
         dynamicTest("Check directory removed", () -> assertThat(dir).doesNotExist()),
     };

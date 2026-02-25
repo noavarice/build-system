@@ -1,6 +1,7 @@
 package com.github.build;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -25,6 +26,7 @@ import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
+import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -567,6 +569,92 @@ class BuildServiceTest {
               () -> assertThat(classFile).isRegularFile()
           ),
       };
+    }
+  }
+
+  @DisplayName("Tests for cleaning project build output")
+  @Nested
+  class CleanTest {
+
+    @DisplayName("Check cleaning missing directory works")
+    @Test
+    void testCleanMissingDirectoryWorks(@TempDir final Path tempDir) {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+      final Project project = Project
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withSourceSet(SourceSet.withMainDefaults().build())
+          .withSourceSet(SourceSet.withTestDefaults().build())
+          .build();
+      final Path buildOutputDir = tempDir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir());
+      assertThat(buildOutputDir).doesNotExist();
+      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+    }
+
+    @DisplayName("Check cleaning empty directory works")
+    @Test
+    void testCleanEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+      final Project project = Project
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withSourceSet(SourceSet.withMainDefaults().build())
+          .withSourceSet(SourceSet.withTestDefaults().build())
+          .build();
+
+      final Path buildOutputDir = tempDir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir());
+      Files.createDirectories(buildOutputDir);
+      assertThat(buildOutputDir).isEmptyDirectory();
+
+      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+    }
+
+    @DisplayName("Check cleaning non-empty directory works")
+    @Test
+    void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+      final Project project = Project
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withSourceSet(SourceSet.withMainDefaults().build())
+          .withSourceSet(SourceSet.withTestDefaults().build())
+          .build();
+      final var java21 = CompilerOptions
+          .builder()
+          .release("21")
+          .build();
+      service.compileMain(tempDir, project, java21);
+
+      final Path buildOutputDir = tempDir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir());
+      assertThat(buildOutputDir).isNotEmptyDirectory();
+
+      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+    }
+
+    @DisplayName("Check cleaning build output which is regular file works silently")
+    @Test
+    void testCleanFile(@TempDir final Path tempDir) throws IOException {
+      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+      final Project project = Project
+          .withId("hello-world")
+          .withPath("hello-world")
+          .withSourceSet(SourceSet.withMainDefaults().build())
+          .withSourceSet(SourceSet.withTestDefaults().build())
+          .build();
+
+      final Path buildOutputDir = tempDir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir());
+      Files.writeString(buildOutputDir, "This should not be a file");
+      assertThat(buildOutputDir).isNotEmptyFile();
+
+      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
     }
   }
 }

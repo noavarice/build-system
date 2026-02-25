@@ -1,16 +1,17 @@
 package com.github.build.util;
 
 import static java.util.Comparator.naturalOrder;
-import static java.util.Comparator.reverseOrder;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.file.FileVisitResult;
+import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Objects;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -83,28 +84,96 @@ public final class FileUtils {
   }
 
   /**
-   * Deletes specified directory and all of its content recursively.
+   * Deletes specified path. If path is non-empty directory, deletes directory with its content.
    *
-   * @param directory Path to directory
+   * @param path File path
    */
-  public static void deleteDirectory(final Path directory) {
-    log.info("Removing directory {}", directory);
-    Objects.requireNonNull(directory);
-    if (!Files.isDirectory(directory)) {
-      log.info("{} is not a directory (it's a file or it does not exist)", directory);
+  public static void delete(final Path path) {
+    log.info("Deleting {}", path);
+    if (Files.notExists(path)) {
+      log.debug("Path {} not found, do nothing", path);
       return;
     }
 
-    final List<Path> paths = FileUtils.listAll(directory, reverseOrder());
-    log.debug("Files and directories to remove, in order: {}", paths);
-    for (final Path path : paths) {
-      log.trace("Removing {}", path);
+    if (Files.isRegularFile(path)) {
       try {
         Files.delete(path);
       } catch (final IOException e) {
         throw new UncheckedIOException(e);
       }
+
+      return;
     }
+
+    log.debug("Deleting directory {} recursively", path);
+    try {
+      Files.walkFileTree(path, DeletingFileVisitor.INSTANCE);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * File visitor for cleaning contents of a directory.
+   */
+  private static final class DeletingFileVisitor implements FileVisitor<Path> {
+
+    private static final FileVisitor<Path> INSTANCE = new DeletingFileVisitor();
+
+    private DeletingFileVisitor() {
+    }
+
+    @Override
+    public FileVisitResult preVisitDirectory(final Path dir, final BasicFileAttributes attrs) {
+      return FileVisitResult.CONTINUE;
+    }
+
+    @Override
+    public FileVisitResult visitFile(
+        final Path file,
+        final BasicFileAttributes attrs
+    ) throws IOException {
+      log.trace("Deleting file {}", file);
+      Files.delete(file);
+      return FileVisitResult.CONTINUE;
+    }
+
+    @Override
+    public FileVisitResult visitFileFailed(final Path file, final IOException exc) {
+      log.error("Failed to delete file {}", file, exc);
+      return FileVisitResult.TERMINATE;
+    }
+
+    @Override
+    public FileVisitResult postVisitDirectory(
+        final Path dir,
+        final IOException exc
+    ) throws IOException {
+      if (exc != null) {
+        log.error("Failed to visit directory {}", dir, exc);
+        return FileVisitResult.TERMINATE;
+      }
+
+      log.trace("Deleting directory {}", dir);
+      Files.delete(dir);
+      return FileVisitResult.CONTINUE;
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      return obj == this || obj != null && obj.getClass() == this.getClass();
+    }
+
+    @Override
+    public int hashCode() {
+      return 1;
+    }
+
+    @Override
+    public String toString() {
+      return "CleaningFileVisitor[]";
+    }
+
   }
 
   /**

@@ -306,7 +306,7 @@ public final class BuildService {
         .resolve(sourceSetId.value());
 
     if (Files.isDirectory(targetDir)) {
-      FileUtils.deleteDirectory(targetDir);
+      FileUtils.delete(targetDir);
     }
 
     try {
@@ -417,5 +417,23 @@ public final class BuildService {
     public FileVisitResult postVisitDirectory(final Path dir, final IOException exc) {
       return FileVisitResult.CONTINUE;
     }
+  }
+
+  /**
+   * Cleans build output for the specified project.
+   *
+   * @param workdir Build working directory
+   * @param project Project to clean
+   */
+  public void clean(final Path workdir, final Project project) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(project);
+    PathUtils.checkAbsolute(workdir);
+
+    log.info("[project={}] Cleaning build output directory", project.id());
+    final Path buildOutputDir = workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir());
+    FileUtils.delete(buildOutputDir);
   }
 }
