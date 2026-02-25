@@ -7,6 +7,7 @@ import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.ProjectWorkspaceReader;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;
@@ -24,10 +25,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -43,6 +46,32 @@ public final class BuildSpringSecurity {
   private BuildSpringSecurity() {
   }
 
+  private static final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+
+  private static final DependencyService dependencyService = mavenArtifactResolver();
+
+  private static final TestService testService = new TestService(dependencyService);
+
+  private static final BuildService buildService = new BuildService(
+      new CompileService(),
+      dependencyService,
+      new JarService()
+  );
+
+  private static final CompilerOptions java17 = CompilerOptions
+      .builder()
+      .release("17")
+      .parameters(true)
+      .build();
+
+  private static final Project.ArtifactLayout artifactLayout = new Project.ArtifactLayout(
+      Path.of("build-system"),
+      Path.of("classes"),
+      Path.of("resources")
+  );
+
+  private static final Duration testTimeout = Duration.ofMinutes(10);
+
   public static void main(final String[] args) {
     final Path workdir;
     if (args.length == 0) {
@@ -51,23 +80,26 @@ public final class BuildSpringSecurity {
       workdir = Path.of(args[0]).toAbsolutePath();
     }
 
-    final var compileService = new CompileService();
-    final var dependencyService = mavenArtifactResolver();
-    final var testService = new TestService(dependencyService);
-    final var jarService = new JarService();
-    final BuildService service = new BuildService(compileService, dependencyService, jarService);
+    // TODO: provide standard mechanism
+    final boolean skipTests = System.getProperties().containsKey("skipTests");
+    log.info("Skipping all tests: {}", skipTests);
 
-    final DependencyConstraints platform = getPlatform(dependencyService);
-    final Project crypto = createProjectCrypto(platform);
-    final Project core = createProjectCore(platform, crypto);
-    final List<Project> projects = List.of(crypto, core);
+    // setup project data
+    final DependencyConstraints platform = getPlatform();
+    final Project projectCrypto = createProjectCrypto(platform);
+    final Project projectCore = createProjectCore(platform, projectCrypto);
+    final Project projectData = createProjectData(platform, projectCore);
+    final List<Project> allProjects = List.of(projectCrypto, projectCore, projectData);
+
+    // integrating projects into dependency resolution mechanism
+    // TODO: reconsider how dependency service integrates with projects
+    session.setWorkspaceReader(new ProjectWorkspaceReader(
+        new WorkspaceRepository("build-system"),
+        workdir,
+        Set.copyOf(allProjects)
+    ));
 
     final Path license = workdir.resolve("LICENSE.txt");
-    final var compilerOptions = CompilerOptions
-        .builder()
-        .release("17")
-        .parameters(true)
-        .build();
     final var springCore = GroupArtifact.parse("org.springframework:spring-core");
     final String springCoreVersion = platform.getConstraint(springCore);
 
@@ -79,16 +111,18 @@ public final class BuildSpringSecurity {
     final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
 
-    for (final Project project : projects) {
+    allProjects.forEach(project -> buildService.clean(workdir, project));
+
+    for (final Project project : allProjects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
+      final boolean mainCompiled = buildService.compileMain(workdir, project, java17);
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
         return;
       }
-      service.copyResources(workdir, project, SourceSet.Id.MAIN);
-      if (project == core) {
+      buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+      if (project == projectCore) {
         generateSpringVersionsFile(workdir, project, springCoreVersion);
       }
 
@@ -104,52 +138,58 @@ public final class BuildSpringSecurity {
           .setImplementationTitle(project.artifactId())
           .setImplementationVersion(project.version())
           .build();
-      service.createJar(workdir, project, additionalEntries, manifest);
+      buildService.createJar(workdir, project, additionalEntries, manifest);
 
-      log.info("[project={}] Compiling test source set", project.artifactId());
-      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
-      if (!testCompiled) {
-        log.error("Build failed");
-        System.exit(1);
-        return;
-      }
-      service.copyResources(workdir, project, SourceSet.Id.TEST);
+      if (skipTests) {
+        log.info("[project={}] Skipping tests", project.artifactId());
+      } else {
+        log.info("[project={}] Compiling test source set", project.artifactId());
+        final boolean testCompiled = buildService.compileTest(workdir, project, java17);
+        if (!testCompiled) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        buildService.copyResources(workdir, project, SourceSet.Id.TEST);
 
-      final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-      final List<Path> buildRuntimePath = Stream
-          .of(buildRuntimePathStr.split(",", -1))
-          .map(Path::of)
-          .toList();
-      final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-      log.info("[project={}] Running tests", project.artifactId());
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final List<Path> buildRuntimePath = Stream
+            .of(buildRuntimePathStr.split(",", -1))
+            .map(Path::of)
+            .toList();
+        final var testArgs = new JUnitTestArgs(buildRuntimePath,
+            ClassLoader.getSystemClassLoader());
+        log.info("[project={}] Running tests", project.artifactId());
 
-      final var jacocoExecReportPath = workdir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve("jacoco")
-          .resolve("test.exec");
-      final List<JavaCommandBuilder.Agent> agents = List.of(
-          new JavaCommandBuilder.Agent(mockitoPath, null),
-          new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath)
-      );
-      final TestResults results = testService.withJUnitAsProcess(
-          workdir,
-          project,
-          testArgs,
-          agents,
-          List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
-          Duration.ofMinutes(10)
-      );
+        final var jacocoExecReportPath = workdir
+            .resolve(project.path())
+            .resolve(project.artifactLayout().rootDir())
+            .resolve("jacoco")
+            .resolve("test.exec");
+        final List<JavaCommandBuilder.Agent> agents = List.of(
+            new JavaCommandBuilder.Agent(mockitoPath, null),
+            new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath)
+        );
+        final TestResults results = testService.withJUnitAsProcess(
+            workdir,
+            project,
+            testArgs,
+            agents,
+            List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
+            testTimeout
+        );
 
-      log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
-          project.artifactId(),
-          results.testsSucceededCount(),
-          results.testsFailedCount(),
-          results.testsSkippedCount()
-      );
-      if (results.testsFailedCount() > 0) {
-        log.error("Build failed");
-        System.exit(1);
+        log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
+            project.artifactId(),
+            results.testsSucceededCount(),
+            results.testsFailedCount(),
+            results.testsSkippedCount()
+        );
+        if (results.testsFailedCount() > 0) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
       }
     }
   }
@@ -177,8 +217,8 @@ public final class BuildSpringSecurity {
     }
   }
 
-  private static DependencyConstraints getPlatform(final DependencyService service) {
-    return service
+  private static DependencyConstraints getPlatform() {
+    return dependencyService
         .getConstraints(
             GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.0"),
             GroupArtifactVersion.parse("io.projectreactor:reactor-bom:2025.0.0"),
@@ -254,6 +294,8 @@ public final class BuildSpringSecurity {
     final var main = SourceSet
         .withMainDefaults()
         .compileAndRunWith(
+            // optional
+            // TODO: optional dependencies must be available for tests and unavailable as runtime dependencies
             "org.springframework:spring-core",
             "org.bouncycastle:bcpkix-jdk18on",
             "com.password4j:password4j"
@@ -274,15 +316,10 @@ public final class BuildSpringSecurity {
         )
         .withDependencyConstraints(platform)
         .build();
-    final var artifactLayout = new Project.ArtifactLayout(
-        Path.of("build-system"),
-        Path.of("classes"),
-        Path.of("resources")
-    );
     return Project
         .builder("org.springframework.security", "spring-security-crypto")
         .withVersion("7.0.0")
-        .withPath(Path.of("crypto"))
+        .withPath("crypto")
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
         .withSourceSet(test)
@@ -291,20 +328,20 @@ public final class BuildSpringSecurity {
 
   private static Project createProjectCore(
       final DependencyConstraints platform,
-      final Project crypto
+      final Project projectCrypto
   ) {
     final var main = SourceSet
         .withMainDefaults()
-        .compileAndRunWith(crypto)
-        .compileAndRunWith(
-            // api
+        .compileAndRunWithExposed(projectCrypto)
+        .compileAndRunWithExposed(
             "org.springframework:spring-aop",
             "org.springframework:spring-beans",
             "org.springframework:spring-context",
             "org.springframework:spring-core",
             "org.springframework:spring-expression",
-            "io.micrometer:micrometer-observation",
-
+            "io.micrometer:micrometer-observation"
+        )
+        .compileAndRunWith(
             // optional
             "com.fasterxml.jackson.core:jackson-databind",
             "io.micrometer:context-propagation",
@@ -345,15 +382,51 @@ public final class BuildSpringSecurity {
         )
         .withDependencyConstraints(platform)
         .build();
-    final var artifactLayout = new Project.ArtifactLayout(
-        Path.of("build-system"),
-        Path.of("classes"),
-        Path.of("resources")
-    );
     return Project
         .builder("org.springframework.security", "spring-security-core")
         .withVersion("7.0.0")
-        .withPath(Path.of("core"))
+        .withPath("core")
+        .withArtifactLayout(artifactLayout)
+        .withSourceSet(main)
+        .withSourceSet(test)
+        .build();
+  }
+
+  private static Project createProjectData(
+      final DependencyConstraints platform,
+      final Project projectCore
+  ) {
+    final var main = SourceSet
+        .withMainDefaults()
+        .compileAndRunWithExposed(projectCore)
+        .compileAndRunWithExposed(
+            "jakarta.xml.bind:jakarta.xml.bind-api",
+            "org.springframework.data:spring-data-commons",
+            "org.springframework:spring-core"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var test = SourceSet
+        .withTestDefaults()
+        .compileAndRunWith(main)
+        .compileAndRunWith(
+            "org.assertj:assertj-core",
+            "org.junit.jupiter:junit-jupiter-api",
+            "org.junit.jupiter:junit-jupiter-params",
+            "org.junit.jupiter:junit-jupiter-engine",
+            "org.mockito:mockito-core",
+            "org.mockito:mockito-junit-jupiter",
+            "org.springframework:spring-test"
+        )
+        .runWith(
+            "org.junit.platform:junit-platform-launcher"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    return Project
+        .builder("org.springframework.security", "spring-security-data")
+        .withVersion("7.0.0")
+        .withPath("data")
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
         .withSourceSet(test)
@@ -362,7 +435,6 @@ public final class BuildSpringSecurity {
 
   private static DependencyService mavenArtifactResolver() {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
 
     final Path localRepositoryBasePath;
