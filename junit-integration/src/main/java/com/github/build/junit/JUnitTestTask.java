@@ -61,6 +61,7 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
     return runTests(args);
   }
 
+  // TODO: handle situation when no test engines can be found
   private static TestResults runTests(final JUnitTestTaskArgs args) {
     final var summaryListener = new SummaryGeneratingListener();
 
@@ -106,6 +107,7 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
       launcher.execute(testPlan, executionListener);
     }
 
+    // FIXME: account for failures (e.g., failed to instantiate test class at all)
     final TestExecutionSummary summary = summaryListener.getSummary();
     final Duration duration = Duration.between(
         Instant.ofEpochMilli(summary.getTimeStarted()),

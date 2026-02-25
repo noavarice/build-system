@@ -43,6 +43,40 @@ public final class BuildSpringSecurity {
   private BuildSpringSecurity() {
   }
 
+  private static final DependencyService dependencyService = mavenArtifactResolver();
+
+  private static final TestService testService = new TestService(dependencyService);
+
+  private static final BuildService buildService = new BuildService(
+      new CompileService(),
+      dependencyService,
+      new JarService()
+  );
+
+  private static final CompilerOptions java17 = CompilerOptions
+      .builder()
+      .release("17")
+      .parameters(true)
+      .build();
+
+  private static final Project.ArtifactLayout artifactLayout = new Project.ArtifactLayout(
+      Path.of("build-system"),
+      Path.of("classes"),
+      Path.of("resources")
+  );
+
+  private static final Duration testTimeout = Duration.ofMinutes(10);
+
+  private static final DependencyConstraints platform = getPlatform();
+
+  private static final Project projectCrypto = createProjectCrypto();
+
+  private static final Project projectCore = createProjectCore();
+
+  private static final Project projectData = createProjectData();
+
+  private static final List<Project> allProjects = List.of(projectCrypto, projectCore, projectData);
+
   public static void main(final String[] args) {
     final Path workdir;
     if (args.length == 0) {
@@ -51,23 +85,9 @@ public final class BuildSpringSecurity {
       workdir = Path.of(args[0]);
     }
 
-    final var compileService = new CompileService();
-    final var dependencyService = mavenArtifactResolver();
-    final var testService = new TestService(dependencyService);
-    final var jarService = new JarService();
-    final BuildService service = new BuildService(compileService, dependencyService, jarService);
-
-    final DependencyConstraints platform = getPlatform(dependencyService);
-    final Project crypto = createProjectCrypto(platform);
-    final Project core = createProjectCore(platform, crypto);
-    final List<Project> projects = List.of(crypto, core);
+    allProjects.forEach(project -> buildService.clean(workdir, project));
 
     final Path license = workdir.resolve("LICENSE.txt");
-    final var compilerOptions = CompilerOptions
-        .builder()
-        .release("17")
-        .parameters(true)
-        .build();
     final var springCore = GroupArtifact.parse("org.springframework:spring-core");
     final String springCoreVersion = platform.getConstraint(springCore);
 
@@ -79,16 +99,16 @@ public final class BuildSpringSecurity {
     final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
 
-    for (final Project project : projects) {
+    for (final Project project : allProjects) {
       log.info("[project={}] Compiling main source set", project.id());
-      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
+      final boolean mainCompiled = buildService.compileMain(workdir, project, java17);
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
         return;
       }
-      service.copyResources(workdir, project, SourceSet.Id.MAIN);
-      if (project == core) {
+      buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+      if (project == projectCore) {
         generateSpringVersionsFile(workdir, project, springCoreVersion);
       }
 
@@ -104,16 +124,16 @@ public final class BuildSpringSecurity {
           .setImplementationTitle(project.id().value())
           .setImplementationVersion("7.0.0")
           .build();
-      service.createJar(workdir, project, additionalEntries, manifest);
+      buildService.createJar(workdir, project, additionalEntries, manifest);
 
       log.info("[project={}] Compiling test source set", project.id());
-      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
+      final boolean testCompiled = buildService.compileTest(workdir, project, java17);
       if (!testCompiled) {
         log.error("Build failed");
         System.exit(1);
         return;
       }
-      service.copyResources(workdir, project, SourceSet.Id.TEST);
+      buildService.copyResources(workdir, project, SourceSet.Id.TEST);
 
       final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
       final List<Path> buildRuntimePath = Stream
@@ -138,7 +158,7 @@ public final class BuildSpringSecurity {
           testArgs,
           agents,
           List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
-          Duration.ofMinutes(10)
+          testTimeout
       );
 
       log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
@@ -150,6 +170,7 @@ public final class BuildSpringSecurity {
       if (results.testsFailedCount() > 0) {
         log.error("Build failed");
         System.exit(1);
+        return;
       }
     }
   }
@@ -177,8 +198,8 @@ public final class BuildSpringSecurity {
     }
   }
 
-  private static DependencyConstraints getPlatform(final DependencyService service) {
-    return service
+  private static DependencyConstraints getPlatform() {
+    return dependencyService
         .getConstraints(
             GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.0"),
             GroupArtifactVersion.parse("io.projectreactor:reactor-bom:2025.0.0"),
@@ -250,7 +271,7 @@ public final class BuildSpringSecurity {
         .build();
   }
 
-  private static Project createProjectCrypto(final DependencyConstraints platform) {
+  private static Project createProjectCrypto() {
     final var main = SourceSet
         .withMainDefaults()
         .compileAndRunWith(
@@ -274,27 +295,19 @@ public final class BuildSpringSecurity {
         )
         .withDependencyConstraints(platform)
         .build();
-    final var artifactLayout = new Project.ArtifactLayout(
-        Path.of("build-system"),
-        Path.of("classes"),
-        Path.of("resources")
-    );
     return Project
         .withId("spring-security-crypto")
-        .withPath(Path.of("crypto"))
+        .withPath("crypto")
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
         .withSourceSet(test)
         .build();
   }
 
-  private static Project createProjectCore(
-      final DependencyConstraints platform,
-      final Project crypto
-  ) {
+  private static Project createProjectCore() {
     final var main = SourceSet
         .withMainDefaults()
-        .compileAndRunWith(crypto)
+        .compileAndRunWith(projectCrypto)
         .compileAndRunWith(
             // api
             "org.springframework:spring-aop",
@@ -344,14 +357,46 @@ public final class BuildSpringSecurity {
         )
         .withDependencyConstraints(platform)
         .build();
-    final var artifactLayout = new Project.ArtifactLayout(
-        Path.of("build-system"),
-        Path.of("classes"),
-        Path.of("resources")
-    );
     return Project
         .withId("spring-security-core")
-        .withPath(Path.of("core"))
+        .withPath("core")
+        .withArtifactLayout(artifactLayout)
+        .withSourceSet(main)
+        .withSourceSet(test)
+        .build();
+  }
+
+  private static Project createProjectData() {
+    final var main = SourceSet
+        .withMainDefaults()
+        .compileAndRunWith(projectCore)
+        .compileAndRunWith(
+            "jakarta.xml.bind:jakarta.xml.bind-api",
+            "org.springframework.data:spring-data-commons",
+            "org.springframework:spring-core"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var test = SourceSet
+        .withTestDefaults()
+        .compileAndRunWith(main)
+        .compileAndRunWith(
+            "org.assertj:assertj-core",
+            "org.junit.jupiter:junit-jupiter-api",
+            "org.junit.jupiter:junit-jupiter-params",
+            "org.junit.jupiter:junit-jupiter-engine",
+            "org.mockito:mockito-core",
+            "org.mockito:mockito-junit-jupiter",
+            "org.springframework:spring-test"
+        )
+        .runWith(
+            "org.junit.platform:junit-platform-launcher"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    return Project
+        .withId("spring-security-data")
+        .withPath("data")
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
         .withSourceSet(test)
