@@ -13,6 +13,8 @@ import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
@@ -64,6 +66,48 @@ class BuildServiceTest {
   @DisplayName("Check compiling main source set")
   @Nested
   class CompileMain {
+
+    @DisplayName("Compiling empty source set works")
+    @TestFactory
+    DynamicTest[] compilingEmptyWorks(@TempDir final Path tempDir) throws IOException {
+      Files.createDirectories(
+          tempDir
+              .resolve("empty-sources")
+              .resolve("src")
+              .resolve("main")
+              .resolve("java")
+      );
+      final var main = SourceSet
+          .withMainDefaults()
+          .build();
+      final var test = SourceSet
+          .withTestDefaults()
+          .build();
+      final var project = Project
+          .withId("empty-sources")
+          .withPath(Path.of("empty-sources"))
+          .withSourceSet(main)
+          .withSourceSet(test)
+          .build();
+
+      final Path classesDir = tempDir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir())
+          .resolve(project.artifactLayout().classesDir())
+          .resolve("main");
+      assertThat(classesDir).doesNotExist();
+
+      return new DynamicTest[]{
+          dynamicTest(
+              "Compilation succeeds",
+              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+          ),
+          dynamicTest(
+              "Classes directory created but empty",
+              () -> assertThat(classesDir).isEmptyDirectory()
+          ),
+      };
+    }
 
     @DisplayName("Compiling main source set works")
     @TestFactory

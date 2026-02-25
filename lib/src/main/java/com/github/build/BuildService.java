@@ -85,7 +85,9 @@ public final class BuildService {
 
     PathUtils.checkAbsolute(workdir);
 
-    final Set<Path> sources = collectSources(workdir, project, sourceSetId);
+    final SourceSet sourceSet = project.sourceSet(sourceSetId);
+    log.info("[project={}] [ss={}] Compiling", project.id(), sourceSetId);
+
     final Path classesDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
@@ -98,12 +100,21 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
-    final SourceSet sourceSet = project.sourceSet(sourceSetId);
+    final Set<Path> sources = collectSources(workdir, project, sourceSetId);
+    if (sources.isEmpty()) {
+      log.info("[project={}] [ss={}] No sources found, do nothing", project.id(), sourceSetId);
+      return true;
+    }
+
     final Set<Path> classpath = new HashSet<>();
     try {
       addSourceSetCompileClasspath(workdir, project, sourceSet, classpath);
     } catch (final IllegalStateException e) {
-      log.error("Failed to gather compilation classpath", e);
+      log.error("[project={}] [ss={}] Failed to gather compilation classpath",
+          project.id(),
+          sourceSetId,
+          e
+      );
       return false;
     }
 
@@ -185,7 +196,7 @@ public final class BuildService {
           .resolve(project.path())
           .resolve(relativeDir);
       if (Files.notExists(sourceDir)) {
-        log.debug("[project={}][sourceSet={}] Source directory {} does not exist",
+        log.debug("[project={}][ss={}] Source directory {} does not exist",
             project.id(),
             sourceSetId,
             sourceDir
@@ -195,7 +206,7 @@ public final class BuildService {
 
       if (!Files.isDirectory(sourceDir)) {
         log.warn(
-            "[project={}][sourceSet={}] {} assumed to be source directory but it's not a directory",
+            "[project={}][ss={}] {} assumed to be source directory but it's not a directory",
             project.id(),
             sourceSetId,
             sourceDir
@@ -216,7 +227,7 @@ public final class BuildService {
       }
 
       if (sourcesPart.isEmpty()) {
-        log.debug("[project={}][sourceSet={}] No source files found in directory {}",
+        log.debug("[project={}][ss={}] No source files found in directory {}",
             project.id(),
             sourceSetId,
             sourceDir
@@ -286,7 +297,7 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][sourceSet={}] Copying resources", project.id(), sourceSetId);
+    log.info("[project={}][ss={}] Copying resources", project.id(), sourceSetId);
 
     final Path targetDir = workdir
         .resolve(project.path())
@@ -310,7 +321,7 @@ public final class BuildService {
       final var absolutePath = workdir
           .resolve(project.path())
           .resolve(dir);
-      log.info("[project={}][sourceSet={}] Copying resources from {}",
+      log.info("[project={}][ss={}] Copying resources from {}",
           project.id(),
           sourceSetId,
           absolutePath
@@ -332,7 +343,7 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][sourceSet={}] Creating JAR", project.id(), SourceSet.Id.MAIN);
+    log.info("[project={}][ss={}] Creating JAR", project.id(), SourceSet.Id.MAIN);
     final Path jarPath = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
