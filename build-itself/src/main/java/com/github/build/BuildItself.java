@@ -52,6 +52,16 @@ public class BuildItself {
 
   private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
 
+  private static final DependencyService dependencyService = mavenArtifactResolver();
+
+  private static final TestService testService = new TestService(dependencyService);
+
+  private static final BuildService buildService = new BuildService(
+      new CompileService(),
+      dependencyService,
+      new JarService()
+  );
+
   public static void main(final String[] args) {
     final Path workdir;
     if (args.length == 0) {
@@ -60,15 +70,59 @@ public class BuildItself {
       workdir = Path.of(args[0]);
     }
 
-    final var compileService = new CompileService();
-
-    final DependencyService dependencyService = mavenArtifactResolver();
-    final var testService = new TestService(dependencyService);
-    final var jarService = new JarService();
-    final BuildService service = new BuildService(compileService, dependencyService, jarService);
     final DependencyConstraints junitBom = dependencyService.getConstraints(
         GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
     );
+
+    final CompilerOptions java21 = CompilerOptions
+        .builder()
+        .release("21")
+        .build();
+
+    final Project projectTestUtils = createProjectTestUtils(junitBom);
+    final Project projectLib = createProjectLib(junitBom, projectTestUtils);
+
+    buildService.clean(workdir, projectTestUtils);
+    buildService.clean(workdir, projectLib);
+
+    if (!buildTestUtils(workdir, projectTestUtils, java21)) {
+      log.info("Build failed");
+      System.exit(1);
+      return;
+    }
+
+    if (!buildLib(workdir, projectLib, java21)) {
+      log.info("Build failed");
+      System.exit(1);
+      return;
+    }
+
+    log.info("Build finished successfully");
+  }
+
+  private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
+    final var main = SourceSet
+        .withMainDefaults()
+        .compileWith("org.jspecify:jspecify:1.0.0")
+        .compileAndRunWith("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")
+        .build();
+    final var test = SourceSet
+        .withTestDefaults()
+        .withDependencyConstraints(junitBom)
+        .runWith("org.junit.jupiter:junit-jupiter-engine")
+        .build();
+    return Project
+        .withId("build-system-test-utils")
+        .withPath(Path.of("test-utils"))
+        .withSourceSet(main)
+        .withSourceSet(test)
+        .build();
+  }
+
+  private static Project createProjectLib(
+      final DependencyConstraints junitBom,
+      final Project projectTestUtils
+  ) {
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
@@ -87,6 +141,7 @@ public class BuildItself {
         .withTestDefaults()
         .withDependencyConstraints(junitBom)
         .compileAndRunWith(main)
+        .compileAndRunWith(projectTestUtils)
         .compileAndRunWith(
             "org.apache.maven:maven-resolver-provider:3.9.9",
             "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
@@ -102,29 +157,34 @@ public class BuildItself {
             "com.sun.xml.bind:jaxb-impl:4.0.5"
         )
         .build();
-    final var project = Project
+    return Project
         .withId("build-system-lib")
         .withPath(Path.of("lib"))
         .withSourceSet(main)
         .withSourceSet(test)
         .build();
+  }
 
-    generateSourcesFromMavenXsd(workdir, project);
-    final boolean mainCompiled = service.compileMain(workdir, project, CompilerOptions.EMPTY);
+  private static boolean buildTestUtils(
+      final Path workdir,
+      final Project project,
+      final CompilerOptions compilerOptions
+  ) {
+    log.info("Building {}", project.id());
+    final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
     if (!mainCompiled) {
-      log.error("Build failed");
-      System.exit(1);
-      return;
+      return false;
     }
-    service.copyResources(workdir, project, SourceSet.Id.MAIN);
 
-    final boolean testCompiled = service.compileTest(workdir, project, CompilerOptions.EMPTY);
+    buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+    buildService.createJar(workdir, project, Map.of(), null);
+
+    final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
     if (!testCompiled) {
-      log.error("Build failed");
-      System.exit(1);
-      return;
+      return false;
     }
-    service.copyResources(workdir, project, SourceSet.Id.TEST);
+
+    buildService.copyResources(workdir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final List<Path> buildRuntimePath = Stream
@@ -133,10 +193,39 @@ public class BuildItself {
         .toList();
     final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
     final TestResults results = testService.withJUnit(workdir, project, testArgs);
-    if (results.testsFailedCount() > 0) {
-      log.error("Build failed");
-      System.exit(1);
+    return results.testsFailedCount() <= 0;
+  }
+
+  private static boolean buildLib(
+      final Path workdir,
+      final Project project,
+      final CompilerOptions compilerOptions
+  ) {
+    log.info("Building {}", project.id());
+    generateSourcesFromMavenXsd(workdir, project);
+    final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
+    if (!mainCompiled) {
+      return false;
     }
+
+    buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+    buildService.createJar(workdir, project, Map.of(), null);
+
+    final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
+    if (!testCompiled) {
+      return false;
+    }
+
+    buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+
+    final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+    final List<Path> buildRuntimePath = Stream
+        .of(buildRuntimePathStr.split(",", -1))
+        .map(Path::of)
+        .toList();
+    final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
+    final TestResults results = testService.withJUnit(workdir, project, testArgs);
+    return results.testsFailedCount() <= 0;
   }
 
   private static void generateSourcesFromMavenXsd(final Path workdir, final Project project) {

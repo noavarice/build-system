@@ -56,7 +56,7 @@ public final class DependencyServiceImpl implements DependencyService {
       final GraphPath currentPath = queue.removeLast();
       final GraphValue current = currentPath.getLast();
 
-      log.info("Resolving direct dependencies for {}", current);
+      log.debug("Resolving direct dependencies for {}", current);
 
       // resolve POM and all of its parents, so it's possible to resolve versions
       // for transitive dependencies (e.g., when dependency version is set implicitly

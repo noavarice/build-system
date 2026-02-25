@@ -184,7 +184,7 @@ public final class Graph {
           if (log.isDebugEnabled()) {
             log.debug("{} is excluded by {}", groupArtifact, node.excludedBy);
           } else {
-            log.info("{} is excluded", groupArtifact);
+            log.debug("{} is excluded", groupArtifact);
           }
           continue;
         }
@@ -204,16 +204,16 @@ public final class Graph {
         continue;
       }
 
-      log.info("Found conflicts for {}: {}", groupArtifact, paths);
+      log.debug("Found conflicts for {}: {}", groupArtifact, paths);
       GraphPath picked = paths.getFirst();
       for (int i = 1; i < paths.size(); i++) {
         final GraphPath path = paths.get(i);
         if (path.isDuplicateWith(picked)) {
-          log.info("Path {} is duplicate with {}, picking {} as latest", path, picked, path);
+          log.debug("Path {} is duplicate with {}, picking {} as latest", path, picked, path);
           result.removeLast(picked);
           picked = path;
         } else {
-          log.info("Path {} conflicts with {}, picking {} as earliest", path, picked, picked);
+          log.debug("Path {} conflicts with {}, picking {} as earliest", path, picked, picked);
           result.removeLast(path);
         }
       }
