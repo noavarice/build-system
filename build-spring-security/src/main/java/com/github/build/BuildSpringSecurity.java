@@ -48,7 +48,7 @@ public final class BuildSpringSecurity {
     if (args.length == 0) {
       workdir = Path.of("").toAbsolutePath();
     } else {
-      workdir = Path.of(args[0]);
+      workdir = Path.of(args[0]).toAbsolutePath();
     }
 
     final var compileService = new CompileService();

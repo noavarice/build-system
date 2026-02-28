@@ -38,16 +38,19 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
   private static final Logger log = LoggerFactory.getLogger(JUnitTestTask.class);
 
   public static void main(final String[] args) {
-    final Path testClassesDir = Path.of(args[0]);
+    final var unixSocketPath = Path.of(args[0]);
+    final var testExecutionListener = new UnixSocketForwardingTestExecutionListener(unixSocketPath);
+
+    final Path testClassesDir = Path.of(args[1]);
     final var taskArgs = new JUnitTestTaskArgs(testClassesDir);
-    final TestResults results = runTests(taskArgs);
+    final TestResults results = runTests(taskArgs, testExecutionListener);
 
     final var properties = new Properties();
     properties.setProperty("testsSucceededCount", Long.toString(results.testsSucceededCount()));
     properties.setProperty("testsFailedCount", Long.toString(results.testsFailedCount()));
     properties.setProperty("testsSkippedCount", Long.toString(results.testsSkippedCount()));
 
-    final Path writeResultsTo = Path.of(args[1]);
+    final Path writeResultsTo = Path.of(args[2]);
     try (final var out = Files.newOutputStream(writeResultsTo, StandardOpenOption.WRITE)) {
       properties.store(out, null);
       System.exit(0);
@@ -61,7 +64,11 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
     return runTests(args);
   }
 
-  private static TestResults runTests(final JUnitTestTaskArgs args) {
+  // TODO: handle situation when no test engines can be found
+  private static TestResults runTests(
+      final JUnitTestTaskArgs args,
+      final TestExecutionListener... testExecutionListeners
+  ) {
     final var summaryListener = new SummaryGeneratingListener();
 
     final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder
@@ -71,7 +78,12 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
 
     try (final LauncherSession session = LauncherFactory.openSession()) {
       final Launcher launcher = session.getLauncher();
+
       launcher.registerTestExecutionListeners(summaryListener);
+      if (testExecutionListeners != null) {
+        launcher.registerTestExecutionListeners(testExecutionListeners);
+      }
+
       final TestPlan testPlan = launcher.discover(request);
       if (!testPlan.containsTests()) {
         log.warn("No tests found"); // TODO: add project ID correlation

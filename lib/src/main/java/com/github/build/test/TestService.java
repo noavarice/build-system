@@ -13,11 +13,15 @@ import com.github.build.util.JavaCommandBuilder;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
+import java.net.StandardProtocolFamily;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.net.UnixDomainSocketAddress;
+import java.nio.channels.ServerSocketChannel;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -27,8 +31,12 @@ import java.util.Objects;
 import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.random.RandomGenerator;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,9 +48,25 @@ public final class TestService {
 
   private static final Logger log = LoggerFactory.getLogger(TestService.class);
 
+  private final RandomGenerator random;
+
+  private final ExecutorService processEventListenerExecutorService;
+
   private final DependencyService dependencyService;
 
   public TestService(final DependencyService dependencyService) {
+    this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService);
+  }
+
+  public TestService(
+      final RandomGenerator random,
+      final ExecutorService processEventListenerExecutorService,
+      final DependencyService dependencyService
+  ) {
+    this.random = Objects.requireNonNull(random);
+    this.processEventListenerExecutorService = Objects.requireNonNull(
+        processEventListenerExecutorService
+    );
     this.dependencyService = Objects.requireNonNull(dependencyService);
   }
 
@@ -109,12 +133,19 @@ public final class TestService {
       throw new UncheckedIOException(e);
     }
 
+    final Path unixSocketPath = workdir.resolve(
+        ".test-events-" + random.nextInt(0, Integer.MAX_VALUE) + ".sock"
+    );
     final var commandBuilder = new JavaCommandBuilder(
         testRuntime.classpath(),
         agents,
         systemProperties,
         "com.github.build.junit.JUnitTestTask",
-        List.of(testRuntime.classesDir().toString(), resultsPath.toString())
+        List.of(
+            unixSocketPath.toString(),
+            testRuntime.classesDir().toString(),
+            resultsPath.toString()
+        )
     );
     final ProcessBuilder processBuilder = new ProcessBuilder()
         .command(commandBuilder.toCommand())
@@ -124,26 +155,50 @@ public final class TestService {
         .redirectError(ProcessBuilder.Redirect.DISCARD);
 
     final Process process;
-    try {
+    try (final var socketChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX)) {
+      // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
+      final var socketAddress = UnixDomainSocketAddress.of(unixSocketPath);
+      socketChannel.bind(socketAddress);
+      log.debug("[project={}] Created Unix socket for test process events at {}",
+          project.id(),
+          unixSocketPath
+      );
+
+      final var listenerJob = new TestProcessEventListener(project.id(), socketChannel);
+      final Future<?> future = processEventListenerExecutorService.submit(listenerJob);
+
       // TODO: handle child process death when parent is being killed
       process = processBuilder.start();
+      log.debug("[project={}] Test process {} started", project.id(), process.pid());
+      process.onExit().thenRun(() -> {
+        log.debug("[project={}] Stop listening for test process events", project.id());
+        if (!listenerJob.stop(Duration.ofSeconds(5))) {
+          log.debug("[project={}] Cancel listening for test process events", project.id());
+          future.cancel(true);
+        }
+      });
+
+      final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      if (!exited) {
+        log.error("[project={}] Test process {} timed out, destroying",
+            project.id(),
+            process.pid()
+        );
+        process.destroyForcibly();
+        throw new IllegalStateException();
+      }
+
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    }
-
-    log.debug("[project={}] Test process {} created", project.id(), process.pid());
-    final boolean exited;
-    try {
-      exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
     } catch (final InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
     }
 
-    if (!exited) {
-      log.error("[project={}] Test process {} timed out, destroying", project.id(), process.pid());
-      process.destroyForcibly();
-      throw new IllegalStateException();
+    try {
+      Files.delete(unixSocketPath);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
     }
 
     if (process.exitValue() != 0) {
