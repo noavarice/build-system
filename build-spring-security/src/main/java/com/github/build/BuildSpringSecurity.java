@@ -10,9 +10,9 @@ import com.github.build.deps.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;
-import com.github.build.test.JUnitTestArgs;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
+import com.github.build.test.junit.JUnitTestArgs;
 import com.github.build.util.JavaCommandBuilder;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -48,7 +48,7 @@ public final class BuildSpringSecurity {
     if (args.length == 0) {
       workdir = Path.of("").toAbsolutePath();
     } else {
-      workdir = Path.of(args[0]);
+      workdir = Path.of(args[0]).toAbsolutePath();
     }
 
     final var compileService = new CompileService();

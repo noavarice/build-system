@@ -1,4 +1,4 @@
-package com.github.build.test;
+package com.github.build.test.junit;
 
 import com.github.build.deps.GroupArtifactVersion;
 import java.nio.file.Path;

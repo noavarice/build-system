@@ -9,26 +9,33 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.test.junit.AccumulateTestResults;
+import com.github.build.test.junit.JUnitEvent;
+import com.github.build.test.junit.JUnitEventJsonCodec;
+import com.github.build.test.junit.JUnitTestArgs;
+import com.github.build.test.junit.JUnitTestTaskArgs;
 import com.github.build.util.JavaCommandBuilder;
+import com.github.build.util.UnixSocketServer;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
-import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
+import java.security.SecureRandom;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Properties;
 import java.util.ServiceLoader;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
+import java.util.random.RandomGenerator;
 import org.jspecify.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -40,9 +47,25 @@ public final class TestService {
 
   private static final Logger log = LoggerFactory.getLogger(TestService.class);
 
+  private final RandomGenerator random;
+
+  private final ExecutorService processEventListenerExecutorService;
+
   private final DependencyService dependencyService;
 
   public TestService(final DependencyService dependencyService) {
+    this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService);
+  }
+
+  public TestService(
+      final RandomGenerator random,
+      final ExecutorService processEventListenerExecutorService,
+      final DependencyService dependencyService
+  ) {
+    this.random = Objects.requireNonNull(random);
+    this.processEventListenerExecutorService = Objects.requireNonNull(
+        processEventListenerExecutorService
+    );
     this.dependencyService = Objects.requireNonNull(dependencyService);
   }
 
@@ -100,21 +123,16 @@ public final class TestService {
     log.info("[project={}] Setting up tests", project.id());
     final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
 
-    // creating file for the test process to store results to (if finishes properly)
-    final Path resultsPath;
-    try {
-      // TODO: rework this mechanism
-      resultsPath = Files.createTempFile("test-results", ".properties");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
+    final Path unixSocketPath = getSocketPath();
     final var commandBuilder = new JavaCommandBuilder(
         testRuntime.classpath(),
         agents,
         systemProperties,
         "com.github.build.junit.JUnitTestTask",
-        List.of(testRuntime.classesDir().toString(), resultsPath.toString())
+        List.of(
+            unixSocketPath.toString(),
+            testRuntime.classesDir().toString()
+        )
     );
     final ProcessBuilder processBuilder = new ProcessBuilder()
         .command(commandBuilder.toCommand())
@@ -123,27 +141,39 @@ public final class TestService {
         .redirectOutput(ProcessBuilder.Redirect.DISCARD)
         .redirectError(ProcessBuilder.Redirect.DISCARD);
 
+    final var testEventHandler = new AccumulateTestResults();
     final Process process;
-    try {
+    try (final UnixSocketServer<JUnitEvent> eventServer = UnixSocketServer.of(
+        unixSocketPath,
+        new JUnitEventJsonCodec(),
+        testEventHandler
+    )) {
+      // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
+      log.debug("[project={}] Receive test process events over Unix socket at {}",
+          project.id(),
+          unixSocketPath
+      );
+
+      processEventListenerExecutorService.submit(eventServer::listen);
+
       // TODO: handle child process death when parent is being killed
       process = processBuilder.start();
+      log.debug("[project={}] Test process {} started", project.id(), process.pid());
+
+      final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+      if (!exited) {
+        log.error("[project={}] Test process {} timed out, destroying",
+            project.id(),
+            process.pid()
+        );
+        process.destroyForcibly();
+        throw new IllegalStateException();
+      }
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    }
-
-    log.debug("[project={}] Test process {} created", project.id(), process.pid());
-    final boolean exited;
-    try {
-      exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
     } catch (final InterruptedException e) {
       Thread.currentThread().interrupt();
       throw new IllegalStateException(e);
-    }
-
-    if (!exited) {
-      log.error("[project={}] Test process {} timed out, destroying", project.id(), process.pid());
-      process.destroyForcibly();
-      throw new IllegalStateException();
     }
 
     if (process.exitValue() != 0) {
@@ -155,21 +185,16 @@ public final class TestService {
       throw new IllegalStateException();
     }
 
-    final var properties = new Properties();
-    try (final var is = Files.newInputStream(
-        resultsPath,
-        StandardOpenOption.READ, StandardOpenOption.DELETE_ON_CLOSE
-    )) {
-      properties.load(is);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    return testEventHandler.toTestResults();
+  }
 
-    return new TestResults(
-        Long.parseLong(properties.getProperty("testsSucceededCount")),
-        Long.parseLong(properties.getProperty("testsFailedCount")),
-        Long.parseLong(properties.getProperty("testsSkippedCount"))
-    );
+  private Path getSocketPath() {
+    final String runtimeDir = System.getenv("XDG_RUNTIME_DIR");
+    final Path socketDir = runtimeDir != null ? Path.of(runtimeDir) : Path.of("");
+    return socketDir
+        .normalize()
+        .resolve(".test-events-" + random.nextInt(0, Integer.MAX_VALUE) + ".sock")
+        .toAbsolutePath();
   }
 
   private TestRuntime getTestRuntime(

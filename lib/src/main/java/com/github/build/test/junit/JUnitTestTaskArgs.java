@@ -1,4 +1,4 @@
-package com.github.build.test;
+package com.github.build.test.junit;
 
 import java.nio.file.Path;
 import java.util.Objects;
