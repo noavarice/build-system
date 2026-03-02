@@ -112,7 +112,7 @@ public class BuildItself {
         .runWith("org.junit.jupiter:junit-jupiter-engine")
         .build();
     return Project
-        .builder("build-system-test-utils")
+        .builder("com.github.build", "build-system-test-utils")
         .withPath(Path.of("test-utils"))
         .withSourceSet(main)
         .withSourceSet(test)
@@ -158,7 +158,7 @@ public class BuildItself {
         )
         .build();
     return Project
-        .builder("build-system-lib")
+        .builder("com.github.build", "build-system-lib")
         .withPath(Path.of("lib"))
         .withSourceSet(main)
         .withSourceSet(test)

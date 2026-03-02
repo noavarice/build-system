@@ -14,10 +14,14 @@ import java.util.Objects;
  */
 public final class Project {
 
-  public static Builder builder(final String idStr) {
-    final var id = new ArtifactId(idStr);
-    return new Builder(id);
+  // TODO: either pass all required args or provide all one-by-one
+  public static Builder builder(final String groupIdStr, final String artifactIdStr) {
+    final var groupId = new GroupId(groupIdStr);
+    final var artifactId = new ArtifactId(artifactIdStr);
+    return new Builder(groupId, artifactId);
   }
+
+  private final GroupId groupId;
 
   private final ArtifactId artifactId;
 
@@ -32,13 +36,15 @@ public final class Project {
   private final ArtifactLayout artifactLayout;
 
   private Project(
+      final GroupId groupId,
       final ArtifactId artifactId,
       final Path path,
       final Map<SourceSet.Id, SourceSet> sourceSets,
       final ArtifactLayout artifactLayout
   ) {
-    this.artifactId = artifactId;
-    this.path = path;
+    this.groupId = Objects.requireNonNull(groupId);
+    this.artifactId = Objects.requireNonNull(artifactId);
+    this.path = Objects.requireNonNull(path);
 
     Objects.requireNonNull(sourceSets);
     if (!sourceSets.containsKey(SourceSet.Id.MAIN)) {
@@ -63,6 +69,10 @@ public final class Project {
     return testSourceSet;
   }
 
+  public GroupId groupId() {
+    return groupId;
+  }
+
   public ArtifactId artifactId() {
     return artifactId;
   }
@@ -77,7 +87,7 @@ public final class Project {
 
   @Override
   public String toString() {
-    return "Project[id=" + artifactId + ']';
+    return "Project[" + groupId + ':' + artifactId + ']';
   }
 
   /**
@@ -119,6 +129,8 @@ public final class Project {
 
   public static final class Builder {
 
+    private final GroupId groupId;
+
     private final ArtifactId artifactId;
 
     private Path path = Path.of("");
@@ -127,8 +139,9 @@ public final class Project {
 
     private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
 
-    public Builder(final ArtifactId artifactId) {
-      this.artifactId = artifactId;
+    public Builder(final GroupId groupId, final ArtifactId artifactId) {
+      this.groupId = Objects.requireNonNull(groupId);
+      this.artifactId = Objects.requireNonNull(artifactId);
     }
 
     public Builder withPath(final String path) {
@@ -156,6 +169,7 @@ public final class Project {
 
     public Project build() {
       return new Project(
+          groupId,
           artifactId,
           path,
           sourceSets,

@@ -280,7 +280,7 @@ public final class BuildSpringSecurity {
         Path.of("resources")
     );
     return Project
-        .builder("spring-security-crypto")
+        .builder("org.springframework.security", "spring-security-crypto")
         .withPath(Path.of("crypto"))
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
@@ -350,7 +350,7 @@ public final class BuildSpringSecurity {
         Path.of("resources")
     );
     return Project
-        .builder("spring-security-core")
+        .builder("org.springframework.security", "spring-security-core")
         .withPath(Path.of("core"))
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)

@@ -326,7 +326,7 @@ class CopyTest {
     DynamicTest[] testCopyResourcesWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
-          .builder("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -380,7 +380,7 @@ class CopyTest {
           .withResourceDir("src/main/other-resources")
           .build();
       final var project = Project
-          .builder("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(mainSourceSet)
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -431,7 +431,7 @@ class CopyTest {
           .withMainDefaults()
           .build();
       return Project
-          .builder("test-project")
+          .builder("org.example", "test-project")
           .withSourceSet(mainSourceSet)
           .withSourceSet(SourceSet.withTestDefaults().build())
           .build();
