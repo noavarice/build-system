@@ -112,7 +112,7 @@ public class BuildItself {
         .runWith("org.junit.jupiter:junit-jupiter-engine")
         .build();
     return Project
-        .withId("build-system-test-utils")
+        .builder("build-system-test-utils")
         .withPath(Path.of("test-utils"))
         .withSourceSet(main)
         .withSourceSet(test)
@@ -158,7 +158,7 @@ public class BuildItself {
         )
         .build();
     return Project
-        .withId("build-system-lib")
+        .builder("build-system-lib")
         .withPath(Path.of("lib"))
         .withSourceSet(main)
         .withSourceSet(test)
@@ -170,7 +170,7 @@ public class BuildItself {
       final Project project,
       final CompilerOptions compilerOptions
   ) {
-    log.info("Building {}", project.id());
+    log.info("Building {}", project.artifactId());
     final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
     if (!mainCompiled) {
       return false;
@@ -201,7 +201,7 @@ public class BuildItself {
       final Project project,
       final CompilerOptions compilerOptions
   ) {
-    log.info("Building {}", project.id());
+    log.info("Building {}", project.artifactId());
     generateSourcesFromMavenXsd(workdir, project);
     final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
     if (!mainCompiled) {
@@ -229,7 +229,7 @@ public class BuildItself {
   }
 
   private static void generateSourcesFromMavenXsd(final Path workdir, final Project project) {
-    log.info("[project={}] Generating Maven XSD sources with XJC", project.id());
+    log.info("[project={}] Generating Maven XSD sources with XJC", project.artifactId());
 
     final var errorReceiver = new LoggingErrorReceiver();
     final var files = List.of(

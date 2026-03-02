@@ -14,12 +14,12 @@ import java.util.Objects;
  */
 public final class Project {
 
-  public static Builder withId(final String idStr) {
-    final var id = new Id(idStr);
+  public static Builder builder(final String idStr) {
+    final var id = new ArtifactId(idStr);
     return new Builder(id);
   }
 
-  private final Id id;
+  private final ArtifactId artifactId;
 
   private final Path path;
 
@@ -32,12 +32,12 @@ public final class Project {
   private final ArtifactLayout artifactLayout;
 
   private Project(
-      final Id id,
+      final ArtifactId artifactId,
       final Path path,
       final Map<SourceSet.Id, SourceSet> sourceSets,
       final ArtifactLayout artifactLayout
   ) {
-    this.id = id;
+    this.artifactId = artifactId;
     this.path = path;
 
     Objects.requireNonNull(sourceSets);
@@ -63,8 +63,8 @@ public final class Project {
     return testSourceSet;
   }
 
-  public Id id() {
-    return id;
+  public ArtifactId artifactId() {
+    return artifactId;
   }
 
   public Path path() {
@@ -77,24 +77,7 @@ public final class Project {
 
   @Override
   public String toString() {
-    return "Project[id=" + id + ']';
-  }
-
-  public record Id(String value) {
-
-    public Id {
-      Objects.requireNonNull(value);
-      if (value.isBlank()) {
-        throw new IllegalArgumentException("Must not be empty");
-      }
-
-      value = value.strip();
-    }
-
-    @Override
-    public String toString() {
-      return value;
-    }
+    return "Project[id=" + artifactId + ']';
   }
 
   /**
@@ -136,7 +119,7 @@ public final class Project {
 
   public static final class Builder {
 
-    private final Id id;
+    private final ArtifactId artifactId;
 
     private Path path = Path.of("");
 
@@ -144,8 +127,8 @@ public final class Project {
 
     private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
 
-    public Builder(final Id id) {
-      this.id = id;
+    public Builder(final ArtifactId artifactId) {
+      this.artifactId = artifactId;
     }
 
     public Builder withPath(final String path) {
@@ -173,7 +156,7 @@ public final class Project {
 
     public Project build() {
       return new Project(
-          id,
+          artifactId,
           path,
           sourceSets,
           artifactLayout

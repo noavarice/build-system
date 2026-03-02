@@ -86,7 +86,7 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
 
     final SourceSet sourceSet = project.sourceSet(sourceSetId);
-    log.info("[project={}] [ss={}] Compiling", project.id(), sourceSetId);
+    log.info("[project={}] [ss={}] Compiling", project.artifactId(), sourceSetId);
 
     final Path classesDir = workdir
         .resolve(project.path())
@@ -102,7 +102,8 @@ public final class BuildService {
 
     final Set<Path> sources = collectSources(workdir, project, sourceSetId);
     if (sources.isEmpty()) {
-      log.info("[project={}] [ss={}] No sources found, do nothing", project.id(), sourceSetId);
+      log.info("[project={}] [ss={}] No sources found, do nothing", project.artifactId(),
+          sourceSetId);
       return true;
     }
 
@@ -111,7 +112,7 @@ public final class BuildService {
       addSourceSetCompileClasspath(workdir, project, sourceSet, classpath);
     } catch (final IllegalStateException e) {
       log.error("[project={}] [ss={}] Failed to gather compilation classpath",
-          project.id(),
+          project.artifactId(),
           sourceSetId,
           e
       );
@@ -197,7 +198,7 @@ public final class BuildService {
           .resolve(relativeDir);
       if (Files.notExists(sourceDir)) {
         log.debug("[project={}][ss={}] Source directory {} does not exist",
-            project.id(),
+            project.artifactId(),
             sourceSetId,
             sourceDir
         );
@@ -207,7 +208,7 @@ public final class BuildService {
       if (!Files.isDirectory(sourceDir)) {
         log.warn(
             "[project={}][ss={}] {} assumed to be source directory but it's not a directory",
-            project.id(),
+            project.artifactId(),
             sourceSetId,
             sourceDir
         );
@@ -228,7 +229,7 @@ public final class BuildService {
 
       if (sourcesPart.isEmpty()) {
         log.debug("[project={}][ss={}] No source files found in directory {}",
-            project.id(),
+            project.artifactId(),
             sourceSetId,
             sourceDir
         );
@@ -297,7 +298,7 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][ss={}] Copying resources", project.id(), sourceSetId);
+    log.info("[project={}][ss={}] Copying resources", project.artifactId(), sourceSetId);
 
     final Path targetDir = workdir
         .resolve(project.path())
@@ -322,7 +323,7 @@ public final class BuildService {
           .resolve(project.path())
           .resolve(dir);
       log.info("[project={}][ss={}] Copying resources from {}",
-          project.id(),
+          project.artifactId(),
           sourceSetId,
           absolutePath
       );
@@ -343,12 +344,12 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][ss={}] Creating JAR", project.id(), SourceSet.Id.MAIN);
+    log.info("[project={}][ss={}] Creating JAR", project.artifactId(), SourceSet.Id.MAIN);
     final Path jarPath = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         // TODO: customize JAR path/filename
-        .resolve(project.id() + ".jar");
+        .resolve(project.artifactId() + ".jar");
     final var content = new HashMap<Path, JarArgs.Content>();
 
     // collect compiled classes
@@ -430,7 +431,7 @@ public final class BuildService {
     Objects.requireNonNull(project);
     PathUtils.checkAbsolute(workdir);
 
-    log.info("[project={}] Cleaning build output directory", project.id());
+    log.info("[project={}] Cleaning build output directory", project.artifactId());
     final Path buildOutputDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir());

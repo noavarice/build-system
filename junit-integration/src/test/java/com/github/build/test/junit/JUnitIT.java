@@ -90,7 +90,7 @@ class JUnitIT {
         )
         .build();
     final var project = Project
-        .withId("calculator")
+        .builder("calculator")
         .withPath(Path.of("calculator"))
         .withSourceSet(main)
         .withSourceSet(test)
