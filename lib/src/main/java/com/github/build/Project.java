@@ -14,12 +14,16 @@ import java.util.Objects;
  */
 public final class Project {
 
-  public static Builder withId(final String idStr) {
-    final var id = new Id(idStr);
-    return new Builder(id);
+  // TODO: either pass all required args or provide all one-by-one
+  public static Builder builder(final String groupId, final String artifactId) {
+    return new Builder(groupId, artifactId);
   }
 
-  private final Id id;
+  private final String groupId;
+
+  private final String artifactId;
+
+  private final String version;
 
   private final Path path;
 
@@ -32,13 +36,32 @@ public final class Project {
   private final ArtifactLayout artifactLayout;
 
   private Project(
-      final Id id,
+      final String groupId,
+      final String artifactId,
+      final String version,
       final Path path,
       final Map<SourceSet.Id, SourceSet> sourceSets,
       final ArtifactLayout artifactLayout
   ) {
-    this.id = id;
-    this.path = path;
+    Objects.requireNonNull(groupId);
+    if (groupId.isBlank()) {
+      throw new IllegalArgumentException();
+    }
+    this.groupId = groupId.strip();
+
+    Objects.requireNonNull(artifactId);
+    if (artifactId.isBlank()) {
+      throw new IllegalArgumentException();
+    }
+    this.artifactId = artifactId.strip();
+
+    Objects.requireNonNull(version);
+    if (version.isBlank()) {
+      throw new IllegalArgumentException();
+    }
+    this.version = version.strip();
+
+    this.path = Objects.requireNonNull(path);
 
     Objects.requireNonNull(sourceSets);
     if (!sourceSets.containsKey(SourceSet.Id.MAIN)) {
@@ -63,8 +86,16 @@ public final class Project {
     return testSourceSet;
   }
 
-  public Id id() {
-    return id;
+  public String groupId() {
+    return groupId;
+  }
+
+  public String artifactId() {
+    return artifactId;
+  }
+
+  public String version() {
+    return version;
   }
 
   public Path path() {
@@ -77,24 +108,7 @@ public final class Project {
 
   @Override
   public String toString() {
-    return "Project[id=" + id + ']';
-  }
-
-  public record Id(String value) {
-
-    public Id {
-      Objects.requireNonNull(value);
-      if (value.isBlank()) {
-        throw new IllegalArgumentException("Must not be empty");
-      }
-
-      value = value.strip();
-    }
-
-    @Override
-    public String toString() {
-      return value;
-    }
+    return "Project[" + groupId + ':' + artifactId + ']';
   }
 
   /**
@@ -136,7 +150,11 @@ public final class Project {
 
   public static final class Builder {
 
-    private final Id id;
+    private final String groupId;
+
+    private final String artifactId;
+
+    private String version = "0.1.0";
 
     private Path path = Path.of("");
 
@@ -144,8 +162,15 @@ public final class Project {
 
     private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
 
-    public Builder(final Id id) {
-      this.id = id;
+    private Builder(final String groupId, final String artifactId) {
+      this.groupId = Objects.requireNonNull(groupId);
+      this.artifactId = Objects.requireNonNull(artifactId);
+    }
+
+    public Builder withVersion(final String version) {
+      Objects.requireNonNull(version);
+      this.version = version;
+      return this;
     }
 
     public Builder withPath(final String path) {
@@ -173,7 +198,9 @@ public final class Project {
 
     public Project build() {
       return new Project(
-          id,
+          groupId,
+          artifactId,
+          version,
           path,
           sourceSets,
           artifactLayout

@@ -78,7 +78,7 @@ public final class TestService {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(project);
     Objects.requireNonNull(args);
-    log.info("[project={}] Setting up tests", project.id());
+    log.info("[project={}] Setting up tests", project.artifactId());
 
     final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
 
@@ -120,7 +120,7 @@ public final class TestService {
     Objects.requireNonNull(project);
     Objects.requireNonNull(args);
 
-    log.info("[project={}] Setting up tests", project.id());
+    log.info("[project={}] Setting up tests", project.artifactId());
     final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
 
     final Path unixSocketPath = getSocketPath();
@@ -150,7 +150,7 @@ public final class TestService {
     )) {
       // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
       log.debug("[project={}] Receive test process events over Unix socket at {}",
-          project.id(),
+          project.artifactId(),
           unixSocketPath
       );
 
@@ -158,12 +158,12 @@ public final class TestService {
 
       // TODO: handle child process death when parent is being killed
       process = processBuilder.start();
-      log.debug("[project={}] Test process {} started", project.id(), process.pid());
+      log.debug("[project={}] Test process {} started", project.artifactId(), process.pid());
 
       final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
       if (!exited) {
         log.error("[project={}] Test process {} timed out, destroying",
-            project.id(),
+            project.artifactId(),
             process.pid()
         );
         process.destroyForcibly();
@@ -178,7 +178,7 @@ public final class TestService {
 
     if (process.exitValue() != 0) {
       log.error("[project={}] Test process {} exited with code {}",
-          project.id(),
+          project.artifactId(),
           process.pid(),
           process.exitValue()
       );
@@ -329,7 +329,7 @@ public final class TestService {
               .resolve(dependingProject.path())
               .resolve(dependingProject.artifactLayout().rootDir())
               // TODO: customize JAR path/filename
-              .resolve(dependingProject.id() + ".jar");
+              .resolve(dependingProject.artifactId() + ".jar");
           classpath.add(jarPath);
         }
         case Dependency.OnSourceSet onSourceSet -> {

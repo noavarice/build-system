@@ -80,7 +80,7 @@ public final class BuildSpringSecurity {
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
 
     for (final Project project : projects) {
-      log.info("[project={}] Compiling main source set", project.id());
+      log.info("[project={}] Compiling main source set", project.artifactId());
       final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
       if (!mainCompiled) {
         log.error("Build failed");
@@ -101,12 +101,12 @@ public final class BuildSpringSecurity {
           .setCreatedBy(
               System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ')'
           )
-          .setImplementationTitle(project.id().value())
-          .setImplementationVersion("7.0.0")
+          .setImplementationTitle(project.artifactId())
+          .setImplementationVersion(project.version())
           .build();
       service.createJar(workdir, project, additionalEntries, manifest);
 
-      log.info("[project={}] Compiling test source set", project.id());
+      log.info("[project={}] Compiling test source set", project.artifactId());
       final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
       if (!testCompiled) {
         log.error("Build failed");
@@ -121,7 +121,7 @@ public final class BuildSpringSecurity {
           .map(Path::of)
           .toList();
       final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-      log.info("[project={}] Running tests", project.id());
+      log.info("[project={}] Running tests", project.artifactId());
 
       final var jacocoExecReportPath = workdir
           .resolve(project.path())
@@ -142,7 +142,7 @@ public final class BuildSpringSecurity {
       );
 
       log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
-          project.id(),
+          project.artifactId(),
           results.testsSucceededCount(),
           results.testsFailedCount(),
           results.testsSkippedCount()
@@ -280,7 +280,8 @@ public final class BuildSpringSecurity {
         Path.of("resources")
     );
     return Project
-        .withId("spring-security-crypto")
+        .builder("org.springframework.security", "spring-security-crypto")
+        .withVersion("7.0.0")
         .withPath(Path.of("crypto"))
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)
@@ -350,7 +351,8 @@ public final class BuildSpringSecurity {
         Path.of("resources")
     );
     return Project
-        .withId("spring-security-core")
+        .builder("org.springframework.security", "spring-security-core")
+        .withVersion("7.0.0")
         .withPath(Path.of("core"))
         .withArtifactLayout(artifactLayout)
         .withSourceSet(main)

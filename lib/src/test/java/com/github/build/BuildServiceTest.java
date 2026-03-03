@@ -86,7 +86,7 @@ class BuildServiceTest {
           .withTestDefaults()
           .build();
       final var project = Project
-          .withId("empty-sources")
+          .builder("org.example", "empty-sources")
           .withPath(Path.of("empty-sources"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -122,7 +122,7 @@ class BuildServiceTest {
           .withTestDefaults()
           .build();
       final var project = Project
-          .withId("calculator")
+          .builder("org.example", "calculator")
           .withPath(Path.of("calculator"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -158,7 +158,7 @@ class BuildServiceTest {
           .withTestDefaults()
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -193,7 +193,7 @@ class BuildServiceTest {
           .withTestDefaults()
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -227,7 +227,7 @@ class BuildServiceTest {
           .compileWith(slf4jApi)
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -266,7 +266,7 @@ class BuildServiceTest {
           .compileWith(slf4jApi)
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -309,7 +309,7 @@ class BuildServiceTest {
           .withDependencyConstraints(constraints)
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -352,7 +352,7 @@ class BuildServiceTest {
           .withDependencyConstraints(constraints)
           .build();
       final var project = Project
-          .withId("slf4j-example")
+          .builder("org.example", "slf4j-example")
           .withPath(Path.of("slf4j-example"))
           .withSourceSet(main)
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -393,7 +393,7 @@ class BuildServiceTest {
             .withMainDefaults()
             .build();
         calculatorProject = Project
-            .withId("calculator")
+            .builder("org.example", "calculator")
             .withPath(Path.of("calculator"))
             .withSourceSet(main)
             .withSourceSet(SourceSet.withTestDefaults().build())
@@ -407,7 +407,7 @@ class BuildServiceTest {
             .compileWith(calculatorProject)
             .build();
         calculatorConsumerProject = Project
-            .withId("calculator-consumer")
+            .builder("org.example", "calculator-consumer")
             .withPath(Path.of("calculator-consumer"))
             .withSourceSet(main)
             .withSourceSet(SourceSet.withTestDefaults().build())
@@ -446,7 +446,7 @@ class BuildServiceTest {
             .withMainDefaults()
             .build();
         calculatorProject = Project
-            .withId("calculator")
+            .builder("org.example", "calculator")
             .withPath(Path.of("calculator"))
             .withSourceSet(main)
             .withSourceSet(SourceSet.withTestDefaults().build())
@@ -461,7 +461,7 @@ class BuildServiceTest {
             .compileWith(calculatorProject)
             .build();
         calculatorConsumerProject = Project
-            .withId("calculator-consumer")
+            .builder("org.example", "calculator-consumer")
             .withPath(Path.of("calculator-consumer"))
             .withSourceSet(main)
             .withSourceSet(SourceSet.withTestDefaults().build())
@@ -507,7 +507,7 @@ class BuildServiceTest {
           .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
           .build();
       final var project = Project
-          .withId("calculator")
+          .builder("org.example", "calculator")
           .withPath(Path.of("calculator"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -545,7 +545,7 @@ class BuildServiceTest {
           .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
           .build();
       final var project = Project
-          .withId("calculator")
+          .builder("org.example", "calculator")
           .withPath(Path.of("calculator"))
           .withSourceSet(main)
           .withSourceSet(test)
@@ -581,7 +581,7 @@ class BuildServiceTest {
     void testCleanMissingDirectoryWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
-          .withId("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -598,7 +598,7 @@ class BuildServiceTest {
     void testCleanEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
-          .withId("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -618,7 +618,7 @@ class BuildServiceTest {
     void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
-          .withId("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
           .withSourceSet(SourceSet.withTestDefaults().build())
@@ -642,7 +642,7 @@ class BuildServiceTest {
     void testCleanFile(@TempDir final Path tempDir) throws IOException {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
-          .withId("hello-world")
+          .builder("org.example", "hello-world")
           .withPath("hello-world")
           .withSourceSet(SourceSet.withMainDefaults().build())
           .withSourceSet(SourceSet.withTestDefaults().build())

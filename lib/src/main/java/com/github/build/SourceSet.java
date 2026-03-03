@@ -33,6 +33,7 @@ public record SourceSet(
     DependencyConstraints dependencyConstraints
 ) {
 
+  // TODO: just validate ID format, get rid of value object
   public static Builder builder(final Id id) {
     return new Builder(id);
   }
