@@ -1,7 +1,6 @@
 package com.github.build.deps;
 
 import static java.util.Comparator.naturalOrder;
-import static java.util.stream.Collectors.toUnmodifiableMap;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import jakarta.xml.bind.JAXBContext;
@@ -15,30 +14,31 @@ import java.net.URISyntaxException;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Properties;
 import java.util.Set;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.parsers.SAXParserFactory;
 import javax.xml.transform.sax.SAXSource;
 import org.apache.maven.artifact.versioning.ComparableVersion;
 import org.apache.maven.metadata._1_1.Metadata;
-import org.apache.maven.pom._4_0.DependencyManagement;
-import org.apache.maven.pom._4_0.Model;
-import org.apache.maven.pom._4_0.Parent;
+import org.apache.maven.model.Model;
+import org.apache.maven.model.Parent;
+import org.apache.maven.model.io.xpp3.MavenXpp3Reader;
+import org.codehaus.plexus.util.xml.pull.XmlPullParserException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.w3c.dom.Node;
 import org.xml.sax.Attributes;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXException;
 import org.xml.sax.XMLFilter;
 import org.xml.sax.XMLReader;
 import org.xml.sax.helpers.XMLFilterImpl;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * Works with remote artifact repositories.
@@ -54,16 +54,9 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
   private final HttpClient client;
 
-  private final ObjectMapper objectMapper;
-
-  public RemoteRepositoryImpl(
-      final URI baseUri,
-      final HttpClient client,
-      final ObjectMapper objectMapper
-  ) {
+  public RemoteRepositoryImpl(final URI baseUri, final HttpClient client) {
     this.baseUri = Objects.requireNonNull(baseUri);
     this.client = Objects.requireNonNull(client);
-    this.objectMapper = objectMapper;
   }
 
   @Override
@@ -131,29 +124,11 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
     final Model model;
     try (final InputStream is = response.body()) {
-      final var spf = SAXParserFactory.newInstance();
-      spf.setNamespaceAware(true);
-
-      final XMLReader xmlReader = spf
-          .newSAXParser()
-          .getXMLReader();
-
-      // some POMs may lack namespace declaration
-      // which is necessary for JAXB unmarshalling to succeed
-      final XMLFilter filter = new NamespaceAddingFilter("http://maven.apache.org/POM/4.0.0");
-      filter.setParent(xmlReader);
-
-      final var inputSource = new InputSource(is);
-      final var saxSource = new SAXSource(filter, inputSource);
-
-      final var context = JAXBContext.newInstance(Model.class);
-      final var unmarshaller = context.createUnmarshaller();
-      @SuppressWarnings("unchecked")
-      final var element = (JAXBElement<Model>) unmarshaller.unmarshal(saxSource);
-      model = element.getValue();
+      final var reader = new MavenXpp3Reader();
+      model = reader.read(is);
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
-    } catch (final JAXBException | ParserConfigurationException | SAXException e) {
+    } catch (final XmlPullParserException e) {
       throw new IllegalStateException(e);
     }
 
@@ -198,18 +173,8 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
     return new Pom.Parent(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
   }
 
-  private static List<Pom.Dependency> mapDependencies(final Model.Dependencies container) {
-    return container != null ? mapDependencies(container.getDependency()) : List.of();
-  }
-
   private static List<Pom.Dependency> mapDependencies(
-      final DependencyManagement.Dependencies container
-  ) {
-    return container != null ? mapDependencies(container.getDependency()) : List.of();
-  }
-
-  private static List<Pom.Dependency> mapDependencies(
-      final List<org.apache.maven.pom._4_0.Dependency> dependencies
+      final List<org.apache.maven.model.Dependency> dependencies
   ) {
     if (dependencies == null || dependencies.isEmpty()) {
       return List.of();
@@ -226,7 +191,7 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
           if (d.getExclusions() == null) {
             exclusions = Set.of();
           } else {
-            exclusions = d.getExclusions().getExclusion()
+            exclusions = d.getExclusions()
                 .stream()
                 .map(exclusion -> new GroupArtifact(
                     exclusion.getGroupId(),
@@ -247,18 +212,18 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
         .toList();
   }
 
-  private static Map<String, String> mapProperties(final Model.Properties container) {
-    if (container == null) {
+  private static Map<String, String> mapProperties(final Properties properties) {
+    if (properties == null) {
       return Map.of();
     }
 
-    return container.getAny()
-        .stream()
-        .filter(Node::hasChildNodes)
-        .collect(toUnmodifiableMap(
-            Node::getNodeName,
-            element -> element.getFirstChild().getNodeValue()
-        ));
+    final var result = new HashMap<String, String>();
+    for (final String name : properties.stringPropertyNames()) {
+      final String value = properties.getProperty(name);
+      result.put(name, value);
+    }
+
+    return Map.copyOf(result);
   }
 
   private URI buildUri(final GroupArtifactVersion gav, final String suffix) {

@@ -30,7 +30,6 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestFactory;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.api.io.TempDir;
-import tools.jackson.databind.ObjectMapper;
 
 /**
  * {@link DependencyService} tests.
@@ -79,8 +78,7 @@ class DependencyServiceIT {
 
     final RemoteRepository mavenCentral = new RemoteRepositoryImpl(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        HttpClient.newHttpClient(),
-        new ObjectMapper()
+        HttpClient.newHttpClient()
     );
     remoteRepository = new RemoteRepositoryMock(mavenCentral);
     service = new DependencyServiceImpl(List.of(remoteRepository), localRepository);

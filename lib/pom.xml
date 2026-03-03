@@ -37,15 +37,14 @@
       <version>2.0.17</version>
     </dependency>
     <dependency>
+      <groupId>org.apache.maven</groupId>
+      <artifactId>maven-model</artifactId>
+      <version>3.9.12</version>
+    </dependency>
+    <dependency>
       <groupId>jakarta.xml.bind</groupId>
       <artifactId>jakarta.xml.bind-api</artifactId>
       <version>4.0.2</version>
-    </dependency>
-    <!--TODO: replace with specific JSON parser-->
-    <dependency>
-      <groupId>tools.jackson.core</groupId>
-      <artifactId>jackson-databind</artifactId>
-      <version>3.0.3</version>
     </dependency>
     <!--TODO: remove (used only for ComparableVersion)-->
     <dependency>

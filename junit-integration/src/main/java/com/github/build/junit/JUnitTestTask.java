@@ -11,6 +11,7 @@ import java.nio.file.Path;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
+import org.junit.platform.commons.PreconditionViolationException;
 import org.junit.platform.engine.TestExecutionResult;
 import org.junit.platform.launcher.Launcher;
 import org.junit.platform.launcher.LauncherDiscoveryRequest;
@@ -60,7 +61,13 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
     final var summaryListener = new SummaryGeneratingListener();
     runTests(args, summaryListener);
 
-    final TestExecutionSummary summary = summaryListener.getSummary();
+    final TestExecutionSummary summary;
+    try {
+      summary = summaryListener.getSummary();
+    } catch (final PreconditionViolationException e) {
+      return TestResults.NO_TESTS_FOUND;
+    }
+
     return new TestResults(
         summary.getTestsSucceededCount(),
         summary.getTestsFailedCount(),

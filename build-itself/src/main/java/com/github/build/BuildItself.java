@@ -46,7 +46,6 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
 import org.xml.sax.SAXParseException;
-import tools.jackson.databind.ObjectMapper;
 
 public class BuildItself {
 
@@ -126,15 +125,17 @@ public class BuildItself {
     final var main = SourceSet
         .withMainDefaults()
         .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
-        .compileAndRunWith("org.apache.maven:maven-artifact:3.9.11")
+        .compileAndRunWith(
+            "org.apache.maven:maven-artifact:3.9.12",
+            "org.apache.maven:maven-model:3.9.12"
+        )
         .compileWith(
             "org.jspecify:jspecify:1.0.0",
             "org.slf4j:slf4j-api:2.0.17",
             "org.apache.maven:maven-resolver-provider:3.9.9",
             "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
             "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2",
-            "org.junit.platform:junit-platform-launcher:1.13.4",
-            "tools.jackson.core:jackson-databind:3.0.3"
+            "org.junit.platform:junit-platform-launcher:1.13.4"
         )
         .build();
     final var test = SourceSet
@@ -149,8 +150,7 @@ public class BuildItself {
             "org.junit.jupiter:junit-jupiter-params",
             "org.assertj:assertj-core:3.27.3",
             "ch.qos.logback:logback-classic:1.5.21",
-            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0",
-            "tools.jackson.core:jackson-databind:3.0.3"
+            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
         )
         .runWith(
             "org.junit.jupiter:junit-jupiter-engine",
@@ -233,10 +233,6 @@ public class BuildItself {
 
     final var errorReceiver = new LoggingErrorReceiver();
     final var files = List.of(
-        workdir
-            .resolve(project.path())
-            .resolve("maven-schemas")
-            .resolve("maven-4.0.0.xsd"),
         workdir
             .resolve(project.path())
             .resolve("maven-schemas")
@@ -342,8 +338,7 @@ public class BuildItself {
     );
     final var nexusDocker = new RemoteRepositoryImpl(
         URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient,
-        new ObjectMapper()
+        httpClient
     );
 
     final Path localRepositoryBasePath;
