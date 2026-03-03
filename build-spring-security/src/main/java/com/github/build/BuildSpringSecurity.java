@@ -6,7 +6,7 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;

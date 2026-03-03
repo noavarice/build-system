@@ -9,7 +9,7 @@ import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;

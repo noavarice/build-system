@@ -12,7 +12,7 @@ import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
 import java.io.IOException;
 import java.nio.file.Files;

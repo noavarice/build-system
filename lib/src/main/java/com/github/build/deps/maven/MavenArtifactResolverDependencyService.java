@@ -1,5 +1,8 @@
-package com.github.build.deps;
+package com.github.build.deps.maven;
 
+import com.github.build.deps.DependencyConstraints;
+import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifactVersion;
 import java.io.File;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -28,8 +31,6 @@ import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
 import org.jspecify.annotations.Nullable;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 /**
  * Dependency service implementation over Maven Artifact Resolver.
@@ -37,10 +38,6 @@ import org.slf4j.LoggerFactory;
  * @author noavarice
  */
 public final class MavenArtifactResolverDependencyService implements DependencyService {
-
-  private static final Logger log = LoggerFactory.getLogger(
-      MavenArtifactResolverDependencyService.class
-  );
 
   public static final RemoteRepository MAVEN_CENTRAL = new RemoteRepository
       .Builder("central", "default", "https://repo.maven.apache.org/maven2")

@@ -1,4 +1,4 @@
-package com.github.build;
+package com.github.build.deps;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
@@ -6,10 +6,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.deps.DependencyConstraints;
-import com.github.build.deps.DependencyService;
-import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.MavenArtifactResolverDependencyService;
+import com.github.build.Project;
+import com.github.build.SourceSet;
+import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.ProjectWorkspaceReader;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +21,7 @@ import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -299,6 +300,141 @@ class MavenArtifactResolverDependencyServiceIT {
           .sorted()
           .toList();
       assertThat(actualSorted).isEqualTo(expectedSorted);
+    }
+  }
+
+  @DisplayName("Check resolving projects")
+  @Nested
+  class ProjectResolution {
+
+    private final GroupArtifactVersion springCore6 = GroupArtifactVersion.parse(
+        "org.springframework:spring-core:6.0.0"
+    );
+
+    private final GroupArtifactVersion springJcl = GroupArtifactVersion.parse(
+        "org.springframework:spring-jcl:6.0.0"
+    );
+
+    private final GroupArtifactVersion springCore7 = GroupArtifactVersion.parse(
+        "org.springframework:spring-core:7.0.0"
+    );
+
+    private final GroupArtifactVersion commonsLogging = GroupArtifactVersion.parse(
+        "commons-logging:commons-logging:1.3.5"
+    );
+
+    private final GroupArtifactVersion jspecify = GroupArtifactVersion.parse(
+        "org.jspecify:jspecify:1.0.0"
+    );
+
+    private final Project project1;
+
+    private final Project project2;
+
+    private final DependencyService service;
+
+    ProjectResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+      project1 = Project
+          .builder("org.example", "project1")
+          .withPath("project1")
+          .withSourceSet(
+              SourceSet
+                  .withMainDefaults()
+                  .compileAndRunWithExposed(springCore6)
+                  .build()
+          )
+          .withSourceSet(
+              SourceSet
+                  .withTestDefaults()
+                  .build()
+          )
+          .build();
+
+      project2 = Project
+          .builder("org.example", "project2")
+          .withPath("project2")
+          .withSourceSet(
+              SourceSet
+                  .withMainDefaults()
+                  .compileAndRunWithExposed(project1)
+                  .build()
+          )
+          .withSourceSet(
+              SourceSet
+                  .withTestDefaults()
+                  .build()
+          )
+          .build();
+
+      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+
+      session.setWorkspaceReader(
+          new ProjectWorkspaceReader(
+              new WorkspaceRepository("build-system"),
+              workdir,
+              Set.of(project1, project2)
+          )
+      );
+
+      session.setSystemProperty("java.version", "21");
+      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+          localRepositoryBasePath.toFile()
+      );
+      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+      session.setLocalRepositoryManager(manager);
+
+      final String nexusHost = Objects.requireNonNullElse(
+          System.getenv("NEXUS_HOST"),
+          "localhost"
+      );
+      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+          new org.eclipse.aether.repository.RemoteRepository
+              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .build()
+      );
+      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+    }
+
+    @DisplayName("Check resolving project as a direct dependency")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingProjectAsDirectDependency() {
+      final Set<GroupArtifactVersion> result = service.resolveTransitive(
+          List.of(project1.gav()),
+          DependencyConstraints.EMPTY
+      );
+      assertThat(result).isEqualTo(
+          Set.of(project1.gav(), springCore6, springJcl)
+      );
+    }
+
+    @DisplayName("Check resolving projects as direct and transitive dependencies")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingProjectAsDirectAndTransitiveDependencies() {
+      final Set<GroupArtifactVersion> result = service.resolveTransitive(
+          List.of(project2.gav()),
+          DependencyConstraints.EMPTY
+      );
+      assertThat(result).isEqualTo(
+          Set.of(project2.gav(), project1.gav(), springCore6, springJcl)
+      );
+    }
+
+    @DisplayName("Check resolving projects while overriding transitive dependencies")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingProjectWhileOverridingTransitiveDependencies() {
+      final Set<GroupArtifactVersion> result = service.resolveTransitive(
+          List.of(project2.gav(), springCore7),
+          DependencyConstraints.EMPTY
+      );
+      // transitive spring-context 6.0.0 from project1 must be replaced
+      // with direct dependency on spring-context 7.0.0
+      assertThat(result).isEqualTo(
+          Set.of(project2.gav(), project1.gav(), springCore7, commonsLogging, jspecify)
+      );
     }
   }
 

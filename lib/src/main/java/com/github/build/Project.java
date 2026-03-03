@@ -1,5 +1,6 @@
 package com.github.build;
 
+import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.HashMap;
@@ -96,6 +97,10 @@ public final class Project {
 
   public String version() {
     return version;
+  }
+
+  public GroupArtifactVersion gav() {
+    return new GroupArtifactVersion(groupId, artifactId, version);
   }
 
   public Path path() {

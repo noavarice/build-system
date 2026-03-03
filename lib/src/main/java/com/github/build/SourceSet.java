@@ -8,8 +8,10 @@ import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 
@@ -18,7 +20,14 @@ import java.util.Set;
  *
  * @param sourceDirectories     Directories containing source files, relative to project directory
  * @param resourceDirectories   Directories containing resources, relative to project directories
- * @param compileClasspath      Source set compile classpath
+ * @param compileClasspath      Dependencies to compile code with. Dependencies do not include
+ *                              transitive dependencies
+ * @param runtimeClasspath      Dependencies to run code with. Dependencies do not include
+ *                              transitive dependencies
+ * @param exposedClasspath      Dependencies to expose as project API to compile and runtime
+ *                              classpath to consuming projects. Every dependency here must be a
+ *                              part of both compile and runtime classpath of a current project.
+ *                              Dependencies do not include transitive dependencies
  * @param dependencyConstraints Constraints to use when resolving dependencies without exact
  *                              versions
  * @author noavarice
@@ -30,6 +39,7 @@ public record SourceSet(
     Set<Path> resourceDirectories,
     Set<Dependency> compileClasspath,
     Set<Dependency> runtimeClasspath,
+    List<Dependency> exposedClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
@@ -70,6 +80,7 @@ public record SourceSet(
 
     compileClasspath = Set.copyOf(compileClasspath);
     runtimeClasspath = Set.copyOf(runtimeClasspath);
+    exposedClasspath = List.copyOf(exposedClasspath);
   }
 
   public static final class Builder {
@@ -80,9 +91,13 @@ public record SourceSet(
 
     private final Set<Path> resourceDirectories = new HashSet<>();
 
+    // TODO: use List to preserve order
     private final Set<Dependency> compileClasspath = new HashSet<>();
 
+    // TODO: use List to preserve order
     private final Set<Dependency> runtimeClasspath = new HashSet<>();
+
+    private final List<Dependency> exposedClasspath = new ArrayList<>();
 
     private DependencyConstraints dependencyConstraints = DependencyConstraints.EMPTY;
 
@@ -124,7 +139,6 @@ public record SourceSet(
       return this;
     }
 
-    // TODO: support dependencies without versions
     public Builder compileWith(final String gavStr, final String... other) {
       final var gavStrs = new HashSet<String>();
       gavStrs.add(gavStr);
@@ -202,6 +216,14 @@ public record SourceSet(
       return this;
     }
 
+    public Builder compileAndRunWithExposed(final Project project) {
+      final var dependency = new Dependency.OnProject(project);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      exposedClasspath.add(dependency);
+      return this;
+    }
+
     public Builder compileAndRunWithLocalJar(final Path jarPath) {
       final var dependency = new Dependency.Jar(jarPath);
       compileClasspath.add(dependency);
@@ -224,6 +246,22 @@ public record SourceSet(
       return this;
     }
 
+    public Builder compileAndRunWithExposed(final String gavStr, final String... other) {
+      final var gavStrs = new HashSet<String>();
+      gavStrs.add(gavStr);
+      if (other != null) {
+        gavStrs.addAll(Arrays.asList(other));
+      }
+
+      for (final String value : gavStrs) {
+        final Dependency dependency = parseDependency(value);
+        compileClasspath.add(dependency);
+        runtimeClasspath.add(dependency);
+        exposedClasspath.add(dependency);
+      }
+      return this;
+    }
+
     public Builder compileAndRunWith(final GroupArtifactVersion gav) {
       final var dependency = new Dependency.Remote.WithVersion(gav);
       compileClasspath.add(dependency);
@@ -231,10 +269,26 @@ public record SourceSet(
       return this;
     }
 
+    public Builder compileAndRunWithExposed(final GroupArtifactVersion gav) {
+      final var dependency = new Dependency.Remote.WithVersion(gav);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      exposedClasspath.add(dependency);
+      return this;
+    }
+
     public Builder compileAndRunWith(final GroupArtifact ga) {
       final var dependency = new Dependency.Remote.WithoutVersion(ga);
       compileClasspath.add(dependency);
       runtimeClasspath.add(dependency);
+      return this;
+    }
+
+    public Builder compileAndRunWithExposed(final GroupArtifact ga) {
+      final var dependency = new Dependency.Remote.WithoutVersion(ga);
+      compileClasspath.add(dependency);
+      runtimeClasspath.add(dependency);
+      exposedClasspath.add(dependency);
       return this;
     }
 
@@ -250,6 +304,7 @@ public record SourceSet(
           resourceDirectories,
           compileClasspath,
           runtimeClasspath,
+          exposedClasspath,
           dependencyConstraints
       );
     }
