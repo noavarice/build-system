@@ -108,8 +108,9 @@ public final class BuildService {
     }
 
     final Set<Path> classpath = new HashSet<>();
+    final List<GroupArtifactVersion> toResolveTransitive = new ArrayList<>();
     try {
-      addSourceSetCompileClasspath(workdir, project, sourceSet, classpath);
+      addSourceSetCompileClasspath(workdir, project, sourceSet, classpath, toResolveTransitive);
     } catch (final IllegalStateException e) {
       log.error("[project={}] [ss={}] Failed to gather compilation classpath",
           project.artifactId(),
@@ -117,6 +118,17 @@ public final class BuildService {
           e
       );
       return false;
+    }
+
+    if (!toResolveTransitive.isEmpty()) {
+      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
+          toResolveTransitive,
+          sourceSet.dependencyConstraints()
+      );
+      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+          artifacts
+      );
+      classpath.addAll(localArtifacts.values());
     }
 
     final var compileArgs = new CompileArgs(sources, classesDir, classpath, compilerOptions);
@@ -127,20 +139,12 @@ public final class BuildService {
       final Path workdir,
       final Project project,
       final SourceSet sourceSet,
-      final Collection<Path> classpath
+      final Collection<Path> classpath,
+      final List<GroupArtifactVersion> toResolveTransitive
   ) {
-    final List<GroupArtifactVersion> toResolveTransitive = new ArrayList<>();
     for (final Dependency dependency : sourceSet.compileClasspath()) {
       switch (dependency) {
-        case Dependency.OnProject onProject -> {
-          final Project dependingProject = onProject.project();
-          final Path mainSourceSetClassesDir = workdir
-              .resolve(dependingProject.path())
-              .resolve(dependingProject.artifactLayout().rootDir())
-              .resolve(dependingProject.artifactLayout().classesDir())
-              .resolve(dependingProject.mainSourceSet().id().toString());
-          classpath.add(mainSourceSetClassesDir);
-        }
+        case Dependency.OnProject onProject -> toResolveTransitive.add(onProject.project().gav());
         case Dependency.OnSourceSet onSourceSet -> {
           final Path sourceSetClassesDir = workdir
               .resolve(project.path())
@@ -149,7 +153,13 @@ public final class BuildService {
               .resolve(onSourceSet.sourceSet().id().toString());
           classpath.add(sourceSetClassesDir);
           // TODO: make this clear whether we should add source set dependency compilation classpath
-          addSourceSetCompileClasspath(workdir, project, onSourceSet.sourceSet(), classpath);
+          addSourceSetCompileClasspath(
+              workdir,
+              project,
+              onSourceSet.sourceSet(),
+              classpath,
+              toResolveTransitive
+          );
         }
         case Dependency.Jar file -> classpath.add(file.path());
         case Dependency.Remote.WithVersion withVersion ->
@@ -166,17 +176,6 @@ public final class BuildService {
           toResolveTransitive.add(withoutVersion.ga().withVersion(version));
         }
       }
-    }
-
-    if (!toResolveTransitive.isEmpty()) {
-      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
-          toResolveTransitive,
-          sourceSet.dependencyConstraints()
-      );
-      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-          artifacts
-      );
-      classpath.addAll(localArtifacts.values());
     }
   }
 

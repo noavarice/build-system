@@ -294,8 +294,6 @@ public final class BuildSpringSecurity {
     final var main = SourceSet
         .withMainDefaults()
         .compileAndRunWith(
-            // optional
-            // TODO: optional dependencies must be available for tests and unavailable as runtime dependencies
             "org.springframework:spring-core",
             "org.bouncycastle:bcpkix-jdk18on",
             "com.password4j:password4j"
