@@ -26,6 +26,8 @@ import org.eclipse.aether.artifact.Artifact;
 import org.eclipse.aether.repository.WorkspaceReader;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Integrates {@link Project} into Maven Artifact Resolver resolution mechanism.
@@ -35,11 +37,15 @@ import org.jspecify.annotations.Nullable;
  */
 public final class ProjectWorkspaceReader implements WorkspaceReader {
 
+  private static final Logger log = LoggerFactory.getLogger(ProjectWorkspaceReader.class);
+
   private final WorkspaceRepository repository;
 
   private final Path workdir;
 
   private final Map<GroupArtifactVersion, Project> projects;
+
+  private final Map<GroupArtifactVersion, List<String>> versions;
 
   public ProjectWorkspaceReader(
       final WorkspaceRepository repository,
@@ -51,6 +57,12 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
     this.projects = projects
         .stream()
         .collect(toUnmodifiableMap(Project::gav, project -> project));
+    this.versions = projects
+        .stream()
+        .collect(toUnmodifiableMap(
+            Project::gav,
+            project -> List.of(project.version())
+        ));
   }
 
   @Override
@@ -170,12 +182,18 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
       throw new UncheckedIOException("Failed to create POM file " + pomPath, e);
     }
 
+    log.debug("Generated {} POM file at {}", project.artifactId(), pomPath);
     return pomPath.toFile();
   }
 
   @Override
   public List<String> findVersions(final Artifact artifact) {
     Objects.requireNonNull(artifact);
-    throw new UnsupportedOperationException();
+    final var gav = new GroupArtifactVersion(
+        artifact.getGroupId(),
+        artifact.getArtifactId(),
+        artifact.getVersion()
+    );
+    return versions.getOrDefault(gav, List.of());
   }
 }

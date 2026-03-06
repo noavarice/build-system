@@ -10,18 +10,22 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
+import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.ProjectWorkspaceReader;
 import com.github.build.jar.JarService;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
@@ -33,12 +37,12 @@ import org.junit.jupiter.api.io.TempDir;
 /**
  * @author noavarice
  */
-@DisplayName("Build service test")
-class BuildServiceTest {
+@DisplayName("Build service integration tests")
+class BuildServiceIT {
 
   private final BuildService service;
 
-  BuildServiceTest(@TempDir final Path localRepositoryBasePath) {
+  BuildServiceIT(@TempDir final Path localRepositoryBasePath) {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
@@ -414,6 +418,18 @@ class BuildServiceTest {
             .build();
       }
 
+      final DependencyService dependencyService = createDependencyService(
+          tempDir.resolve("local-repository"),
+          tempDir,
+          calculatorProject,
+          calculatorConsumerProject
+      );
+      final var service = new BuildService(
+          new CompileService(),
+          dependencyService,
+          new JarService()
+      );
+
       final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
       assertThat(classesDir).doesNotExist();
 
@@ -452,7 +468,6 @@ class BuildServiceTest {
             .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
-      assertTrue(service.compileMain(tempDir, calculatorProject, CompilerOptions.EMPTY));
 
       final Project calculatorConsumerProject;
       {
@@ -467,6 +482,20 @@ class BuildServiceTest {
             .withSourceSet(SourceSet.withTestDefaults().build())
             .build();
       }
+
+      final DependencyService dependencyService = createDependencyService(
+          tempDir.resolve("local-repository"),
+          tempDir,
+          calculatorProject,
+          calculatorConsumerProject
+      );
+      final var service = new BuildService(
+          new CompileService(),
+          dependencyService,
+          new JarService()
+      );
+
+      assertThat(service.compileMain(tempDir, calculatorProject, CompilerOptions.EMPTY)).isTrue();
 
       final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -615,7 +644,7 @@ class BuildServiceTest {
 
     @DisplayName("Check cleaning non-empty directory works")
     @Test
-    void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
+    void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final Project project = Project
           .builder("org.example", "hello-world")
@@ -656,5 +685,43 @@ class BuildServiceTest {
 
       assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
     }
+  }
+
+  private static DependencyService createDependencyService(
+      final Path localRepositoryBasePath,
+      final Path workdir,
+      final Project... projects
+  ) {
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
+    );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
+
+    if (projects != null && projects.length > 0) {
+      session.setWorkspaceReader(new ProjectWorkspaceReader(
+          new WorkspaceRepository("test"),
+          workdir,
+          Set.of(projects)
+      ));
+    }
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
+    );
+    return new MavenArtifactResolverDependencyService(
+        repoSystem,
+        session,
+        repositories
+    );
   }
 }
