@@ -3,6 +3,7 @@ package com.github.build.test.junit;
 import com.github.build.BuildService;
 import com.github.build.FsUtils;
 import com.github.build.Project;
+import com.github.build.ProjectService;
 import com.github.build.SourceSet;
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
@@ -33,6 +34,8 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Integration tests for JUnit test integration")
 @Disabled("Fix classpath issues")
 class JUnitIT {
+
+  private final ProjectService projectService = new ProjectService();
 
   private final DependencyService dependencyService;
 
@@ -89,12 +92,12 @@ class JUnitIT {
             "ch.qos.logback:logback-classic:1.5.19"
         )
         .build();
-    final var project = Project
-        .builder("org.example", "calculator")
-        .withPath(Path.of("calculator"))
-        .withSourceSet(main)
-        .withSourceSet(test)
-        .build();
+    final var project = projectService.create("org.example", "calculator", "0.1.0",
+        builder -> builder
+            .withPath(Path.of("calculator"))
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
 
     // compile main and test source sets
     Assertions.assertTrue(buildService.compileMain(tempDir, project, CompilerOptions.EMPTY));

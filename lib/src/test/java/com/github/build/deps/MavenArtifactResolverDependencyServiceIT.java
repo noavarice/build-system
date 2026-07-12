@@ -7,6 +7,7 @@ import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.Project;
+import com.github.build.ProjectService;
 import com.github.build.SourceSet;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
@@ -327,6 +328,8 @@ class MavenArtifactResolverDependencyServiceIT {
         "org.jspecify:jspecify:1.0.0"
     );
 
+    private final ProjectService projectService = new ProjectService();
+
     private final Project project1;
 
     private final Project project2;
@@ -334,37 +337,37 @@ class MavenArtifactResolverDependencyServiceIT {
     private final DependencyService service;
 
     ProjectResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
-      project1 = Project
-          .builder("org.example", "project1")
-          .withPath("project1")
-          .withSourceSet(
-              SourceSet
-                  .withMainDefaults()
-                  .compileAndRunWithExposed(springCore6)
-                  .build()
-          )
-          .withSourceSet(
-              SourceSet
-                  .withTestDefaults()
-                  .build()
-          )
-          .build();
+      project1 = projectService.create("org.example", "project1", "0.1.0",
+          builder -> builder
+              .withPath("project1")
+              .withSourceSet(
+                  SourceSet
+                      .withMainDefaults()
+                      .compileAndRunWithExposed(springCore6)
+                      .build()
+              )
+              .withSourceSet(
+                  SourceSet
+                      .withTestDefaults()
+                      .build()
+              )
+      );
 
-      project2 = Project
-          .builder("org.example", "project2")
-          .withPath("project2")
-          .withSourceSet(
-              SourceSet
-                  .withMainDefaults()
-                  .compileAndRunWithExposed(project1)
-                  .build()
-          )
-          .withSourceSet(
-              SourceSet
-                  .withTestDefaults()
-                  .build()
-          )
-          .build();
+      project2 = projectService.create("org.example", "project2", "0.1.0",
+          builder -> builder
+              .withPath("project2")
+              .withSourceSet(
+                  SourceSet
+                      .withMainDefaults()
+                      .compileAndRunWithExposed(project1)
+                      .build()
+              )
+              .withSourceSet(
+                  SourceSet
+                      .withTestDefaults()
+                      .build()
+              )
+      );
 
       final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
       final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();

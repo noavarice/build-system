@@ -61,6 +61,8 @@ public class BuildItself {
       new JarService()
   );
 
+  private static final ProjectService projectService = new ProjectService();
+
   public static void main(final String[] args) {
     final Path workdir;
     if (args.length == 0) {
@@ -110,12 +112,13 @@ public class BuildItself {
         .withDependencyConstraints(junitBom)
         .runWith("org.junit.jupiter:junit-jupiter-engine")
         .build();
-    return Project
-        .builder("com.github.build", "build-system-test-utils")
-        .withPath(Path.of("test-utils"))
-        .withSourceSet(main)
-        .withSourceSet(test)
-        .build();
+    return projectService.create(
+        "com.github.build", "build-system-test-utils", "0.1.0",
+        builder -> builder
+            .withPath(Path.of("test-utils"))
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
   }
 
   private static Project createProjectLib(
@@ -157,12 +160,13 @@ public class BuildItself {
             "com.sun.xml.bind:jaxb-impl:4.0.5"
         )
         .build();
-    return Project
-        .builder("com.github.build", "build-system-lib")
-        .withPath(Path.of("lib"))
-        .withSourceSet(main)
-        .withSourceSet(test)
-        .build();
+    return projectService.create(
+        "com.github.build", "build-system-lib", "0.1.0",
+        builder -> builder
+            .withPath(Path.of("lib"))
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
   }
 
   private static boolean buildTestUtils(

@@ -40,9 +40,12 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Build service integration tests")
 class BuildServiceIT {
 
+  private final ProjectService projectService;
+
   private final BuildService service;
 
   BuildServiceIT(@TempDir final Path localRepositoryBasePath) {
+    projectService = new ProjectService();
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
@@ -89,12 +92,12 @@ class BuildServiceIT {
       final var test = SourceSet
           .withTestDefaults()
           .build();
-      final var project = Project
-          .builder("org.example", "empty-sources")
-          .withPath(Path.of("empty-sources"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "empty-sources", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("empty-sources"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       final Path classesDir = tempDir
           .resolve(project.path())
@@ -125,12 +128,12 @@ class BuildServiceIT {
       final var test = SourceSet
           .withTestDefaults()
           .build();
-      final var project = Project
-          .builder("org.example", "calculator")
-          .withPath(Path.of("calculator"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "calculator", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("calculator"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/main");
       assumeThat(classesDir).doesNotExist();
@@ -161,12 +164,12 @@ class BuildServiceIT {
       final var test = SourceSet
           .withTestDefaults()
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -196,12 +199,12 @@ class BuildServiceIT {
       final var test = SourceSet
           .withTestDefaults()
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -230,12 +233,12 @@ class BuildServiceIT {
           .withMainDefaults()
           .compileWith(slf4jApi)
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -269,12 +272,12 @@ class BuildServiceIT {
           .withMainDefaults()
           .compileWith(slf4jApi)
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -312,12 +315,12 @@ class BuildServiceIT {
           .compileWith(slf4jApi)
           .withDependencyConstraints(constraints)
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -355,12 +358,12 @@ class BuildServiceIT {
           .compileWith(slf4jApi)
           .withDependencyConstraints(constraints)
           .build();
-      final var project = Project
-          .builder("org.example", "slf4j-example")
-          .withPath(Path.of("slf4j-example"))
-          .withSourceSet(main)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("slf4j-example"))
+              .withSourceSet(main)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
@@ -396,12 +399,12 @@ class BuildServiceIT {
         final var main = SourceSet
             .withMainDefaults()
             .build();
-        calculatorProject = Project
-            .builder("org.example", "calculator")
-            .withPath(Path.of("calculator"))
-            .withSourceSet(main)
-            .withSourceSet(SourceSet.withTestDefaults().build())
-            .build();
+        calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
+            builder -> builder
+                .withPath(Path.of("calculator"))
+                .withSourceSet(main)
+                .withSourceSet(SourceSet.withTestDefaults().build())
+        );
       }
 
       final Project calculatorConsumerProject;
@@ -410,12 +413,13 @@ class BuildServiceIT {
             .withMainDefaults()
             .compileWith(calculatorProject)
             .build();
-        calculatorConsumerProject = Project
-            .builder("org.example", "calculator-consumer")
-            .withPath(Path.of("calculator-consumer"))
-            .withSourceSet(main)
-            .withSourceSet(SourceSet.withTestDefaults().build())
-            .build();
+        calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
+            "0.1.0",
+            builder -> builder
+                .withPath(Path.of("calculator-consumer"))
+                .withSourceSet(main)
+                .withSourceSet(SourceSet.withTestDefaults().build())
+        );
       }
 
       final DependencyService dependencyService = createDependencyService(
@@ -461,12 +465,12 @@ class BuildServiceIT {
         final var main = SourceSet
             .withMainDefaults()
             .build();
-        calculatorProject = Project
-            .builder("org.example", "calculator")
-            .withPath(Path.of("calculator"))
-            .withSourceSet(main)
-            .withSourceSet(SourceSet.withTestDefaults().build())
-            .build();
+        calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
+            builder -> builder
+                .withPath(Path.of("calculator"))
+                .withSourceSet(main)
+                .withSourceSet(SourceSet.withTestDefaults().build())
+        );
       }
 
       final Project calculatorConsumerProject;
@@ -475,12 +479,13 @@ class BuildServiceIT {
             .withMainDefaults()
             .compileWith(calculatorProject)
             .build();
-        calculatorConsumerProject = Project
-            .builder("org.example", "calculator-consumer")
-            .withPath(Path.of("calculator-consumer"))
-            .withSourceSet(main)
-            .withSourceSet(SourceSet.withTestDefaults().build())
-            .build();
+        calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
+            "0.1.0",
+            builder -> builder
+                .withPath(Path.of("calculator-consumer"))
+                .withSourceSet(main)
+                .withSourceSet(SourceSet.withTestDefaults().build())
+        );
       }
 
       final DependencyService dependencyService = createDependencyService(
@@ -535,12 +540,12 @@ class BuildServiceIT {
           .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
           .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
           .build();
-      final var project = Project
-          .builder("org.example", "calculator")
-          .withPath(Path.of("calculator"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "calculator", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("calculator"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/test");
       assertThat(classesDir).doesNotExist();
@@ -573,12 +578,12 @@ class BuildServiceIT {
           .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
           .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
           .build();
-      final var project = Project
-          .builder("org.example", "calculator")
-          .withPath(Path.of("calculator"))
-          .withSourceSet(main)
-          .withSourceSet(test)
-          .build();
+      final var project = projectService.create("org.example", "calculator", "0.1.0",
+          builder -> builder
+              .withPath(Path.of("calculator"))
+              .withSourceSet(main)
+              .withSourceSet(test)
+      );
 
       assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY));
 
@@ -609,12 +614,12 @@ class BuildServiceIT {
     @Test
     void testCleanMissingDirectoryWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(SourceSet.withMainDefaults().build())
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(SourceSet.withMainDefaults().build())
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
       final Path buildOutputDir = tempDir
           .resolve(project.path())
           .resolve(project.artifactLayout().rootDir());
@@ -626,12 +631,12 @@ class BuildServiceIT {
     @Test
     void testCleanEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(SourceSet.withMainDefaults().build())
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(SourceSet.withMainDefaults().build())
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path buildOutputDir = tempDir
           .resolve(project.path())
@@ -646,12 +651,12 @@ class BuildServiceIT {
     @Test
     void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(SourceSet.withMainDefaults().build())
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(SourceSet.withMainDefaults().build())
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
       final var java21 = CompilerOptions
           .builder()
           .release("21")
@@ -670,12 +675,12 @@ class BuildServiceIT {
     @Test
     void testCleanFile(@TempDir final Path tempDir) throws IOException {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(SourceSet.withMainDefaults().build())
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(SourceSet.withMainDefaults().build())
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path buildOutputDir = tempDir
           .resolve(project.path())

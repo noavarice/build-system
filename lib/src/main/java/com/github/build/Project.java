@@ -1,9 +1,7 @@
 package com.github.build;
 
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.util.PathUtils;
 import java.nio.file.Path;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Objects;
 
@@ -14,11 +12,6 @@ import java.util.Objects;
  * @since 1.0.0
  */
 public final class Project {
-
-  // TODO: either pass all required args or provide all one-by-one
-  public static Builder builder(final String groupId, final String artifactId) {
-    return new Builder(groupId, artifactId);
-  }
 
   private final String groupId;
 
@@ -36,7 +29,8 @@ public final class Project {
 
   private final ArtifactLayout artifactLayout;
 
-  private Project(
+  // TODO: Think about making this private in favor of ProjectService
+  public Project(
       final String groupId,
       final String artifactId,
       final String version,
@@ -150,66 +144,6 @@ public final class Project {
         throw new IllegalArgumentException("Must be a relative path");
       }
       classesDir = classesDir.normalize();
-    }
-  }
-
-  public static final class Builder {
-
-    private final String groupId;
-
-    private final String artifactId;
-
-    private String version = "0.1.0";
-
-    private Path path = Path.of("");
-
-    private final Map<SourceSet.Id, SourceSet> sourceSets = new HashMap<>();
-
-    private ArtifactLayout artifactLayout = ArtifactLayout.DEFAULT;
-
-    private Builder(final String groupId, final String artifactId) {
-      this.groupId = Objects.requireNonNull(groupId);
-      this.artifactId = Objects.requireNonNull(artifactId);
-    }
-
-    public Builder withVersion(final String version) {
-      Objects.requireNonNull(version);
-      this.version = version;
-      return this;
-    }
-
-    public Builder withPath(final String path) {
-      return withPath(Path.of(path));
-    }
-
-    public Builder withPath(final Path path) {
-      Objects.requireNonNull(path);
-      PathUtils.checkRelative(path);
-      this.path = path.normalize();
-      return this;
-    }
-
-    public Builder withSourceSet(final SourceSet sourceSet) {
-      Objects.requireNonNull(sourceSet);
-      sourceSets.put(sourceSet.id(), sourceSet);
-      return this;
-    }
-
-    public Builder withArtifactLayout(final ArtifactLayout artifactLayout) {
-      Objects.requireNonNull(artifactLayout);
-      this.artifactLayout = artifactLayout;
-      return this;
-    }
-
-    public Project build() {
-      return new Project(
-          groupId,
-          artifactId,
-          version,
-          path,
-          sourceSets,
-          artifactLayout
-      );
     }
   }
 }

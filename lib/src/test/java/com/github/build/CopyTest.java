@@ -34,9 +34,12 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Tests for copying files (e.g. resources)")
 class CopyTest {
 
+  private final ProjectService projectService;
+
   private final BuildService buildService;
 
   CopyTest(@TempDir final Path localRepoBase) {
+    projectService = new ProjectService();
     final CompileService compileService = new CompileService();
     final var remoteRepository = new RemoteRepositoryImpl(
         // TODO: externalize
@@ -323,12 +326,12 @@ class CopyTest {
     @TestFactory
     DynamicTest[] testCopyResourcesWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(SourceSet.withMainDefaults().build())
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(SourceSet.withMainDefaults().build())
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       final Path copiedResourcePath = tempDir.resolve(
           "hello-world/build/resources/main/greeting.txt"
@@ -377,12 +380,12 @@ class CopyTest {
           .withMainDefaults()
           .withResourceDir("src/main/other-resources")
           .build();
-      final var project = Project
-          .builder("org.example", "hello-world")
-          .withPath("hello-world")
-          .withSourceSet(mainSourceSet)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      final var project = projectService.create("org.example", "hello-world", "0.1.0",
+          builder -> builder
+              .withPath("hello-world")
+              .withSourceSet(mainSourceSet)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
 
       // setup paths for copied resources
       final Path copiedResourcePath = tempDir.resolve(
@@ -424,15 +427,15 @@ class CopyTest {
       };
     }
 
-    private static Project createProject() {
+    private Project createProject() {
       final var mainSourceSet = SourceSet
           .withMainDefaults()
           .build();
-      return Project
-          .builder("org.example", "test-project")
-          .withSourceSet(mainSourceSet)
-          .withSourceSet(SourceSet.withTestDefaults().build())
-          .build();
+      return projectService.create("org.example", "test-project", "0.1.0",
+          builder -> builder
+              .withSourceSet(mainSourceSet)
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
     }
   }
 }

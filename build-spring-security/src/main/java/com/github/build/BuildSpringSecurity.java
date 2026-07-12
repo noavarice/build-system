@@ -51,6 +51,7 @@ public final class BuildSpringSecurity {
       workdir = Path.of(args[0]).toAbsolutePath();
     }
 
+    final var projectService = new ProjectService();
     final var compileService = new CompileService();
     final var dependencyService = mavenArtifactResolver();
     final var testService = new TestService(dependencyService);
@@ -58,8 +59,8 @@ public final class BuildSpringSecurity {
     final BuildService service = new BuildService(compileService, dependencyService, jarService);
 
     final DependencyConstraints platform = getPlatform(dependencyService);
-    final Project crypto = createProjectCrypto(platform);
-    final Project core = createProjectCore(platform, crypto);
+    final Project crypto = createProjectCrypto(projectService, platform);
+    final Project core = createProjectCore(projectService, platform, crypto);
     final List<Project> projects = List.of(crypto, core);
 
     final Path license = workdir.resolve("LICENSE.txt");
@@ -250,7 +251,10 @@ public final class BuildSpringSecurity {
         .build();
   }
 
-  private static Project createProjectCrypto(final DependencyConstraints platform) {
+  private static Project createProjectCrypto(
+      final ProjectService projectService,
+      final DependencyConstraints platform
+  ) {
     final var main = SourceSet
         .withMainDefaults()
         .compileAndRunWith(
@@ -279,17 +283,20 @@ public final class BuildSpringSecurity {
         Path.of("classes"),
         Path.of("resources")
     );
-    return Project
-        .builder("org.springframework.security", "spring-security-crypto")
-        .withVersion("7.0.0")
-        .withPath(Path.of("crypto"))
-        .withArtifactLayout(artifactLayout)
-        .withSourceSet(main)
-        .withSourceSet(test)
-        .build();
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-crypto",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("crypto"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
   }
 
   private static Project createProjectCore(
+      final ProjectService projectService,
       final DependencyConstraints platform,
       final Project crypto
   ) {
@@ -350,14 +357,16 @@ public final class BuildSpringSecurity {
         Path.of("classes"),
         Path.of("resources")
     );
-    return Project
-        .builder("org.springframework.security", "spring-security-core")
-        .withVersion("7.0.0")
-        .withPath(Path.of("core"))
-        .withArtifactLayout(artifactLayout)
-        .withSourceSet(main)
-        .withSourceSet(test)
-        .build();
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-core",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("core"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
   }
 
   private static DependencyService mavenArtifactResolver() {
