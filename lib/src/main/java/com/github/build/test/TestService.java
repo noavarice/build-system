@@ -124,16 +124,20 @@ public final class TestService {
     final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
 
     final Path unixSocketPath = getSocketPath();
-    final var commandBuilder = new JavaCommandBuilder(
-        testRuntime.classpath(),
-        agents,
-        systemProperties,
-        "com.github.build.junit.JUnitTestTask",
-        List.of(
+    // TODO: allow test JVM customization
+    final String currentJavaCommand = ProcessHandle.current().info().command().orElseThrow();
+    final var commandBuilder = JavaCommandBuilder
+        .builder()
+        .javaPath(currentJavaCommand)
+        .classpath(testRuntime.classpath())
+        .agents(agents)
+        .systemProperties(systemProperties)
+        .mainClass("com.github.build.junit.JUnitTestTask")
+        .args(List.of(
             unixSocketPath.toString(),
             testRuntime.classesDir().toString()
-        )
-    );
+        ))
+        .build();
     final ProcessBuilder processBuilder = new ProcessBuilder()
         .command(commandBuilder.toCommand())
         .directory(workdir.toFile())
@@ -176,16 +180,29 @@ public final class TestService {
       throw new IllegalStateException(e);
     }
 
+    final TestResults results = testEventHandler.toTestResults();
+
+    if (!results.failures().isEmpty()) {
+      log.error("Test failures:");
+      for (var f : results.failures()) {
+        log.error("""
+              {} ({})
+                {}: {}
+            """, f.displayName(), f.testId(), f.exceptionType(), f.message());
+      }
+    }
+
     if (process.exitValue() != 0) {
       log.error("[project={}] Test process {} exited with code {}",
           project.artifactId(),
           process.pid(),
           process.exitValue()
       );
-      throw new IllegalStateException();
+      throw new IllegalStateException("Test process exited with code " + process.exitValue()
+          + " (" + results.testsFailedCount() + " tests failed)");
     }
 
-    return testEventHandler.toTestResults();
+    return results;
   }
 
   private Path getSocketPath() {

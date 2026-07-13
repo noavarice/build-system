@@ -2,6 +2,7 @@ package com.github.build.test.junit;
 
 import com.github.build.test.EventCodec;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 /**
  * @author noavarice
@@ -80,6 +81,23 @@ public final class JUnitEventJsonCodec implements EventCodec<JUnitEvent> {
         json.append("\"testId\":").append(escapeString(tf.testId())).append(",");
         json.append("\"status\":\"").append(tf.status().name()).append("\"");
       }
+      case JUnitEvent.TestFailed tf -> {
+        json.append("\"type\":\"TestFailed\",");
+        json.append("\"testId\":").append(escapeString(tf.testId()));
+        if (tf.displayName() != null) {
+          json.append(",\"displayName\":").append(escapeString(tf.displayName()));
+        }
+        if (tf.exceptionType() != null) {
+          json.append(",\"exceptionType\":").append(escapeString(tf.exceptionType()));
+        }
+        if (tf.message() != null) {
+          json.append(",\"message\":").append(escapeString(tf.message()));
+        }
+        if (tf.stackTrace() != null) {
+          json.append(",\"stackTrace\":");
+          serializeStackTraceArray(tf.stackTrace(), json);
+        }
+      }
       default -> throw new IllegalArgumentException("Unknown event type: " + event.getClass());
     }
 
@@ -151,6 +169,10 @@ public final class JUnitEventJsonCodec implements EventCodec<JUnitEvent> {
     String type = null;
     String containerId = null;
     String testId = null;
+    String displayName = null;
+    String exceptionType = null;
+    String message = null;
+    List<StackTraceElement> stackTrace = null;
     JUnitEvent.Status status = null;
 
     while (parser.hasNext() && parser.peek() != '}') {
@@ -176,6 +198,18 @@ public final class JUnitEventJsonCodec implements EventCodec<JUnitEvent> {
           } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid status value: " + statusStr);
           }
+          break;
+        case "displayName":
+          displayName = parser.parseString();
+          break;
+        case "exceptionType":
+          exceptionType = parser.parseString();
+          break;
+        case "message":
+          message = parser.parseString();
+          break;
+        case "stackTrace":
+          stackTrace = parseStackTraceArray(parser);
           break;
         default:
           // Skip unknown field
@@ -210,11 +244,13 @@ public final class JUnitEventJsonCodec implements EventCodec<JUnitEvent> {
       throw new IllegalArgumentException("Missing type field in JSON");
     }
 
-    return createEvent(type, containerId, testId, status);
+    return createEvent(type, containerId, testId, displayName, exceptionType, message, stackTrace,
+        status);
   }
 
   private JUnitEvent createEvent(String type, String containerId, String testId,
-      JUnitEvent.Status status) {
+      String displayName, String exceptionType, String message,
+      List<StackTraceElement> stackTrace, JUnitEvent.Status status) {
     switch (type) {
       case "ContainerStarted":
         if (containerId == null) {
@@ -244,9 +280,115 @@ public final class JUnitEventJsonCodec implements EventCodec<JUnitEvent> {
           throw new IllegalArgumentException("Missing status for TestFinished");
         }
         return new JUnitEvent.TestFinished(testId, status);
+      case "TestFailed":
+        return new JUnitEvent.TestFailed(testId, displayName, exceptionType, message, stackTrace);
       default:
         throw new IllegalArgumentException("Unknown event type: " + type);
     }
+  }
+
+  private void serializeStackTraceArray(List<StackTraceElement> stackTrace, StringBuilder json) {
+    json.append("[");
+    for (int i = 0; i < stackTrace.size(); i++) {
+      if (i > 0) {
+        json.append(",");
+      }
+      serializeStackTraceElement(stackTrace.get(i), json);
+    }
+    json.append("]");
+  }
+
+  private void serializeStackTraceElement(StackTraceElement element, StringBuilder json) {
+    json.append("{");
+    json.append("\"class\":").append(escapeString(element.getClassName())).append(",");
+    json.append("\"method\":").append(escapeString(element.getMethodName())).append(",");
+    json.append("\"file\":").append(escapeString(element.getFileName())).append(",");
+    json.append("\"line\":").append(element.getLineNumber());
+    json.append("}");
+  }
+
+  private List<StackTraceElement> parseStackTraceArray(JsonParser parser) {
+    parser.skipWhitespace();
+    parser.expect('[');
+    parser.skipWhitespace();
+
+    var elements = new java.util.ArrayList<StackTraceElement>();
+    while (parser.hasNext() && parser.peek() != ']') {
+      elements.add(parseStackTraceElement(parser));
+      parser.skipWhitespace();
+      if (parser.hasNext() && parser.peek() == ',') {
+        parser.next();
+        parser.skipWhitespace();
+      } else if (parser.hasNext() && parser.peek() != ']') {
+        throw new IllegalArgumentException(
+            "Expected ',' or ']' but found '" + parser.peek() + "' at position " + parser.pos);
+      }
+    }
+
+    if (!parser.hasNext()) {
+      throw new IllegalArgumentException("Unexpected end of input in stack trace array");
+    }
+    parser.expect(']');
+    return elements;
+  }
+
+  private StackTraceElement parseStackTraceElement(JsonParser parser) {
+    parser.skipWhitespace();
+    parser.expect('{');
+    parser.skipWhitespace();
+
+    String className = null;
+    String methodName = null;
+    String fileName = null;
+    int lineNumber = -1;
+
+    while (parser.hasNext() && parser.peek() != '}') {
+      String key = parser.parseString();
+      parser.skipWhitespace();
+      parser.expect(':');
+      parser.skipWhitespace();
+
+      switch (key) {
+        case "class" -> className = parser.parseString();
+        case "method" -> methodName = parser.parseString();
+        case "file" -> fileName = parser.parseString();
+        case "line" -> lineNumber = parseInt(parser);
+        default -> parser.skipValue();
+      }
+
+      parser.skipWhitespace();
+      if (parser.hasNext() && parser.peek() == ',') {
+        parser.next();
+        parser.skipWhitespace();
+      } else if (parser.hasNext() && parser.peek() != '}') {
+        throw new IllegalArgumentException(
+            "Expected ',' or '}' but found '" + parser.peek() + "' at position " + parser.pos);
+      }
+    }
+
+    if (!parser.hasNext()) {
+      throw new IllegalArgumentException("Unexpected end of input in stack trace element");
+    }
+    parser.expect('}');
+
+    return new StackTraceElement(className, methodName, fileName, lineNumber);
+  }
+
+  private int parseInt(JsonParser parser) {
+    parser.skipWhitespace();
+    boolean negative = false;
+    if (parser.peek() == '-') {
+      negative = true;
+      parser.next();
+    }
+    int value = 0;
+    if (!parser.hasNext() || parser.peek() < '0' || parser.peek() > '9') {
+      throw new IllegalArgumentException("Expected integer at position " + parser.pos);
+    }
+    while (parser.hasNext() && parser.peek() >= '0' && parser.peek() <= '9') {
+      value = value * 10 + (parser.next() - '0');
+    }
+    return negative ? -value : value;
   }
 
   // Simple JSON parser

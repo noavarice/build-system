@@ -1,6 +1,8 @@
 package com.github.build.test.junit;
 
+import java.util.List;
 import java.util.Objects;
+import org.jspecify.annotations.Nullable;
 
 /**
  * @author noavarice
@@ -41,6 +43,19 @@ public sealed interface JUnitEvent {
     public TestFinished {
       Objects.requireNonNull(testId);
       Objects.requireNonNull(status);
+    }
+  }
+
+  record TestFailed(
+      String testId,
+      @Nullable String displayName,
+      @Nullable String exceptionType,
+      @Nullable String message,
+      @Nullable List<StackTraceElement> stackTrace
+  ) implements JUnitEvent {
+
+    public TestFailed {
+      Objects.requireNonNull(testId);
     }
   }
 

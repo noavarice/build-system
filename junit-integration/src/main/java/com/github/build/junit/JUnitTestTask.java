@@ -2,12 +2,14 @@ package com.github.build.junit;
 
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClasspathRoots;
 
+import com.github.build.test.TestFailure;
 import com.github.build.test.TestResults;
 import com.github.build.test.junit.JUnitEvent;
 import com.github.build.test.junit.JUnitEventJsonCodec;
 import com.github.build.test.junit.JUnitTestTaskArgs;
 import com.github.build.util.UnixSocketClient;
 import java.nio.file.Path;
+import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
@@ -68,10 +70,24 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
       return TestResults.NO_TESTS_FOUND;
     }
 
+    List<TestFailure> failures = summary.getFailures().stream()
+        .map(f -> {
+          Throwable t = f.getException();
+          return new TestFailure(
+              f.getTestIdentifier().getUniqueId(),
+              f.getTestIdentifier().getDisplayName(),
+              t.getClass().getName(),
+              t.getMessage(),
+              List.of(t.getStackTrace())
+          );
+        })
+        .toList();
+
     return new TestResults(
         summary.getTestsSucceededCount(),
         summary.getTestsFailedCount(),
-        summary.getTestsSkippedCount()
+        summary.getTestsSkippedCount(),
+        failures
     );
   }
 

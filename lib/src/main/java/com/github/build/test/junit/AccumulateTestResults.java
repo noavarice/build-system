@@ -1,6 +1,10 @@
 package com.github.build.test.junit;
 
+import com.github.build.test.TestFailure;
 import com.github.build.test.TestResults;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import org.slf4j.Logger;
@@ -19,6 +23,8 @@ public final class AccumulateTestResults implements Consumer<JUnitEvent> {
   private final AtomicInteger skipped = new AtomicInteger(0);
 
   private final AtomicInteger failed = new AtomicInteger(0);
+
+  private final List<TestFailure> failures = Collections.synchronizedList(new ArrayList<>());
 
   @Override
   public void accept(final JUnitEvent event) {
@@ -48,10 +54,17 @@ public final class AccumulateTestResults implements Consumer<JUnitEvent> {
         log.debug("JUnit test skipped: {}", testSkipped.testId());
         skipped.incrementAndGet();
       }
+      case JUnitEvent.TestFailed tf -> {
+        log.error("JUnit test failed: {} ({}) - {}: {}",
+            tf.testId(), tf.displayName(), tf.exceptionType(), tf.message());
+        failed.incrementAndGet();
+        failures.add(new TestFailure(
+            tf.testId(), tf.displayName(), tf.exceptionType(), tf.message(), tf.stackTrace()));
+      }
     }
   }
 
   public TestResults toTestResults() {
-    return new TestResults(succeeded.get(), failed.get(), skipped.get());
+    return new TestResults(succeeded.get(), failed.get(), skipped.get(), List.copyOf(failures));
   }
 }

@@ -1,15 +1,18 @@
 package com.github.build.test;
 
+import java.util.List;
+
 /**
  * @author noavarice
  */
 public record TestResults(
     long testsSucceededCount,
     long testsFailedCount,
-    long testsSkippedCount
+    long testsSkippedCount,
+    List<TestFailure> failures
 ) {
 
-  public static final TestResults NO_TESTS_FOUND = new TestResults(0, 0, 0);
+  public static final TestResults NO_TESTS_FOUND = new TestResults(0, 0, 0, List.of());
 
   public TestResults {
     checkPositive(testsSucceededCount);
