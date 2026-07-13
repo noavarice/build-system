@@ -21,7 +21,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Objects;
-import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -425,8 +424,7 @@ class BuildServiceIT {
       final DependencyService dependencyService = createDependencyService(
           tempDir.resolve("local-repository"),
           tempDir,
-          calculatorProject,
-          calculatorConsumerProject
+          projectService
       );
       final var service = new BuildService(
           new CompileService(),
@@ -491,8 +489,7 @@ class BuildServiceIT {
       final DependencyService dependencyService = createDependencyService(
           tempDir.resolve("local-repository"),
           tempDir,
-          calculatorProject,
-          calculatorConsumerProject
+          projectService
       );
       final var service = new BuildService(
           new CompileService(),
@@ -695,7 +692,7 @@ class BuildServiceIT {
   private static DependencyService createDependencyService(
       final Path localRepositoryBasePath,
       final Path workdir,
-      final Project... projects
+      final ProjectService projectService
   ) {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
@@ -706,13 +703,11 @@ class BuildServiceIT {
     final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
     session.setLocalRepositoryManager(manager);
 
-    if (projects != null && projects.length > 0) {
-      session.setWorkspaceReader(new ProjectWorkspaceReader(
-          new WorkspaceRepository("test"),
-          workdir,
-          Set.of(projects)
-      ));
-    }
+    session.setWorkspaceReader(new ProjectWorkspaceReader(
+        new WorkspaceRepository("test"),
+        workdir,
+        projectService
+    ));
 
     final String nexusHost = Objects.requireNonNullElse(
         System.getenv("NEXUS_HOST"),

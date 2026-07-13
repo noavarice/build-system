@@ -376,7 +376,7 @@ class MavenArtifactResolverDependencyServiceIT {
           new ProjectWorkspaceReader(
               new WorkspaceRepository("build-system"),
               workdir,
-              Set.of(project1, project2)
+              projectService
           )
       );
 
@@ -438,6 +438,136 @@ class MavenArtifactResolverDependencyServiceIT {
       assertThat(result).isEqualTo(
           Set.of(project2.gav(), project1.gav(), springCore7, commonsLogging, jspecify)
       );
+    }
+  }
+
+  @DisplayName("Check resolving projects via ProjectService-backed workspace reader")
+  @Nested
+  class ProjectServiceIntegration {
+
+    private final GroupArtifactVersion springCore6 = GroupArtifactVersion.parse(
+        "org.springframework:spring-core:6.0.0"
+    );
+
+    private final GroupArtifactVersion springJcl = GroupArtifactVersion.parse(
+        "org.springframework:spring-jcl:6.0.0"
+    );
+
+    private final Project projectA;
+
+    private final Project projectB;
+
+    private final Project projectC;
+
+    private final DependencyService service;
+
+    ProjectServiceIntegration(
+        @TempDir final Path workdir,
+        @TempDir final Path localRepositoryBasePath
+    ) {
+      final ProjectService projectService = new ProjectService();
+      projectA = projectService.create("org.example", "project-a", "0.1.0",
+          builder -> builder
+              .withPath("project-a")
+              .withSourceSet(
+                  SourceSet
+                      .withMainDefaults()
+                      .compileAndRunWithExposed(springCore6)
+                      .build()
+              )
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
+
+      projectB = projectService.create("org.example", "project-b", "0.1.0",
+          builder -> builder
+              .withPath("project-b")
+              .withSourceSet(
+                  SourceSet
+                      .withMainDefaults()
+                      .compileAndRunWithExposed(projectA)
+                      .build()
+              )
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
+
+      projectC = projectService.create("org.example", "project-c", "0.1.0",
+          builder -> builder
+              .withPath("project-c")
+              .withSourceSet(
+                  SourceSet
+                      .withMainDefaults()
+                      .compileAndRunWithExposed(projectB)
+                      .build()
+              )
+              .withSourceSet(SourceSet.withTestDefaults().build())
+      );
+
+      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+
+      session.setWorkspaceReader(
+          new ProjectWorkspaceReader(
+              new WorkspaceRepository("build-system"),
+              workdir,
+              projectService
+          )
+      );
+
+      session.setSystemProperty("java.version", "21");
+      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+          localRepositoryBasePath.toFile()
+      );
+      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+      session.setLocalRepositoryManager(manager);
+
+      final String nexusHost = Objects.requireNonNullElse(
+          System.getenv("NEXUS_HOST"),
+          "localhost"
+      );
+      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+          new org.eclipse.aether.repository.RemoteRepository
+              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .build()
+      );
+      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+    }
+
+    @DisplayName("Check resolving project-a from service-backed workspace reader")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingSingleProjectFromService() {
+      final Set<GroupArtifactVersion> result = service.resolveTransitive(
+          List.of(projectA.gav()),
+          DependencyConstraints.EMPTY
+      );
+      assertThat(result).isEqualTo(
+          Set.of(projectA.gav(), springCore6, springJcl)
+      );
+    }
+
+    @DisplayName("Check resolving full transitive chain from service-backed workspace reader")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingFullTransitiveChainFromService() {
+      final Set<GroupArtifactVersion> result = service.resolveTransitive(
+          List.of(projectC.gav()),
+          DependencyConstraints.EMPTY
+      );
+      assertThat(result).isEqualTo(
+          Set.of(projectC.gav(), projectB.gav(), projectA.gav(), springCore6, springJcl)
+      );
+    }
+
+    @DisplayName("Check all three projects are individually resolvable from service")
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testAllProjectsIndividuallyResolvableFromService() {
+      assertThat(service.resolveTransitive(List.of(projectA.gav()), DependencyConstraints.EMPTY))
+          .contains(projectA.gav());
+      assertThat(service.resolveTransitive(List.of(projectB.gav()), DependencyConstraints.EMPTY))
+          .contains(projectB.gav());
+      assertThat(service.resolveTransitive(List.of(projectC.gav()), DependencyConstraints.EMPTY))
+          .contains(projectC.gav());
     }
   }
 

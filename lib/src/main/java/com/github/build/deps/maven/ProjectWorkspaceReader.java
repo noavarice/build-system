@@ -7,6 +7,7 @@ import static com.github.build.deps.Dependency.Remote;
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
 import com.github.build.Project;
+import com.github.build.ProjectService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import java.io.File;
@@ -63,6 +64,14 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             Project::gav,
             project -> List.of(project.version())
         ));
+  }
+
+  public ProjectWorkspaceReader(
+      final WorkspaceRepository repository,
+      final Path workdir,
+      final ProjectService projectService
+  ) {
+    this(repository, workdir, projectService.allProjects());
   }
 
   @Override
