@@ -4,7 +4,6 @@ import static com.github.build.deps.Dependency.Jar;
 import static com.github.build.deps.Dependency.OnProject;
 import static com.github.build.deps.Dependency.OnSourceSet;
 import static com.github.build.deps.Dependency.Remote;
-import static java.util.stream.Collectors.toUnmodifiableMap;
 
 import com.github.build.Project;
 import com.github.build.ProjectService;
@@ -16,9 +15,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
@@ -44,34 +41,16 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
 
   private final Path workdir;
 
-  private final Map<GroupArtifactVersion, Project> projects;
-
-  private final Map<GroupArtifactVersion, List<String>> versions;
-
-  public ProjectWorkspaceReader(
-      final WorkspaceRepository repository,
-      final Path workdir,
-      final Set<Project> projects
-  ) {
-    this.repository = Objects.requireNonNull(repository);
-    this.workdir = Objects.requireNonNull(workdir);
-    this.projects = projects
-        .stream()
-        .collect(toUnmodifiableMap(Project::gav, project -> project));
-    this.versions = projects
-        .stream()
-        .collect(toUnmodifiableMap(
-            Project::gav,
-            project -> List.of(project.version())
-        ));
-  }
+  private final ProjectService projectService;
 
   public ProjectWorkspaceReader(
       final WorkspaceRepository repository,
       final Path workdir,
       final ProjectService projectService
   ) {
-    this(repository, workdir, projectService.allProjects());
+    this.repository = Objects.requireNonNull(repository);
+    this.workdir = Objects.requireNonNull(workdir);
+    this.projectService = projectService;
   }
 
   @Override
@@ -89,7 +68,11 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
         artifact.getVersion()
     );
 
-    final Project project = projects.get(gav);
+    final Project project = projectService.allProjects()
+        .stream()
+        .filter(p -> p.gav().equals(gav))
+        .findFirst()
+        .orElse(null);
     if (project == null) {
       return null;
     }
@@ -198,11 +181,15 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
   @Override
   public List<String> findVersions(final Artifact artifact) {
     Objects.requireNonNull(artifact);
-    final var gav = new GroupArtifactVersion(
+    final var ga = new GroupArtifact(
         artifact.getGroupId(),
-        artifact.getArtifactId(),
-        artifact.getVersion()
+        artifact.getArtifactId()
     );
-    return versions.getOrDefault(gav, List.of());
+    return projectService.allProjects()
+        .stream()
+        .filter(p -> p.gav().groupArtifact().equals(ga))
+        .findFirst()
+        .map(Project::version)
+        .stream().toList();
   }
 }

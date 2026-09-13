@@ -43,6 +43,7 @@ public final class ProjectService {
     final var builder = new Builder(groupId, artifactId).withVersion(version);
     builderConsumer.accept(builder);
     final Project project = builder.build();
+    // TODO: add checks (name uniqueness, path uniqueness, etc.)
     projects.add(project);
     log.debug("[project={}] Created", project.gav());
     return project;
