@@ -7,6 +7,7 @@ import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
+import com.github.build.deps.maven.ProjectWorkspaceReader;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;
@@ -28,6 +29,7 @@ import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -53,7 +55,7 @@ public final class BuildSpringSecurity {
 
     final var projectService = new ProjectService();
     final var compileService = new CompileService();
-    final var dependencyService = mavenArtifactResolver();
+    final var dependencyService = mavenArtifactResolver(workdir, projectService);
     final var testService = new TestService(dependencyService);
     final var jarService = new JarService();
     final BuildService service = new BuildService(compileService, dependencyService, jarService);
@@ -61,7 +63,8 @@ public final class BuildSpringSecurity {
     final DependencyConstraints platform = getPlatform(dependencyService);
     final Project crypto = createProjectCrypto(projectService, platform);
     final Project core = createProjectCore(projectService, platform, crypto);
-    final List<Project> projects = List.of(crypto, core);
+    final Project data = createProjectData(projectService, platform, core);
+    final var projects = List.of(crypto, core, data);
 
     final Path license = workdir.resolve("LICENSE.txt");
     final var compilerOptions = CompilerOptions
@@ -80,6 +83,7 @@ public final class BuildSpringSecurity {
     final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
 
+    // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
       final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
@@ -251,6 +255,52 @@ public final class BuildSpringSecurity {
         .build();
   }
 
+  private static Project createProjectData(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project core
+  ) {
+    final var main = SourceSet
+        .withMainDefaults()
+        .compileAndRunWith(core)
+        .compileAndRunWith(
+            "org.springframework:spring-core",
+            "org.springframework.data:spring-data-commons",
+            "org.springframework:spring-core"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var test = SourceSet
+        .withTestDefaults()
+        .compileAndRunWith(main)
+        .compileAndRunWith(
+            "org.assertj:assertj-core",
+            "org.junit.jupiter:junit-jupiter-api",
+            "org.junit.jupiter:junit-jupiter-params",
+            "org.junit.jupiter:junit-jupiter-engine",
+            "org.mockito:mockito-core",
+            "org.mockito:mockito-junit-jupiter",
+            "org.springframework:spring-test"
+        )
+        .withDependencyConstraints(platform)
+        .build();
+    final var artifactLayout = new Project.ArtifactLayout(
+        Path.of("build-system"),
+        Path.of("classes"),
+        Path.of("resources")
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-data",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("data"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSet(main)
+            .withSourceSet(test)
+    );
+  }
+
   private static Project createProjectCrypto(
       final ProjectService projectService,
       final DependencyConstraints platform
@@ -369,10 +419,16 @@ public final class BuildSpringSecurity {
     );
   }
 
-  private static DependencyService mavenArtifactResolver() {
+  private static DependencyService mavenArtifactResolver(final Path workdir,
+      final ProjectService projectService) {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
+    session.setWorkspaceReader(new ProjectWorkspaceReader(
+        new WorkspaceRepository("build-system"),
+        workdir,
+        projectService
+    ));
 
     final Path localRepositoryBasePath;
     try {

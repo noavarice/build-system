@@ -49,6 +49,7 @@ public final class ProjectService {
     return project;
   }
 
+  // TODO: return DAG (or add separate method that enforces build order)
   public Set<Project> allProjects() {
     return Collections.unmodifiableSet(projects);
   }
