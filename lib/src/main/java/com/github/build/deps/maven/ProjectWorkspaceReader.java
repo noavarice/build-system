@@ -4,6 +4,7 @@ import static com.github.build.deps.Dependency.Jar;
 import static com.github.build.deps.Dependency.OnProject;
 import static com.github.build.deps.Dependency.OnSourceSet;
 import static com.github.build.deps.Dependency.Remote;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.Project;
 import com.github.build.ProjectService;
@@ -14,8 +15,10 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.maven.model.Dependency;
 import org.apache.maven.model.DependencyManagement;
 import org.apache.maven.model.Model;
@@ -117,42 +120,146 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
 
     // setting dependencies
     {
-      final List<Dependency> dependencies = project.mainSourceSet().exposedClasspath()
+      // TODO: dependency order matters here
+      final Set<GroupArtifact> compileClasspathArtifacts = project.mainSourceSet()
+          .compileClasspath()
           .stream()
-          .map(d -> {
-            final var dependency = new Dependency();
-            dependency.setScope("compile");
-
-            switch (d) {
-              case Remote.WithVersion withVersion -> {
-                final GroupArtifactVersion gav = withVersion.gav();
-                dependency.setGroupId(gav.groupId());
-                dependency.setArtifactId(gav.artifactId());
-                dependency.setVersion(gav.version());
-              }
-
-              case Remote.WithoutVersion withoutVersion -> {
-                final GroupArtifact ga = withoutVersion.ga();
-                dependency.setGroupId(ga.groupId());
-                dependency.setArtifactId(ga.artifactId());
-                // version should be complemented by dependency constraints
-              }
-
-              case OnProject onProject -> {
-                final GroupArtifactVersion gav = onProject.project().gav();
-                dependency.setGroupId(gav.groupId());
-                dependency.setArtifactId(gav.artifactId());
-                dependency.setVersion(gav.version());
-              }
-              // exposing source set other than main seems wrong
-              case OnSourceSet ignored -> throw new IllegalStateException();
-              // TODO: check if it's possible to expose JAR as part of POM
-              case Jar ignored -> throw new IllegalStateException();
-            }
-
-            return dependency;
+          .map(d -> switch (d) {
+            case Jar ignored -> null;
+            case OnProject onProject -> onProject.project().gav().groupArtifact();
+            // Maven cannot depend on source set explicitly
+            // TODO: should we handle this differently?
+            case OnSourceSet ignored -> null;
+            case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
+            case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
           })
-          .toList();
+          .filter(Objects::nonNull)
+          .collect(toUnmodifiableSet());
+      final Set<GroupArtifact> runtimeClasspathArtifacts = project.mainSourceSet()
+          .runtimeClasspath()
+          .stream()
+          .map(d -> switch (d) {
+            case Jar ignored -> null;
+            case OnProject onProject -> onProject.project().gav().groupArtifact();
+            // Maven cannot depend on source set explicitly
+            // TODO: should we handle this differently?
+            case OnSourceSet ignored -> null;
+            case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
+            case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
+          })
+          .filter(Objects::nonNull)
+          .collect(toUnmodifiableSet());
+
+      final List<Dependency> dependencies = new ArrayList<>(
+          compileClasspathArtifacts.size() + runtimeClasspathArtifacts.size()
+      );
+
+      for (final var d : project.mainSourceSet().compileClasspath()) {
+        final var dependency = new Dependency();
+
+        switch (d) {
+          case Remote.WithVersion withVersion -> {
+            final GroupArtifactVersion gav = withVersion.gav();
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (runtimeClasspathArtifacts.contains(ga)) {
+              dependency.setScope("compile");
+            } else {
+              dependency.setScope("provided");
+            }
+          }
+
+          case Remote.WithoutVersion withoutVersion -> {
+            final GroupArtifact ga = withoutVersion.ga();
+            dependency.setGroupId(ga.groupId());
+            dependency.setArtifactId(ga.artifactId());
+            // version should be complemented by dependency constraints
+
+            if (runtimeClasspathArtifacts.contains(ga)) {
+              dependency.setScope("compile");
+            } else {
+              dependency.setScope("provided");
+            }
+          }
+
+          case OnProject onProject -> {
+            final GroupArtifactVersion gav = onProject.project().gav();
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (runtimeClasspathArtifacts.contains(ga)) {
+              dependency.setScope("compile");
+            } else {
+              dependency.setScope("provided");
+            }
+          }
+          case OnSourceSet ignored -> {
+            // do nothing
+          }
+          case Jar ignored -> {
+            // do nothing
+            // TODO: check if it's possible to expose JAR as part of POM
+          }
+        }
+
+        dependencies.add(dependency);
+      }
+
+      for (final var d : project.mainSourceSet().runtimeClasspath()) {
+        final var dependency = new Dependency();
+
+        switch (d) {
+          case Remote.WithVersion withVersion -> {
+            final GroupArtifactVersion gav = withVersion.gav();
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (!compileClasspathArtifacts.contains(ga)) {
+              dependency.setScope("runtime");
+            }
+          }
+
+          case Remote.WithoutVersion withoutVersion -> {
+            final GroupArtifact ga = withoutVersion.ga();
+            dependency.setGroupId(ga.groupId());
+            dependency.setArtifactId(ga.artifactId());
+            // version should be complemented by dependency constraints
+
+            if (!compileClasspathArtifacts.contains(ga)) {
+              dependency.setScope("runtime");
+            }
+          }
+
+          case OnProject onProject -> {
+            final GroupArtifactVersion gav = onProject.project().gav();
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (!compileClasspathArtifacts.contains(ga)) {
+              dependency.setScope("runtime");
+            }
+          }
+          case OnSourceSet ignored -> {
+            // do nothing
+          }
+          case Jar ignored -> {
+            // do nothing
+            // TODO: check if it's possible to expose JAR as part of POM
+          }
+        }
+
+        dependencies.add(dependency);
+      }
+
       model.setDependencies(dependencies);
     }
 

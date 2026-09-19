@@ -23,7 +23,6 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -129,17 +128,10 @@ public final class BuildService {
       final SourceSet sourceSet,
       final Collection<Path> classpath
   ) {
-    final List<GroupArtifactVersion> toResolveTransitive = new ArrayList<>();
     for (final Dependency dependency : sourceSet.compileClasspath()) {
       switch (dependency) {
-        case Dependency.OnProject onProject -> {
-          final Project dependingProject = onProject.project();
-          final Path mainSourceSetClassesDir = workdir
-              .resolve(dependingProject.path())
-              .resolve(dependingProject.artifactLayout().rootDir())
-              .resolve(dependingProject.artifactLayout().classesDir())
-              .resolve(dependingProject.mainSourceSet().id().toString());
-          classpath.add(mainSourceSetClassesDir);
+        case Dependency.OnProject ignored -> {
+          // will be resolved as "remote" dependency
         }
         case Dependency.OnSourceSet onSourceSet -> {
           final Path sourceSetClassesDir = workdir
@@ -152,8 +144,9 @@ public final class BuildService {
           addSourceSetCompileClasspath(workdir, project, onSourceSet.sourceSet(), classpath);
         }
         case Dependency.Jar file -> classpath.add(file.path());
-        case Dependency.Remote.WithVersion withVersion ->
-            toResolveTransitive.add(withVersion.gav());
+        case Dependency.Remote.WithVersion ignored -> {
+          // will be resolved later
+        }
         case Dependency.Remote.WithoutVersion withoutVersion -> {
           final DependencyConstraints constraints = sourceSet.dependencyConstraints();
           @Nullable
@@ -163,21 +156,16 @@ public final class BuildService {
             throw new IllegalStateException();
           }
 
-          toResolveTransitive.add(withoutVersion.ga().withVersion(version));
+          // will be resolved later
         }
       }
     }
 
-    if (!toResolveTransitive.isEmpty()) {
-      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
-          toResolveTransitive,
-          sourceSet.dependencyConstraints()
-      );
-      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-          artifacts
-      );
-      classpath.addAll(localArtifacts.values());
-    }
+    final Set<GroupArtifactVersion> artifacts = dependencyService.resolve(project);
+    final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
+        artifacts
+    );
+    classpath.addAll(localArtifacts.values());
   }
 
   /**

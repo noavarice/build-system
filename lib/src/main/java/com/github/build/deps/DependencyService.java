@@ -1,5 +1,6 @@
 package com.github.build.deps;
 
+import com.github.build.Project;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -20,6 +21,8 @@ public interface DependencyService {
       List<GroupArtifactVersion> artifacts,
       DependencyConstraints constraints
   );
+
+  Set<GroupArtifactVersion> resolve(Project project);
 
   Map<GroupArtifactVersion, Path> fetchToLocal(Set<GroupArtifactVersion> artifacts);
 

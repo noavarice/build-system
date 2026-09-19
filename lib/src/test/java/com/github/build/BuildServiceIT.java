@@ -20,6 +20,7 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
@@ -498,6 +499,7 @@ class BuildServiceIT {
       );
 
       assertThat(service.compileMain(tempDir, calculatorProject, CompilerOptions.EMPTY)).isTrue();
+      service.createJar(tempDir, calculatorProject, Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
       assertThat(classesDir).doesNotExist();

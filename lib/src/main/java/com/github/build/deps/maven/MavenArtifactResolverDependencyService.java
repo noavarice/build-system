@@ -1,5 +1,6 @@
 package com.github.build.deps.maven;
 
+import com.github.build.Project;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
@@ -150,6 +151,42 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     // graph. Without root artifact we cannot start iterating over results.
     // Yet we don't have even a root artifact, so we're emulating its value.
     request.setRootArtifact(new DefaultArtifact(null, null, null, null));
+    final CollectResult collectResult;
+    try {
+      collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+    } catch (DependencyCollectionException e) {
+      throw new IllegalStateException(e);
+    }
+
+    final var result = new HashSet<GroupArtifactVersion>();
+    final SequencedCollection<DependencyNode> queue = new ArrayList<>();
+    collectResult.getRoot().getChildren().forEach(queue::addLast);
+    while (!queue.isEmpty()) {
+      final DependencyNode node = queue.removeFirst();
+      final var gav = new GroupArtifactVersion(
+          node.getArtifact().getGroupId(),
+          node.getArtifact().getArtifactId(),
+          node.getArtifact().getVersion()
+      );
+      result.add(gav);
+      node.getChildren().forEach(queue::addLast);
+    }
+
+    return result;
+  }
+
+  @Override
+  public Set<GroupArtifactVersion> resolve(final Project project) {
+    Objects.requireNonNull(project);
+    final var artifact = new DefaultArtifact(
+        project.groupId(),
+        project.artifactId(),
+        null,
+        null,
+        project.version()
+    );
+    final var rootDependency = new Dependency(artifact, null);
+    final var request = new CollectRequest(rootDependency, repositories);
     final CollectResult collectResult;
     try {
       collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
