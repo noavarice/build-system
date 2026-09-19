@@ -11,7 +11,7 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public final class Project {
+public final class Project implements MainSourceSetDependency, TestSourceSetDependency {
 
   private final String groupId;
 

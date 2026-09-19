@@ -1,12 +1,15 @@
 package com.github.build.deps;
 
+import com.github.build.MainSourceSetDependency;
+import com.github.build.TestSourceSetDependency;
 import java.util.Objects;
 
 /**
  * @author noavarice
  * @since 1.0.0
  */
-public record GroupArtifactVersion(String groupId, String artifactId, String version) {
+public record GroupArtifactVersion(String groupId, String artifactId, String version) implements
+    MainSourceSetDependency, TestSourceSetDependency {
 
   public static GroupArtifactVersion parse(final String value) {
     Objects.requireNonNull(value);
