@@ -122,7 +122,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
     {
       // TODO: dependency order matters here
       final Set<GroupArtifact> compileClasspathArtifacts = project.mainSourceSet()
-          .compileClasspath()
+          .compileDependencies()
           .stream()
           .map(d -> switch (d) {
             case Jar ignored -> null;
@@ -136,7 +136,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
           .filter(Objects::nonNull)
           .collect(toUnmodifiableSet());
       final Set<GroupArtifact> runtimeClasspathArtifacts = project.mainSourceSet()
-          .runtimeClasspath()
+          .runtimeDependencies()
           .stream()
           .map(d -> switch (d) {
             case Jar ignored -> null;
@@ -154,7 +154,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
           compileClasspathArtifacts.size() + runtimeClasspathArtifacts.size()
       );
 
-      for (final var d : project.mainSourceSet().compileClasspath()) {
+      for (final var d : project.mainSourceSet().compileDependencies()) {
         final var dependency = new Dependency();
 
         switch (d) {
@@ -210,7 +210,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
         dependencies.add(dependency);
       }
 
-      for (final var d : project.mainSourceSet().runtimeClasspath()) {
+      for (final var d : project.mainSourceSet().runtimeDependencies()) {
         final var dependency = new Dependency();
 
         switch (d) {

@@ -338,7 +338,7 @@ public final class TestService {
       final List<GroupArtifactVersion> remoteDependencies
   ) {
 
-    for (final Dependency dependency : sourceSet.runtimeClasspath()) {
+    for (final Dependency dependency : sourceSet.runtimeDependencies()) {
       switch (dependency) {
         case Dependency.OnProject onProject -> {
           final Project dependingProject = onProject.project();

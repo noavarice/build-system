@@ -5,6 +5,7 @@ import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.LocalRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
@@ -34,9 +35,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
@@ -102,22 +105,36 @@ public class BuildItself {
   }
 
   private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileWith("org.jspecify:jspecify:1.0.0")
-        .compileAndRunWith("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .withDependencyConstraints(junitBom)
-        .runWith("org.junit.jupiter:junit-jupiter-engine")
-        .build();
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        List.of(
+            GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
+            GroupArtifactVersion.parse(
+                "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
+            )
+        ),
+        List.of(
+            GroupArtifactVersion.parse(
+                "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
+            )
+        ),
+        DependencyConstraints.EMPTY
+    );
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(),
+        List.of(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine")),
+        junitBom
+    );
     return projectService.create(
         "com.github.build", "build-system-test-utils", "0.1.0",
         builder -> builder
             .withPath(Path.of("test-utils"))
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
   }
 
@@ -125,47 +142,64 @@ public class BuildItself {
       final DependencyConstraints junitBom,
       final Project projectTestUtils
   ) {
-    final var main = SourceSet
-        .withMainDefaults()
-        .withSourceDir(Path.of("build").resolve("generated-sources").resolve("xjc"))
-        .compileAndRunWith(
-            "org.apache.maven:maven-artifact:3.9.12",
-            "org.apache.maven:maven-model:3.9.12"
-        )
-        .compileWith(
-            "org.jspecify:jspecify:1.0.0",
-            "org.slf4j:slf4j-api:2.0.17",
-            "org.apache.maven:maven-resolver-provider:3.9.9",
-            "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
-            "jakarta.xml.bind:jakarta.xml.bind-api:4.0.2",
-            "org.junit.platform:junit-platform-launcher:1.13.4"
-        )
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .withDependencyConstraints(junitBom)
-        .compileAndRunWith(main)
-        .compileAndRunWith(projectTestUtils)
-        .compileAndRunWith(
-            "org.apache.maven:maven-resolver-provider:3.9.9",
-            "org.apache.maven.resolver:maven-resolver-supplier:1.9.22",
-            "org.junit.jupiter:junit-jupiter-api",
-            "org.junit.jupiter:junit-jupiter-params",
-            "org.assertj:assertj-core:3.27.3",
-            "ch.qos.logback:logback-classic:1.5.21",
-            "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
-        )
-        .runWith(
-            "org.junit.jupiter:junit-jupiter-engine",
-            "com.sun.xml.bind:jaxb-impl:4.0.5"
-        )
-        .build();
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(
+            Path.of("src", "main", "java"),
+            Path.of("build", "generated-sources", "xjc")
+        ),
+        Set.of(Path.of("src", "main", "resources")),
+        List.of(
+            GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
+            GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12"),
+            GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
+            GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
+            GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"),
+            GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"),
+            GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"),
+            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+        ),
+        List.of(
+            GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
+            GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12")
+        ),
+        DependencyConstraints.EMPTY
+    );
+
+    final var testCompileAndRun = new ArrayList<TestSourceSetDependency>();
+    testCompileAndRun.add(main);
+    testCompileAndRun.add(projectTestUtils);
+    testCompileAndRun.add(GroupArtifactVersion.parse(
+        "org.apache.maven:maven-resolver-provider:3.9.9"
+    ));
+    testCompileAndRun.add(GroupArtifactVersion.parse(
+        "org.apache.maven.resolver:maven-resolver-supplier:1.9.22"
+    ));
+    testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"));
+    testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"));
+    testCompileAndRun.add(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"));
+    testCompileAndRun.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"));
+    testCompileAndRun.add(GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
+    ));
+
+    final var testRuntime = new ArrayList<TestSourceSetDependency>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
+    testRuntime.add(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        junitBom
+    );
     return projectService.create(
         "com.github.build", "build-system-lib", "0.1.0",
         builder -> builder
             .withPath(Path.of("lib"))
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
   }
 

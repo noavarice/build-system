@@ -22,6 +22,7 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -86,17 +87,13 @@ class BuildServiceIT {
               .resolve("main")
               .resolve("java")
       );
-      final var main = SourceSet
-          .withMainDefaults()
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .build();
       final var project = projectService.create("org.example", "empty-sources", "0.1.0",
           builder -> builder
               .withPath(Path.of("empty-sources"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path classesDir = tempDir
@@ -122,17 +119,13 @@ class BuildServiceIT {
     @TestFactory
     DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = SourceSet
-          .withMainDefaults()
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .build();
       final var project = projectService.create("org.example", "calculator", "0.1.0",
           builder -> builder
               .withPath(Path.of("calculator"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/main");
@@ -157,18 +150,18 @@ class BuildServiceIT {
     @TestFactory
     DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var main = SourceSet
-          .withMainDefaults()
-          .compileWithLocalJar(tempDir.resolve("slf4j-api.jar"))
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(Path.of("src", "main", "resources")),
+          List.of(new LocalJarArgs(tempDir.resolve("slf4j-api.jar"))),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -193,17 +186,13 @@ class BuildServiceIT {
     @TestFactory
     DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var main = SourceSet
-          .withMainDefaults()
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .build();
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -229,15 +218,18 @@ class BuildServiceIT {
     DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
       final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-      final var main = SourceSet
-          .withMainDefaults()
-          .compileWith(slf4jApi)
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(Path.of("src", "main", "resources")),
+          List.of(slf4jApi),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -268,15 +260,18 @@ class BuildServiceIT {
     ) {
       FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
       final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-      final var main = SourceSet
-          .withMainDefaults()
-          .compileWith(slf4jApi)
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(Path.of("src", "main", "resources")),
+          List.of(slf4jApi),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -310,16 +305,18 @@ class BuildServiceIT {
           .builder()
           .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
           .build();
-      final var main = SourceSet
-          .withMainDefaults()
-          .compileWith(slf4jApi)
-          .withDependencyConstraints(constraints)
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(Path.of("src", "main", "resources")),
+          List.of(slf4jApi),
+          List.of(),
+          constraints
+      );
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -353,16 +350,18 @@ class BuildServiceIT {
           .builder()
           .withExactVersion(slf4jApi, "2.0.17")
           .build();
-      final var main = SourceSet
-          .withMainDefaults()
-          .compileWith(slf4jApi)
-          .withDependencyConstraints(constraints)
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(Path.of("src", "main", "resources")),
+          List.of(slf4jApi),
+          List.of(),
+          constraints
+      );
       final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
           builder -> builder
               .withPath(Path.of("slf4j-example"))
-              .withSourceSet(main)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
@@ -396,29 +395,31 @@ class BuildServiceIT {
 
       final Project calculatorProject;
       {
-        final var main = SourceSet
-            .withMainDefaults()
-            .build();
         calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
             builder -> builder
                 .withPath(Path.of("calculator"))
-                .withSourceSet(main)
-                .withSourceSet(SourceSet.withTestDefaults().build())
+                .withSourceSets(
+                    MainSourceSetArgs.withMainDefaults(),
+                    TestSourceSetArgs.withTestDefaults()
+                )
         );
       }
 
       final Project calculatorConsumerProject;
       {
-        final var main = SourceSet
-            .withMainDefaults()
-            .compileWith(calculatorProject)
-            .build();
+        final var main = new MainSourceSetArgs(
+            SourceSet.Id.MAIN.toString(),
+            Set.of(Path.of("src", "main", "java")),
+            Set.of(Path.of("src", "main", "resources")),
+            List.of(calculatorProject),
+            List.of(),
+            DependencyConstraints.EMPTY
+        );
         calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
             "0.1.0",
             builder -> builder
                 .withPath(Path.of("calculator-consumer"))
-                .withSourceSet(main)
-                .withSourceSet(SourceSet.withTestDefaults().build())
+                .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
         );
       }
 
@@ -461,29 +462,31 @@ class BuildServiceIT {
 
       final Project calculatorProject;
       {
-        final var main = SourceSet
-            .withMainDefaults()
-            .build();
         calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
             builder -> builder
                 .withPath(Path.of("calculator"))
-                .withSourceSet(main)
-                .withSourceSet(SourceSet.withTestDefaults().build())
+                .withSourceSets(
+                    MainSourceSetArgs.withMainDefaults(),
+                    TestSourceSetArgs.withTestDefaults()
+                )
         );
       }
 
       final Project calculatorConsumerProject;
       {
-        final var main = SourceSet
-            .withMainDefaults()
-            .compileWith(calculatorProject)
-            .build();
+        final var main = new MainSourceSetArgs(
+            SourceSet.Id.MAIN.toString(),
+            Set.of(Path.of("src", "main", "java")),
+            Set.of(Path.of("src", "main", "resources")),
+            List.of(calculatorProject),
+            List.of(),
+            DependencyConstraints.EMPTY
+        );
         calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
             "0.1.0",
             builder -> builder
                 .withPath(Path.of("calculator-consumer"))
-                .withSourceSet(main)
-                .withSourceSet(SourceSet.withTestDefaults().build())
+                .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
         );
       }
 
@@ -530,20 +533,23 @@ class BuildServiceIT {
     @TestFactory
     DynamicTest[] compilingTestWithoutMainFails(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = SourceSet
-          .withMainDefaults()
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .compileWith(main)
-          .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
-          .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
-          .build();
+      final var main = MainSourceSetArgs.withMainDefaults();
+      final var test = new TestSourceSetArgs(
+          SourceSet.Id.TEST.toString(),
+          Set.of(Path.of("src", "test", "java")),
+          Set.of(Path.of("src", "test", "resources")),
+          List.of(
+              main,
+              new LocalJarArgs(tempDir.resolve("junit-jupiter-api.jar")),
+              new LocalJarArgs(tempDir.resolve("apiguardian-api.jar"))
+          ),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "calculator", "0.1.0",
           builder -> builder
               .withPath(Path.of("calculator"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(main, test)
       );
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/test");
@@ -568,20 +574,23 @@ class BuildServiceIT {
     @TestFactory
     DynamicTest[] compilingTestAfterMainWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = SourceSet
-          .withMainDefaults()
-          .build();
-      final var test = SourceSet
-          .withTestDefaults()
-          .compileWith(main)
-          .compileWithLocalJar(tempDir.resolve("junit-jupiter-api.jar"))
-          .compileWithLocalJar(tempDir.resolve("apiguardian-api.jar"))
-          .build();
+      final var main = MainSourceSetArgs.withMainDefaults();
+      final var test = new TestSourceSetArgs(
+          SourceSet.Id.TEST.toString(),
+          Set.of(Path.of("src", "test", "java")),
+          Set.of(Path.of("src", "test", "resources")),
+          List.of(
+              main,
+              new LocalJarArgs(tempDir.resolve("junit-jupiter-api.jar")),
+              new LocalJarArgs(tempDir.resolve("apiguardian-api.jar"))
+          ),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "calculator", "0.1.0",
           builder -> builder
               .withPath(Path.of("calculator"))
-              .withSourceSet(main)
-              .withSourceSet(test)
+              .withSourceSets(main, test)
       );
 
       assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY));
@@ -616,8 +625,10 @@ class BuildServiceIT {
       final Project project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(SourceSet.withMainDefaults().build())
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
       final Path buildOutputDir = tempDir
           .resolve(project.path())
@@ -633,8 +644,10 @@ class BuildServiceIT {
       final Project project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(SourceSet.withMainDefaults().build())
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path buildOutputDir = tempDir
@@ -653,8 +666,10 @@ class BuildServiceIT {
       final Project project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(SourceSet.withMainDefaults().build())
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
       final var java21 = CompilerOptions
           .builder()
@@ -677,8 +692,10 @@ class BuildServiceIT {
       final Project project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(SourceSet.withMainDefaults().build())
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path buildOutputDir = tempDir

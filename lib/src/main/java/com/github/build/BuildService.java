@@ -128,7 +128,7 @@ public final class BuildService {
       final SourceSet sourceSet,
       final Collection<Path> classpath
   ) {
-    for (final Dependency dependency : sourceSet.compileClasspath()) {
+    for (final Dependency dependency : sourceSet.compileDependencies()) {
       switch (dependency) {
         case Dependency.OnProject ignored -> {
           // will be resolved as "remote" dependency

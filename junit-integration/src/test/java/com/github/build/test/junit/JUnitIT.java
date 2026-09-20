@@ -2,21 +2,27 @@ package com.github.build.test.junit;
 
 import com.github.build.BuildService;
 import com.github.build.FsUtils;
+import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.SourceSet;
+import com.github.build.TestSourceSetArgs;
+import com.github.build.TestSourceSetDependency;
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -79,24 +85,33 @@ class JUnitIT {
     final DependencyConstraints junitBom = dependencyService.getConstraints(
         GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
     );
-    final var main = SourceSet
-        .withMainDefaults()
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .withDependencyConstraints(junitBom)
-        .compileAndRunWith(main)
-        .compileAndRunWith("org.junit.jupiter:junit-jupiter-api")
-        .runWith(
-            "org.junit.jupiter:junit-jupiter-engine",
-            "ch.qos.logback:logback-classic:1.5.19"
-        )
-        .build();
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        List.of(),
+        List.of(),
+        DependencyConstraints.EMPTY
+    );
+    final var testCompileAndRun = List.<TestSourceSetDependency>of(
+        main,
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api")
+    );
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
+    testRuntime.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.19"));
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        junitBom
+    );
     final var project = projectService.create("org.example", "calculator", "0.1.0",
         builder -> builder
             .withPath(Path.of("calculator"))
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
 
     // compile main and test source sets

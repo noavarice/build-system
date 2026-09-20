@@ -3,10 +3,10 @@ package com.github.build;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
+import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.HashSet;
-import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.Consumer;
@@ -64,7 +64,9 @@ public final class ProjectService {
 
     private Path path = Path.of("");
 
-    private final Map<SourceSet.Id, SourceSet> sourceSets = new HashMap<>();
+    private MainSourceSetArgs mainSourceSetArgs;
+
+    private List<TestSourceSetArgs> testSourceSetArgsList = new ArrayList<>();
 
     private Project.ArtifactLayout artifactLayout = Project.ArtifactLayout.DEFAULT;
 
@@ -94,9 +96,12 @@ public final class ProjectService {
     }
 
     @Override
-    public Builder withSourceSet(final SourceSet sourceSet) {
-      Objects.requireNonNull(sourceSet);
-      sourceSets.put(sourceSet.id(), sourceSet);
+    public ProjectBuilder withSourceSets(
+        final MainSourceSetArgs mainSourceSetArgs,
+        final TestSourceSetArgs... testSourceSetArgsList
+    ) {
+      this.mainSourceSetArgs = Objects.requireNonNull(mainSourceSetArgs);
+      this.testSourceSetArgsList = List.of(testSourceSetArgsList);
       return this;
     }
 
@@ -113,7 +118,8 @@ public final class ProjectService {
           artifactId,
           version,
           path,
-          sourceSets,
+          mainSourceSetArgs,
+          testSourceSetArgsList,
           artifactLayout
       );
     }

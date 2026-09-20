@@ -14,7 +14,10 @@ public interface ProjectBuilder {
 
   ProjectBuilder withPath(Path path);
 
-  ProjectBuilder withSourceSet(SourceSet sourceSet);
+  ProjectBuilder withSourceSets(
+      MainSourceSetArgs mainSourceSetArgs,
+      TestSourceSetArgs... testSourceSetArgsList
+  );
 
   ProjectBuilder withArtifactLayout(Project.ArtifactLayout artifactLayout);
 }

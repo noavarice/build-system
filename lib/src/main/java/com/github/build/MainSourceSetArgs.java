@@ -24,6 +24,17 @@ public record MainSourceSetArgs(
     DependencyConstraints dependencyConstraints
 ) implements TestSourceSetDependency {
 
+  public static MainSourceSetArgs withMainDefaults() {
+    return new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        List.of(),
+        List.of(),
+        DependencyConstraints.EMPTY
+    );
+  }
+
   public MainSourceSetArgs {
     Objects.requireNonNull(id);
     sourceDirectories = sourceDirectories

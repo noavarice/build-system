@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
 import com.github.build.compile.CompileService;
+import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.LocalRepository;
@@ -19,6 +20,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -329,8 +331,10 @@ class CopyTest {
       final Project project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(SourceSet.withMainDefaults().build())
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
 
       final Path copiedResourcePath = tempDir.resolve(
@@ -376,15 +380,21 @@ class CopyTest {
     @TestFactory
     DynamicTest[] testCopyResourcesFromMultipleDirWorks(@TempDir final Path tempDir) {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final var mainSourceSet = SourceSet
-          .withMainDefaults()
-          .withResourceDir("src/main/other-resources")
-          .build();
+      final var main = new MainSourceSetArgs(
+          SourceSet.Id.MAIN.toString(),
+          Set.of(Path.of("src", "main", "java")),
+          Set.of(
+              Path.of("src", "main", "resources"),
+              Path.of("src", "main", "other-resources")
+          ),
+          List.of(),
+          List.of(),
+          DependencyConstraints.EMPTY
+      );
       final var project = projectService.create("org.example", "hello-world", "0.1.0",
           builder -> builder
               .withPath("hello-world")
-              .withSourceSet(mainSourceSet)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
       // setup paths for copied resources
@@ -428,13 +438,12 @@ class CopyTest {
     }
 
     private Project createProject() {
-      final var mainSourceSet = SourceSet
-          .withMainDefaults()
-          .build();
       return projectService.create("org.example", "test-project", "0.1.0",
           builder -> builder
-              .withSourceSet(mainSourceSet)
-              .withSourceSet(SourceSet.withTestDefaults().build())
+              .withSourceSets(
+                  MainSourceSetArgs.withMainDefaults(),
+                  TestSourceSetArgs.withTestDefaults()
+              )
       );
     }
   }

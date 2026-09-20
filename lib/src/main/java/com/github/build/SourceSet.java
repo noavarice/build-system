@@ -4,13 +4,8 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
-import com.github.build.deps.GroupArtifact;
-import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -20,9 +15,9 @@ import java.util.Set;
  *
  * @param sourceDirectories     Directories containing source files, relative to project directory
  * @param resourceDirectories   Directories containing resources, relative to project directories
- * @param compileClasspath      Dependencies to compile code with. Dependencies do not include
+ * @param compileDependencies   Dependencies to compile code with. Dependencies do not include
  *                              transitive dependencies
- * @param runtimeClasspath      Dependencies to run code with. Dependencies do not include
+ * @param runtimeDependencies   Dependencies to run code with. Dependencies do not include
  *                              transitive dependencies
  * @param exposedClasspath      Dependencies to expose as project API to compile and runtime
  *                              classpath to consuming projects. Every dependency here must be a
@@ -34,33 +29,21 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record SourceSet(
+    Project project,
     Id id,
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
-    Set<Dependency> compileClasspath,
-    Set<Dependency> runtimeClasspath,
+    // dependency declaration order matters
+    List<Dependency> compileDependencies,
+    List<Dependency> runtimeDependencies,
     List<Dependency> exposedClasspath,
     DependencyConstraints dependencyConstraints
 ) {
 
-  // TODO: just validate ID format, get rid of value object
-  public static Builder builder(final Id id) {
-    return new Builder(id);
-  }
-
-  public static Builder withMainDefaults() {
-    return new Builder(Id.MAIN)
-        .withSourceDir(Path.of("src").resolve("main").resolve("java"))
-        .withResourceDir(Path.of("src").resolve("main").resolve("resources"));
-  }
-
-  public static Builder withTestDefaults() {
-    return new Builder(Id.TEST)
-        .withSourceDir(Path.of("src").resolve("test").resolve("java"))
-        .withResourceDir(Path.of("src").resolve("test").resolve("resources"));
-  }
-
   public SourceSet {
+    Objects.requireNonNull(project);
+    Objects.requireNonNull(id);
+
     sourceDirectories = sourceDirectories
         .stream()
         .peek(Objects::requireNonNull)
@@ -78,246 +61,9 @@ public record SourceSet(
         .map(Path::normalize)
         .collect(toUnmodifiableSet());
 
-    compileClasspath = Set.copyOf(compileClasspath);
-    runtimeClasspath = Set.copyOf(runtimeClasspath);
+    compileDependencies = List.copyOf(compileDependencies);
+    runtimeDependencies = List.copyOf(runtimeDependencies);
     exposedClasspath = List.copyOf(exposedClasspath);
-  }
-
-  public static final class Builder {
-
-    private final Id id;
-
-    private final Set<Path> sourceDirectories = new HashSet<>();
-
-    private final Set<Path> resourceDirectories = new HashSet<>();
-
-    // TODO: use List to preserve order
-    private final Set<Dependency> compileClasspath = new HashSet<>();
-
-    // TODO: use List to preserve order
-    private final Set<Dependency> runtimeClasspath = new HashSet<>();
-
-    private final List<Dependency> exposedClasspath = new ArrayList<>();
-
-    private DependencyConstraints dependencyConstraints = DependencyConstraints.EMPTY;
-
-    private Builder(final Id id) {
-      this.id = Objects.requireNonNull(id);
-    }
-
-    public Builder withSourceDir(final Path directory) {
-      Objects.requireNonNull(directory);
-      PathUtils.checkRelative(directory);
-      sourceDirectories.add(directory.normalize());
-      return this;
-    }
-
-    public Builder withResourceDir(final String resourceDir) {
-      Objects.requireNonNull(resourceDir);
-      return withResourceDir(Path.of(resourceDir));
-    }
-
-    public Builder withResourceDir(final Path resourceDir) {
-      Objects.requireNonNull(resourceDir);
-      PathUtils.checkRelative(resourceDir);
-      resourceDirectories.add(resourceDir.normalize());
-      return this;
-    }
-
-    public Builder compileWith(final SourceSet sourceSet) {
-      compileClasspath.add(new Dependency.OnSourceSet(sourceSet));
-      return this;
-    }
-
-    public Builder compileWith(final Project project) {
-      compileClasspath.add(new Dependency.OnProject(project));
-      return this;
-    }
-
-    public Builder compileWithLocalJar(final Path jarPath) {
-      compileClasspath.add(new Dependency.Jar(jarPath));
-      return this;
-    }
-
-    public Builder compileWith(final String gavStr, final String... other) {
-      final var gavStrs = new HashSet<String>();
-      gavStrs.add(gavStr);
-      if (other != null) {
-        gavStrs.addAll(Arrays.asList(other));
-      }
-
-      for (final String value : gavStrs) {
-        final Dependency dependency = parseDependency(value);
-        compileClasspath.add(dependency);
-      }
-      return this;
-    }
-
-    public Builder compileWith(final GroupArtifactVersion gav) {
-      compileClasspath.add(new Dependency.Remote.WithVersion(gav));
-      return this;
-    }
-
-    public Builder compileWith(final GroupArtifact ga) {
-      compileClasspath.add(new Dependency.Remote.WithoutVersion(ga));
-      return this;
-    }
-
-    public Builder runWith(final SourceSet sourceSet) {
-      runtimeClasspath.add(new Dependency.OnSourceSet(sourceSet));
-      return this;
-    }
-
-    public Builder runWith(final Project project) {
-      runtimeClasspath.add(new Dependency.OnProject(project));
-      return this;
-    }
-
-    public Builder runWithLocalJar(final Path jarPath) {
-      runtimeClasspath.add(new Dependency.Jar(jarPath));
-      return this;
-    }
-
-    public Builder runWith(final String gavStr, final String... other) {
-      final var gavStrs = new HashSet<String>();
-      gavStrs.add(gavStr);
-      if (other != null) {
-        gavStrs.addAll(Arrays.asList(other));
-      }
-
-      for (final String value : gavStrs) {
-        final Dependency dependency = parseDependency(value);
-        runtimeClasspath.add(dependency);
-      }
-      return this;
-    }
-
-    public Builder runWith(final GroupArtifactVersion gav) {
-      runtimeClasspath.add(new Dependency.Remote.WithVersion(gav));
-      return this;
-    }
-
-    public Builder runWith(final GroupArtifact ga) {
-      runtimeClasspath.add(new Dependency.Remote.WithoutVersion(ga));
-      return this;
-    }
-
-    public Builder compileAndRunWith(final SourceSet sourceSet) {
-      final var dependency = new Dependency.OnSourceSet(sourceSet);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWith(final Project project) {
-      final var dependency = new Dependency.OnProject(project);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWithExposed(final Project project) {
-      final var dependency = new Dependency.OnProject(project);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      exposedClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWithLocalJar(final Path jarPath) {
-      final var dependency = new Dependency.Jar(jarPath);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWith(final String gavStr, final String... other) {
-      final var gavStrs = new HashSet<String>();
-      gavStrs.add(gavStr);
-      if (other != null) {
-        gavStrs.addAll(Arrays.asList(other));
-      }
-
-      for (final String value : gavStrs) {
-        final Dependency dependency = parseDependency(value);
-        compileClasspath.add(dependency);
-        runtimeClasspath.add(dependency);
-      }
-      return this;
-    }
-
-    public Builder compileAndRunWithExposed(final String gavStr, final String... other) {
-      final var gavStrs = new HashSet<String>();
-      gavStrs.add(gavStr);
-      if (other != null) {
-        gavStrs.addAll(Arrays.asList(other));
-      }
-
-      for (final String value : gavStrs) {
-        final Dependency dependency = parseDependency(value);
-        compileClasspath.add(dependency);
-        runtimeClasspath.add(dependency);
-        exposedClasspath.add(dependency);
-      }
-      return this;
-    }
-
-    public Builder compileAndRunWith(final GroupArtifactVersion gav) {
-      final var dependency = new Dependency.Remote.WithVersion(gav);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWithExposed(final GroupArtifactVersion gav) {
-      final var dependency = new Dependency.Remote.WithVersion(gav);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      exposedClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWith(final GroupArtifact ga) {
-      final var dependency = new Dependency.Remote.WithoutVersion(ga);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder compileAndRunWithExposed(final GroupArtifact ga) {
-      final var dependency = new Dependency.Remote.WithoutVersion(ga);
-      compileClasspath.add(dependency);
-      runtimeClasspath.add(dependency);
-      exposedClasspath.add(dependency);
-      return this;
-    }
-
-    public Builder withDependencyConstraints(final DependencyConstraints dependencyConstraints) {
-      this.dependencyConstraints = Objects.requireNonNull(dependencyConstraints);
-      return this;
-    }
-
-    public SourceSet build() {
-      return new SourceSet(
-          id,
-          sourceDirectories,
-          resourceDirectories,
-          compileClasspath,
-          runtimeClasspath,
-          exposedClasspath,
-          dependencyConstraints
-      );
-    }
-
-    private static Dependency parseDependency(final String value) {
-      try {
-        final GroupArtifact ga = GroupArtifact.parse(value);
-        return new Dependency.Remote.WithoutVersion(ga);
-      } catch (final IllegalStateException e) { // TODO: consider specific exception
-        final var gav = GroupArtifactVersion.parse(value);
-        return new Dependency.Remote.WithVersion(gav);
-      }
-    }
   }
 
   public record Id(String value) {

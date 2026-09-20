@@ -6,9 +6,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrowsExactly;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
+import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.SourceSet;
+import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
 import java.nio.file.Path;
@@ -340,32 +342,32 @@ class MavenArtifactResolverDependencyServiceIT {
       project1 = projectService.create("org.example", "project1", "0.1.0",
           builder -> builder
               .withPath("project1")
-              .withSourceSet(
-                  SourceSet
-                      .withMainDefaults()
-                      .compileAndRunWithExposed(springCore6)
-                      .build()
-              )
-              .withSourceSet(
-                  SourceSet
-                      .withTestDefaults()
-                      .build()
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(springCore6),
+                      List.of(springCore6),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
               )
       );
 
       project2 = projectService.create("org.example", "project2", "0.1.0",
           builder -> builder
               .withPath("project2")
-              .withSourceSet(
-                  SourceSet
-                      .withMainDefaults()
-                      .compileAndRunWithExposed(project1)
-                      .build()
-              )
-              .withSourceSet(
-                  SourceSet
-                      .withTestDefaults()
-                      .build()
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(project1),
+                      List.of(project1),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
               )
       );
 
@@ -469,37 +471,49 @@ class MavenArtifactResolverDependencyServiceIT {
       projectA = projectService.create("org.example", "project-a", "0.1.0",
           builder -> builder
               .withPath("project-a")
-              .withSourceSet(
-                  SourceSet
-                      .withMainDefaults()
-                      .compileAndRunWithExposed(springCore6)
-                      .build()
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(springCore6),
+                      List.of(springCore6),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
               )
-              .withSourceSet(SourceSet.withTestDefaults().build())
       );
 
       projectB = projectService.create("org.example", "project-b", "0.1.0",
           builder -> builder
               .withPath("project-b")
-              .withSourceSet(
-                  SourceSet
-                      .withMainDefaults()
-                      .compileAndRunWithExposed(projectA)
-                      .build()
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(projectA),
+                      List.of(projectA),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
               )
-              .withSourceSet(SourceSet.withTestDefaults().build())
       );
 
       projectC = projectService.create("org.example", "project-c", "0.1.0",
           builder -> builder
               .withPath("project-c")
-              .withSourceSet(
-                  SourceSet
-                      .withMainDefaults()
-                      .compileAndRunWithExposed(projectB)
-                      .build()
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(projectB),
+                      List.of(projectB),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
               )
-              .withSourceSet(SourceSet.withTestDefaults().build())
       );
 
       final RepositorySystem repoSystem = new RepositorySystemSupplier().get();

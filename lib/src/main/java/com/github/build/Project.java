@@ -1,7 +1,11 @@
 package com.github.build;
 
+import com.github.build.deps.Dependency;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import java.nio.file.Path;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -35,7 +39,8 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
       final String artifactId,
       final String version,
       final Path path,
-      final Map<SourceSet.Id, SourceSet> sourceSets,
+      final MainSourceSetArgs mainSourceSetArgs,
+      final List<TestSourceSetArgs> testSourceSetArgsList,
       final ArtifactLayout artifactLayout
   ) {
     Objects.requireNonNull(groupId);
@@ -57,16 +62,87 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     this.version = version.strip();
 
     this.path = Objects.requireNonNull(path);
+    this.mainSourceSet = mapToMainSourceSet(mainSourceSetArgs);
 
-    Objects.requireNonNull(sourceSets);
-    if (!sourceSets.containsKey(SourceSet.Id.MAIN)) {
-      throw new IllegalArgumentException("Project must have main source set");
+    final var sourceSetMap = new HashMap<SourceSet.Id, SourceSet>();
+    sourceSetMap.put(mainSourceSet.id(), mainSourceSet);
+
+    for (final TestSourceSetArgs testSourceSetArgs : testSourceSetArgsList) {
+      final SourceSet testSourceSet = mapToTestSourceSet(testSourceSetArgs, mainSourceSet);
+      sourceSetMap.put(testSourceSet.id(), testSourceSet);
     }
 
-    this.sourceSets = Map.copyOf(sourceSets);
-    this.mainSourceSet = Objects.requireNonNull(sourceSets.get(SourceSet.Id.MAIN));
+    this.sourceSets = Map.copyOf(sourceSetMap);
+
     this.testSourceSet = Objects.requireNonNull(sourceSets.get(SourceSet.Id.TEST));
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
+  }
+
+  private SourceSet mapToMainSourceSet(final MainSourceSetArgs args) {
+    final var compileDependencies = args.compileDependencies()
+        .stream()
+        .map(Project::mapDependency)
+        .toList();
+    final var runtimeDependencies = args.runtimeDependencies()
+        .stream()
+        .map(Project::mapDependency)
+        .toList();
+    return new SourceSet(
+        this,
+        new SourceSet.Id(args.id()),
+        args.sourceDirectories(),
+        args.resourceDirectories(),
+        compileDependencies,
+        runtimeDependencies,
+        List.of(),
+        args.dependencyConstraints()
+    );
+  }
+
+  private static Dependency mapDependency(final MainSourceSetDependency dependency) {
+    return switch (dependency) {
+      case Project project -> new Dependency.OnProject(project);
+      case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
+      case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
+      case LocalJarArgs args -> new Dependency.Jar(args.path());
+    };
+  }
+
+  private SourceSet mapToTestSourceSet(
+      final TestSourceSetArgs args,
+      final SourceSet mainSourceSet
+  ) {
+    final var compileDependencies = args.compileDependencies()
+        .stream()
+        .map(d -> mapDependency(d, mainSourceSet))
+        .toList();
+    final var runtimeDependencies = args.runtimeDependencies()
+        .stream()
+        .map(d -> mapDependency(d, mainSourceSet))
+        .toList();
+    return new SourceSet(
+        this,
+        new SourceSet.Id(args.id()),
+        args.sourceDirectories(),
+        args.resourceDirectories(),
+        compileDependencies,
+        runtimeDependencies,
+        List.of(),
+        args.dependencyConstraints()
+    );
+  }
+
+  private static Dependency mapDependency(
+      final TestSourceSetDependency dependency,
+      final SourceSet mainSourceSet
+  ) {
+    return switch (dependency) {
+      case Project project -> new Dependency.OnProject(project);
+      case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
+      case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
+      case MainSourceSetArgs ignored -> new Dependency.OnSourceSet(mainSourceSet);
+      case LocalJarArgs args -> new Dependency.Jar(args.path());
+    };
   }
 
   public SourceSet sourceSet(final SourceSet.Id id) {

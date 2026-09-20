@@ -21,10 +21,12 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
 import java.util.Properties;
+import java.util.Set;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
@@ -260,30 +262,38 @@ public final class BuildSpringSecurity {
       final DependencyConstraints platform,
       final Project core
   ) {
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileAndRunWith(core)
-        .compileAndRunWith(
-            "org.springframework:spring-core",
-            "org.springframework.data:spring-data-commons",
-            "org.springframework:spring-core"
-        )
-        .withDependencyConstraints(platform)
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .compileAndRunWith(main)
-        .compileAndRunWith(
-            "org.assertj:assertj-core",
-            "org.junit.jupiter:junit-jupiter-api",
-            "org.junit.jupiter:junit-jupiter-params",
-            "org.junit.jupiter:junit-jupiter-engine",
-            "org.mockito:mockito-core",
-            "org.mockito:mockito-junit-jupiter",
-            "org.springframework:spring-test"
-        )
-        .withDependencyConstraints(platform)
-        .build();
+    final var mainDependencies = List.<MainSourceSetDependency>of(
+        core,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework.data:spring-data-commons"),
+        GroupArtifact.parse("org.springframework:spring-core")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainDependencies,
+        mainDependencies,
+        platform
+    );
+    final var testDependencies = List.<TestSourceSetDependency>of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    );
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testDependencies,
+        testDependencies,
+        platform
+    );
     final var artifactLayout = new Project.ArtifactLayout(
         Path.of("build-system"),
         Path.of("classes"),
@@ -296,8 +306,7 @@ public final class BuildSpringSecurity {
         projectBuilder -> projectBuilder
             .withPath(Path.of("data"))
             .withArtifactLayout(artifactLayout)
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
   }
 
@@ -305,29 +314,37 @@ public final class BuildSpringSecurity {
       final ProjectService projectService,
       final DependencyConstraints platform
   ) {
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileAndRunWith(
-            "org.springframework:spring-core",
-            "org.bouncycastle:bcpkix-jdk18on",
-            "com.password4j:password4j"
-        )
-        .withDependencyConstraints(platform)
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .compileAndRunWith(main)
-        .compileAndRunWith(
-            "org.assertj:assertj-core",
-            "org.junit.jupiter:junit-jupiter-api",
-            "org.junit.jupiter:junit-jupiter-params",
-            "org.junit.jupiter:junit-jupiter-engine",
-            "org.mockito:mockito-core",
-            "org.mockito:mockito-junit-jupiter",
-            "org.springframework:spring-test"
-        )
-        .withDependencyConstraints(platform)
-        .build();
+    final var mainDependencies = List.<MainSourceSetDependency>of(
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.bouncycastle:bcpkix-jdk18on"),
+        GroupArtifact.parse("com.password4j:password4j")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainDependencies,
+        mainDependencies,
+        platform
+    );
+    final var testDependencies = List.<TestSourceSetDependency>of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    );
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testDependencies,
+        testDependencies,
+        platform
+    );
     final var artifactLayout = new Project.ArtifactLayout(
         Path.of("build-system"),
         Path.of("classes"),
@@ -340,8 +357,7 @@ public final class BuildSpringSecurity {
         projectBuilder -> projectBuilder
             .withPath(Path.of("crypto"))
             .withArtifactLayout(artifactLayout)
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
   }
 
@@ -350,58 +366,66 @@ public final class BuildSpringSecurity {
       final DependencyConstraints platform,
       final Project crypto
   ) {
-    final var main = SourceSet
-        .withMainDefaults()
-        .compileAndRunWith(crypto)
-        .compileAndRunWith(
-            // api
-            "org.springframework:spring-aop",
-            "org.springframework:spring-beans",
-            "org.springframework:spring-context",
-            "org.springframework:spring-core",
-            "org.springframework:spring-expression",
-            "io.micrometer:micrometer-observation",
+    final var mainDependencies = List.<MainSourceSetDependency>of(
+        crypto,
+        // api
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-expression"),
+        GroupArtifact.parse("io.micrometer:micrometer-observation"),
 
-            // optional
-            "com.fasterxml.jackson.core:jackson-databind",
-            "io.micrometer:context-propagation",
-            "io.projectreactor:reactor-core",
-            "jakarta.annotation:jakarta.annotation-api",
-            "org.aspectj:aspectjrt",
-            "org.springframework:spring-jdbc",
-            "org.springframework:spring-tx",
-            "org.jetbrains.kotlinx:kotlinx-coroutines-reactor",
-            "tools.jackson.core:jackson-databind"
-        )
-        .withDependencyConstraints(platform)
-        .build();
-    final var test = SourceSet
-        .withTestDefaults()
-        .compileAndRunWith(main)
-        .compileAndRunWith(
-            "org.assertj:assertj-core",
-            "org.junit.jupiter:junit-jupiter-api",
-            "org.junit.jupiter:junit-jupiter-params",
-            "org.junit.jupiter:junit-jupiter-engine",
-            "org.mockito:mockito-core",
-            "org.mockito:mockito-junit-jupiter",
-            "org.springframework:spring-test",
-            "commons-collections:commons-collections",
-            "com.fasterxml.jackson.datatype:jackson-datatype-jsr310",
-            "io.projectreactor:reactor-test",
-            "org.springframework:spring-core-test",
-            "org.skyscreamer:jsonassert",
-            "org.springframework:spring-test",
-            "org.jetbrains.kotlin:kotlin-reflect",
-            "org.jetbrains.kotlin:kotlin-stdlib-jdk8",
-            "io.mockk:mockk"
-        )
-        .runWith(
-            "org.hsqldb:hsqldb",
-            "org.junit.platform:junit-platform-launcher"
-        )
-        .withDependencyConstraints(platform)
-        .build();
+        // optional
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("io.micrometer:context-propagation"),
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("jakarta.annotation:jakarta.annotation-api"),
+        GroupArtifact.parse("org.aspectj:aspectjrt"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("org.jetbrains.kotlinx:kotlinx-coroutines-reactor"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainDependencies,
+        mainDependencies,
+        platform
+    );
+    final var testCompileAndRun = List.<TestSourceSetDependency>of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test"),
+        GroupArtifact.parse("commons-collections:commons-collections"),
+        GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
+        GroupArtifact.parse("org.springframework:spring-core-test"),
+        GroupArtifact.parse("org.skyscreamer:jsonassert"),
+        GroupArtifact.parse("org.springframework:spring-test"),
+        GroupArtifact.parse("org.jetbrains.kotlin:kotlin-reflect"),
+        GroupArtifact.parse("org.jetbrains.kotlin:kotlin-stdlib-jdk8"),
+        GroupArtifact.parse("io.mockk:mockk")
+    );
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
     final var artifactLayout = new Project.ArtifactLayout(
         Path.of("build-system"),
         Path.of("classes"),
@@ -414,8 +438,7 @@ public final class BuildSpringSecurity {
         projectBuilder -> projectBuilder
             .withPath(Path.of("core"))
             .withArtifactLayout(artifactLayout)
-            .withSourceSet(main)
-            .withSourceSet(test)
+            .withSourceSets(main, test)
     );
   }
 

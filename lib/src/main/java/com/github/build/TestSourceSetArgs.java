@@ -24,6 +24,17 @@ public record TestSourceSetArgs(
     DependencyConstraints dependencyConstraints
 ) {
 
+  public static TestSourceSetArgs withTestDefaults() {
+    return new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(),
+        List.of(),
+        DependencyConstraints.EMPTY
+    );
+  }
+
   public TestSourceSetArgs {
     Objects.requireNonNull(id);
     sourceDirectories = sourceDirectories
