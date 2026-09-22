@@ -81,7 +81,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
     }
 
     return switch (artifact.getExtension()) {
-      case "jar" -> workdir
+      case "", "jar" -> workdir
           .resolve(project.path())
           .resolve(project.artifactLayout().rootDir())
           .resolve(project.artifactId() + ".jar")

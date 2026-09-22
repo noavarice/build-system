@@ -1,6 +1,7 @@
 package com.github.build.deps;
 
 import com.github.build.Project;
+import com.github.build.SourceSet;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -21,6 +22,8 @@ public interface DependencyService {
       List<GroupArtifactVersion> artifacts,
       DependencyConstraints constraints
   );
+
+  Map<GroupArtifactVersion, Path> resolveCompileClasspath(SourceSet sourceSet);
 
   Set<GroupArtifactVersion> resolve(Project project);
 

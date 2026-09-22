@@ -28,6 +28,11 @@ import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
+import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
+import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
+import org.jspecify.annotations.Nullable;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -47,28 +52,10 @@ class BuildServiceIT {
 
   BuildServiceIT(@TempDir final Path localRepositoryBasePath) {
     projectService = new ProjectService();
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
-
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
-            .build()
-    );
-    final var dependencyService = new MavenArtifactResolverDependencyService(
-        repoSystem,
-        session,
-        repositories
+    final DependencyService dependencyService = createDependencyService(
+        localRepositoryBasePath,
+        projectService,
+        null // without project workspace reader, so does not suit all tests
     );
     service = new BuildService(new CompileService(), dependencyService, new JarService());
   }
@@ -232,6 +219,17 @@ class BuildServiceIT {
               .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
+      final DependencyService dependencyService = createDependencyService(
+          tempDir.resolve("local-repository"),
+          projectService,
+          tempDir
+      );
+      final var service = new BuildService(
+          new CompileService(),
+          dependencyService,
+          new JarService()
+      );
+
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
 
@@ -364,6 +362,18 @@ class BuildServiceIT {
               .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
+      final DependencyService dependencyService = createDependencyService(
+          tempDir.resolve("local-repository"),
+          projectService,
+          tempDir
+      );
+
+      final BuildService service = new BuildService(
+          new CompileService(),
+          dependencyService,
+          new JarService()
+      );
+
       final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
       assertThat(classesDir).doesNotExist();
 
@@ -425,8 +435,8 @@ class BuildServiceIT {
 
       final DependencyService dependencyService = createDependencyService(
           tempDir.resolve("local-repository"),
-          tempDir,
-          projectService
+          projectService,
+          tempDir
       );
       final var service = new BuildService(
           new CompileService(),
@@ -492,8 +502,8 @@ class BuildServiceIT {
 
       final DependencyService dependencyService = createDependencyService(
           tempDir.resolve("local-repository"),
-          tempDir,
-          projectService
+          projectService,
+          tempDir
       );
       final var service = new BuildService(
           new CompileService(),
@@ -708,10 +718,13 @@ class BuildServiceIT {
     }
   }
 
+  /**
+   * Dependency service with project workspace reader set.
+   */
   private static DependencyService createDependencyService(
       final Path localRepositoryBasePath,
-      final Path workdir,
-      final ProjectService projectService
+      final ProjectService projectService,
+      @Nullable final Path workdir
   ) {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
@@ -722,11 +735,19 @@ class BuildServiceIT {
     final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
     session.setLocalRepositoryManager(manager);
 
-    session.setWorkspaceReader(new ProjectWorkspaceReader(
-        new WorkspaceRepository("test"),
-        workdir,
-        projectService
+    session.setDependencySelector(new AndDependencySelector(
+        new ScopeDependencySelector("test"),
+        new OptionalDependencySelector(),
+        new ExclusionDependencySelector()
     ));
+
+    if (workdir != null) {
+      session.setWorkspaceReader(new ProjectWorkspaceReader(
+          new WorkspaceRepository("test"),
+          workdir,
+          projectService
+      ));
+    }
 
     final String nexusHost = Objects.requireNonNullElse(
         System.getenv("NEXUS_HOST"),

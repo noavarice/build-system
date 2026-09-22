@@ -1,6 +1,7 @@
 package com.github.build.deps;
 
 import com.github.build.Project;
+import com.github.build.SourceSet;
 import com.github.build.deps.graph.Graph;
 import com.github.build.deps.graph.GraphPath;
 import com.github.build.deps.graph.GraphValue;
@@ -174,6 +175,11 @@ public final class DependencyServiceImpl implements DependencyService {
       final DependencyConstraints constraints
   ) {
     // FIXME: implement
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
+  public Map<GroupArtifactVersion, Path> resolveCompileClasspath(final SourceSet sourceSet) {
     throw new UnsupportedOperationException();
   }
 

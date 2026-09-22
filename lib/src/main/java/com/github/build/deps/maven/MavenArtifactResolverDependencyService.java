@@ -1,6 +1,9 @@
 package com.github.build.deps.maven;
 
+import static java.util.stream.Collectors.toUnmodifiableMap;
+
 import com.github.build.Project;
+import com.github.build.SourceSet;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifactVersion;
@@ -22,6 +25,7 @@ import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.collection.CollectResult;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.graph.DependencyFilter;
 import org.eclipse.aether.graph.DependencyNode;
 import org.eclipse.aether.repository.LocalArtifactRequest;
 import org.eclipse.aether.repository.RemoteRepository;
@@ -31,6 +35,12 @@ import org.eclipse.aether.resolution.ArtifactDescriptorResult;
 import org.eclipse.aether.resolution.ArtifactRequest;
 import org.eclipse.aether.resolution.ArtifactResolutionException;
 import org.eclipse.aether.resolution.ArtifactResult;
+import org.eclipse.aether.resolution.DependencyRequest;
+import org.eclipse.aether.resolution.DependencyResolutionException;
+import org.eclipse.aether.resolution.DependencyResult;
+import org.eclipse.aether.util.artifact.JavaScopes;
+import org.eclipse.aether.util.filter.AndDependencyFilter;
+import org.eclipse.aether.util.filter.DependencyFilterUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -39,10 +49,6 @@ import org.jspecify.annotations.Nullable;
  * @author noavarice
  */
 public final class MavenArtifactResolverDependencyService implements DependencyService {
-
-  public static final RemoteRepository MAVEN_CENTRAL = new RemoteRepository
-      .Builder("central", "default", "https://repo.maven.apache.org/maven2")
-      .build();
 
   private final RepositorySystem repositorySystem;
 
@@ -173,6 +179,60 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     }
 
     return result;
+  }
+
+  @Override
+  public Map<GroupArtifactVersion, Path> resolveCompileClasspath(final SourceSet sourceSet) {
+    Objects.requireNonNull(sourceSet);
+    final Project project = sourceSet.project();
+
+    // step 1: collect dependency graph
+    final CollectResult collectResult;
+    {
+      final var artifact = new DefaultArtifact(
+          project.groupId(),
+          project.artifactId(),
+          null,
+          null,
+          project.version()
+      );
+      final var rootDependency = new Dependency(artifact, JavaScopes.COMPILE);
+      final var request = new CollectRequest(rootDependency, repositories);
+      try {
+        collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+      } catch (DependencyCollectionException e) {
+        throw new IllegalStateException(e);
+      }
+    }
+
+    // step 2: resolve graph to actual JARs on disk
+    final DependencyResult dependencyResult;
+    {
+      final DependencyFilter compileFilter = DependencyFilterUtils.classpathFilter(
+          JavaScopes.COMPILE, JavaScopes.PROVIDED);
+      // resolver will attempt to find root dependency JAR, but it will likely not exist yet
+      final DependencyFilter rootExcludingFilter = (node, parents) -> !parents.isEmpty();
+
+      final var dependencyRequest = new DependencyRequest(
+          collectResult.getRoot(),
+          new AndDependencyFilter(compileFilter, rootExcludingFilter)
+      );
+
+      try {
+        dependencyResult = repositorySystem.resolveDependencies(repositorySystemSession,
+            dependencyRequest);
+      } catch (final DependencyResolutionException e) {
+        throw new IllegalStateException(e);
+      }
+    }
+
+    return dependencyResult.getArtifactResults()
+        .stream()
+        .map(ArtifactResult::getArtifact)
+        .collect(toUnmodifiableMap(
+            a -> new GroupArtifactVersion(a.getGroupId(), a.getArtifactId(), a.getVersion()),
+            a -> a.getFile().toPath())
+        );
   }
 
   @Override

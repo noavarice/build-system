@@ -161,9 +161,8 @@ public final class BuildService {
       }
     }
 
-    final Set<GroupArtifactVersion> artifacts = dependencyService.resolve(project);
-    final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-        artifacts
+    final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.resolveCompileClasspath(
+        sourceSet
     );
     classpath.addAll(localArtifacts.values());
   }

@@ -12,4 +12,5 @@ module com.github.build {
   requires maven.model;
   requires plexus.utils;
   requires org.apache.maven.resolver;
+  requires org.apache.maven.resolver.util;
 }
