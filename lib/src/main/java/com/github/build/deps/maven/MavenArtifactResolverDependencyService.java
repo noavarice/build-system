@@ -40,7 +40,6 @@ import org.eclipse.aether.resolution.DependencyResolutionException;
 import org.eclipse.aether.resolution.DependencyResult;
 import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.AndDependencyFilter;
-import org.eclipse.aether.util.filter.DependencyFilterUtils;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -208,8 +207,14 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     // step 2: resolve graph to actual JARs on disk
     final DependencyResult dependencyResult;
     {
-      final DependencyFilter compileFilter = DependencyFilterUtils.classpathFilter(
-          JavaScopes.COMPILE, JavaScopes.PROVIDED);
+      // Compile dependencies are transitively inherited, provided and system ones are not:
+      // they must only be on the classpath when declared as direct dependencies of the root
+      final DependencyFilter compileFilter = (node, parents) -> {
+        final String scope = node.getDependency().getScope();
+        return JavaScopes.COMPILE.equals(scope)
+            || (parents.size() == 1 && (
+            JavaScopes.PROVIDED.equals(scope) || JavaScopes.SYSTEM.equals(scope)));
+      };
       // resolver will attempt to find root dependency JAR, but it will likely not exist yet
       final DependencyFilter rootExcludingFilter = (node, parents) -> !parents.isEmpty();
 

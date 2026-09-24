@@ -45,6 +45,10 @@ import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
+import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
+import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.xml.sax.InputSource;
@@ -407,6 +411,13 @@ public class BuildItself {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
+    // keep provided dependencies in the collected graph; resolveCompileClasspath
+    // only exposes them as direct dependencies of the compiled project
+    session.setDependencySelector(new AndDependencySelector(
+        new ScopeDependencySelector("test"),
+        new OptionalDependencySelector(),
+        new ExclusionDependencySelector()
+    ));
 
     final Path localRepositoryBasePath;
     try {

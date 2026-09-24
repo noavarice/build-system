@@ -13,19 +13,28 @@ import com.github.build.SourceSet;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.jar.JarOutputStream;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
+import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
+import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DynamicTest;
 import org.junit.jupiter.api.Nested;
@@ -731,6 +740,147 @@ class MavenArtifactResolverDependencyServiceIT {
           .build();
       final DependencyConstraints actual = service.getConstraints(springBom, springDataBom);
       assertEquals(expected, actual);
+    }
+  }
+
+  @DisplayName("Tests for resolving compile classpath for a project")
+  @Nested
+  class CompileClasspath {
+
+    private final Project lib;
+
+    private final Project appA;
+
+    private final Project appB;
+
+    private final DependencyService service;
+
+    CompileClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath)
+        throws IOException {
+      final var projectService = new ProjectService();
+      lib = projectService.create("org.example", "app-lib", "0.1.0",
+          builder -> builder
+              .withPath("app-lib")
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(),
+                      List.of(),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
+              )
+      );
+
+      // compile-only dependency, so it is exposed as provided in the generated POM
+      appA = projectService.create("org.example", "app-a", "0.1.0",
+          builder -> builder
+              .withPath("app-a")
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(lib),
+                      List.of(),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
+              )
+      );
+
+      // compile-and-runtime dependency, so it is exposed as compile in the generated POM
+      appB = projectService.create("org.example", "app-b", "0.1.0",
+          builder -> builder
+              .withPath("app-b")
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(appA),
+                      List.of(appA),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
+              )
+      );
+
+      // stub JARs for workspace projects, so the resolver can materialize them
+      writeStubJar(workdir, lib);
+      writeStubJar(workdir, appA);
+      writeStubJar(workdir, appB);
+
+      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+      session.setSystemProperty("java.version", "21");
+      session.setWorkspaceReader(
+          new ProjectWorkspaceReader(
+              new WorkspaceRepository("build-system"),
+              workdir,
+              projectService
+          )
+      );
+      // keep provided dependencies in the collected graph, the classpath filter will
+      // only expose them as direct dependencies of the root project
+      session.setDependencySelector(new AndDependencySelector(
+          new ScopeDependencySelector("test"),
+          new OptionalDependencySelector(),
+          new ExclusionDependencySelector()
+      ));
+      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+          localRepositoryBasePath.toFile()
+      );
+      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+      session.setLocalRepositoryManager(manager);
+
+      final String nexusHost = Objects.requireNonNullElse(
+          System.getenv("NEXUS_HOST"),
+          "localhost"
+      );
+      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+          new org.eclipse.aether.repository.RemoteRepository
+              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .build()
+      );
+      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+    }
+
+    @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testResolvingDirectProvidedDependency() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
+          appA.mainSourceSet()
+      );
+      assertThat(result.keySet()).contains(lib.gav());
+    }
+
+    @DisplayName("Check that provided dependencies on deeper levels are not resolved")
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testNotResolvingTransitiveProvidedDependency() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
+          appB.mainSourceSet()
+      );
+      // direct compile dependency on app-a is resolved, its provided dependency on app-lib is not
+      assertThat(result.keySet()).contains(appA.gav()).doesNotContain(lib.gav());
+    }
+
+    private static void writeStubJar(final Path workdir, final Project project) throws IOException {
+      final Path jarPath = workdir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir())
+          .resolve(project.artifactId() + ".jar");
+      Files.createDirectories(jarPath.getParent());
+      try (final var os = Files.newOutputStream(jarPath);
+          final var jar = new JarOutputStream(os)) {
+        jar.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
+        jar.write("Manifest-Version: 1.0\n".getBytes(StandardCharsets.UTF_8));
+        jar.closeEntry();
+      }
     }
   }
 }

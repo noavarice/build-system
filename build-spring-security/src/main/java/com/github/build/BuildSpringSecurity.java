@@ -33,6 +33,10 @@ import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.WorkspaceRepository;
 import org.eclipse.aether.supplier.RepositorySystemSupplier;
+import org.eclipse.aether.util.graph.selector.AndDependencySelector;
+import org.eclipse.aether.util.graph.selector.ExclusionDependencySelector;
+import org.eclipse.aether.util.graph.selector.OptionalDependencySelector;
+import org.eclipse.aether.util.graph.selector.ScopeDependencySelector;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -447,6 +451,13 @@ public final class BuildSpringSecurity {
     final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
     final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
     session.setSystemProperty("java.version", "21");
+    // keep provided dependencies in the collected graph; resolveCompileClasspath
+    // only exposes them as direct dependencies of the compiled project
+    session.setDependencySelector(new AndDependencySelector(
+        new ScopeDependencySelector("test"),
+        new OptionalDependencySelector(),
+        new ExclusionDependencySelector()
+    ));
     session.setWorkspaceReader(new ProjectWorkspaceReader(
         new WorkspaceRepository("build-system"),
         workdir,
