@@ -104,7 +104,7 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
       case Project project -> new Dependency.OnProject(project);
       case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
       case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
-      case LocalJarArgs args -> new Dependency.Jar(args.path());
+      case LocalJar args -> new Dependency.Jar(args.path());
     };
   }
 
@@ -141,8 +141,12 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
       case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
       case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
       case MainSourceSetArgs ignored -> new Dependency.OnSourceSet(mainSourceSet);
-      case LocalJarArgs args -> new Dependency.Jar(args.path());
+      case LocalJar args -> new Dependency.Jar(args.path());
     };
+  }
+
+  public Map<SourceSet.Id, SourceSet> sourceSets() {
+    return sourceSets;
   }
 
   public SourceSet sourceSet(final SourceSet.Id id) {

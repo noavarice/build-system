@@ -44,4 +44,5 @@ Projects built have two independent output directories; do not confuse them:
 
 - Nullness is enforced via JSpecify; every package is `@NullMarked` (`package-info.java`). New code must carry JSpecify annotations.
 - Style is the IntelliJ formatter via `.editorconfig`: 2-space indent, 100-col limit, `final` locals. No formatter/lint plugin runs in the Maven build — match existing style manually.
+- Fine-grained unit tests for non-critical code are forbidden for now; the project is in an early stage and such tests slow development. Integration tests that verify meaningful behavior are acceptable.
 - There is no README and no CI; `AGENTS.md` and the `.run` configs are the only workflow documentation.

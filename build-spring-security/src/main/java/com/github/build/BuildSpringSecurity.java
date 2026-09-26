@@ -24,6 +24,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
@@ -115,7 +116,7 @@ public final class BuildSpringSecurity {
           .setImplementationTitle(project.artifactId())
           .setImplementationVersion(project.version())
           .build();
-      service.createJar(workdir, project, additionalEntries, manifest);
+      service.createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
 
       log.info("[project={}] Compiling test source set", project.artifactId());
       final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
@@ -125,6 +126,7 @@ public final class BuildSpringSecurity {
         return;
       }
       service.copyResources(workdir, project, SourceSet.Id.TEST);
+      service.createJar(workdir, project.testSourceSet(), Map.of(), null);
 
       final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
       final List<Path> buildRuntimePath = Stream
@@ -268,7 +270,7 @@ public final class BuildSpringSecurity {
   ) {
     final var mainDependencies = List.<MainSourceSetDependency>of(
         core,
-        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("jakarta.xml.bind:jakarta.xml.bind-api"),
         GroupArtifact.parse("org.springframework.data:spring-data-commons"),
         GroupArtifact.parse("org.springframework:spring-core")
     );

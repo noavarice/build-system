@@ -14,18 +14,14 @@ import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
 import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
-import java.util.jar.JarOutputStream;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import java.util.zip.ZipEntry;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
@@ -808,11 +804,6 @@ class MavenArtifactResolverDependencyServiceIT {
               )
       );
 
-      // stub JARs for workspace projects, so the resolver can materialize them
-      writeStubJar(workdir, lib);
-      writeStubJar(workdir, appA);
-      writeStubJar(workdir, appB);
-
       final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
       final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
       session.setSystemProperty("java.version", "21");
@@ -868,19 +859,119 @@ class MavenArtifactResolverDependencyServiceIT {
       // direct compile dependency on app-a is resolved, its provided dependency on app-lib is not
       assertThat(result.keySet()).contains(appA.gav()).doesNotContain(lib.gav());
     }
+  }
 
-    private static void writeStubJar(final Path workdir, final Project project) throws IOException {
-      final Path jarPath = workdir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactId() + ".jar");
-      Files.createDirectories(jarPath.getParent());
-      try (final var os = Files.newOutputStream(jarPath);
-          final var jar = new JarOutputStream(os)) {
-        jar.putNextEntry(new ZipEntry("META-INF/MANIFEST.MF"));
-        jar.write("Manifest-Version: 1.0\n".getBytes(StandardCharsets.UTF_8));
-        jar.closeEntry();
-      }
+  @DisplayName("Tests for resolving source set dependencies as project artifacts")
+  @Nested
+  class SourceSetResolution {
+
+    private final DependencyService service;
+
+    private final Project projectP;
+
+    private final Project projectQ;
+
+    SourceSetResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+      final ProjectService projectService = new ProjectService();
+      projectQ = projectService.create("org.example", "q", "0.1.0",
+          builder -> {
+            final var main =
+                new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    Set.of(Path.of("src", "main", "java")),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(),
+                    List.of(),
+                    DependencyConstraints.EMPTY
+                );
+            final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                Set.of(Path.of("src", "test", "java")),
+                Set.of(Path.of("src", "test", "resources")),
+                List.of(main),
+                List.of(),
+                DependencyConstraints.EMPTY
+            );
+            builder
+                .withPath("q")
+                .withSourceSets(main, test);
+          }
+      );
+
+      projectP = projectService.create("org.example", "p", "0.1.0",
+          builder -> {
+            final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                Set.of(Path.of("src", "main", "java")),
+                Set.of(Path.of("src", "main", "resources")),
+                List.of(projectQ),
+                List.of(projectQ),
+                DependencyConstraints.EMPTY
+            );
+            // main as a test dependency is mapped to OnSourceSet(main)
+            final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                Set.of(Path.of("src", "test", "java")),
+                Set.of(Path.of("src", "test", "resources")),
+                List.of(main),
+                List.of(main),
+                DependencyConstraints.EMPTY
+            );
+            builder
+                .withPath("p")
+                .withSourceSets(main, test);
+          }
+      );
+
+      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+      session.setSystemProperty("java.version", "21");
+      session.setWorkspaceReader(
+          new ProjectWorkspaceReader(
+              new WorkspaceRepository("build-system"),
+              workdir,
+              projectService
+          )
+      );
+      session.setDependencySelector(new AndDependencySelector(
+          new ScopeDependencySelector("test"),
+          new OptionalDependencySelector(),
+          new ExclusionDependencySelector()
+      ));
+      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+          localRepositoryBasePath.toFile()
+      );
+      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+      session.setLocalRepositoryManager(manager);
+
+      final String nexusHost = Objects.requireNonNullElse(
+          System.getenv("NEXUS_HOST"),
+          "localhost"
+      );
+      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+          new org.eclipse.aether.repository.RemoteRepository
+              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .build()
+      );
+      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+    }
+
+    @DisplayName("Check resolving dependency on a source set")
+    @Test
+    void testResolvingSourceSetAsArtifact() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
+          projectQ.testSourceSet()
+      );
+      assertThat(result).containsOnlyKeys(projectQ.gav());
+    }
+
+    @DisplayName("Check resolving dependency on a source set and transitive dependency on other project")
+    @Test
+    void testResolvingSourceSetAndTransitiveProjectAsArtifact() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
+          projectP.testSourceSet()
+      );
+      assertThat(result).containsOnlyKeys(projectP.gav(), projectQ.gav());
     }
   }
 }

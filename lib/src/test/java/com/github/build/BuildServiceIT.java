@@ -141,7 +141,7 @@ class BuildServiceIT {
           SourceSet.Id.MAIN.toString(),
           Set.of(Path.of("src", "main", "java")),
           Set.of(Path.of("src", "main", "resources")),
-          List.of(new LocalJarArgs(tempDir.resolve("slf4j-api.jar"))),
+          List.of(new LocalJar(tempDir.resolve("slf4j-api.jar"))),
           List.of(),
           DependencyConstraints.EMPTY
       );
@@ -550,8 +550,8 @@ class BuildServiceIT {
           Set.of(Path.of("src", "test", "resources")),
           List.of(
               main,
-              new LocalJarArgs(tempDir.resolve("junit-jupiter-api.jar")),
-              new LocalJarArgs(tempDir.resolve("apiguardian-api.jar"))
+              new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
+              new LocalJar(tempDir.resolve("apiguardian-api.jar"))
           ),
           List.of(),
           DependencyConstraints.EMPTY
@@ -591,8 +591,8 @@ class BuildServiceIT {
           Set.of(Path.of("src", "test", "resources")),
           List.of(
               main,
-              new LocalJarArgs(tempDir.resolve("junit-jupiter-api.jar")),
-              new LocalJarArgs(tempDir.resolve("apiguardian-api.jar"))
+              new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
+              new LocalJar(tempDir.resolve("apiguardian-api.jar"))
           ),
           List.of(),
           DependencyConstraints.EMPTY
@@ -603,7 +603,15 @@ class BuildServiceIT {
               .withSourceSets(main, test)
       );
 
+      final var dependencyService =
+          createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
+      final BuildService service = new BuildService(
+          new CompileService(),
+          dependencyService,
+          new JarService()
+      );
       assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY));
+      service.createJar(tempDir, project.mainSourceSet(), Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/test");
       assertThat(classesDir).doesNotExist();

@@ -9,9 +9,9 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public record LocalJarArgs(Path path) implements MainSourceSetDependency, TestSourceSetDependency {
+public record LocalJar(Path path) implements MainSourceSetDependency, TestSourceSetDependency {
 
-  public LocalJarArgs {
+  public LocalJar {
     Objects.requireNonNull(path);
   }
 }

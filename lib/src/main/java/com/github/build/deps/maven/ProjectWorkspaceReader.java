@@ -8,6 +8,7 @@ import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.Project;
 import com.github.build.ProjectService;
+import com.github.build.SourceSet;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import java.io.File;
@@ -65,46 +66,63 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
   @Nullable
   public File findArtifact(final Artifact artifact) {
     Objects.requireNonNull(artifact);
-    final var gav = new GroupArtifactVersion(
-        artifact.getGroupId(),
-        artifact.getArtifactId(),
-        artifact.getVersion()
-    );
-
-    final Project project = projectService.allProjects()
-        .stream()
-        .filter(p -> p.gav().equals(gav))
-        .findFirst()
-        .orElse(null);
-    if (project == null) {
+    final SourceSet sourceSet = findSourceSet(artifact);
+    if (sourceSet == null) {
       return null;
     }
 
     return switch (artifact.getExtension()) {
-      case "", "jar" -> workdir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactId() + ".jar")
-          .toFile();
-      case "pom" -> generatePom(project);
+      case "", "jar" -> jarPath(sourceSet).toFile();
+      case "pom" -> generatePom(sourceSet);
       default -> null;
     };
   }
 
+  private SourceSet findSourceSet(final Artifact artifact) {
+    for (final Project project : projectService.allProjects()) {
+      final SourceSet sourceSet = MavenArtifactResolverUtils.mapArtifactToSourceSet(
+          artifact, project
+      );
+      if (sourceSet != null) {
+        return sourceSet;
+      }
+    }
+
+    return null;
+  }
+
+  // TODO: perhaps should be moved to SourceSet
+  private Path jarPath(final SourceSet sourceSet) {
+    final Project project = sourceSet.project();
+    final String jarName = sourceSet.id().equals(SourceSet.Id.MAIN)
+        ? project.artifactId() + ".jar"
+        : project.artifactId() + "-" + sourceSet.id() + ".jar";
+    return workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(jarName);
+  }
+
   /**
-   * Maps project to POM {@link Model}, serializes it into XML and saves under build directory.
+   * Maps the project main source set to a POM {@link Model}, serializes it into XML and saves it
+   * under the build directory. Aether reads a single descriptor per project, so all source-set
+   * artifacts of the project share this POM.
    */
-  private File generatePom(final Project project) {
+  private File generatePom(final SourceSet sourceSet) {
+    final Project project = sourceSet.project();
+    final GroupArtifactVersion sourceSetGav = MavenArtifactResolverUtils.makeSourceSetGav(
+        sourceSet);
+
     final var model = new Model();
     model.setModelVersion("4.0.0");
-    model.setGroupId(project.groupId());
-    model.setArtifactId(project.artifactId());
-    model.setVersion(project.version());
+    model.setGroupId(sourceSetGav.groupId());
+    model.setArtifactId(sourceSetGav.artifactId());
+    model.setVersion(sourceSetGav.version());
 
     // setting dependency management
     {
       final var dependencyManagement = new DependencyManagement();
-      project.mainSourceSet().dependencyConstraints()
+      sourceSet.dependencyConstraints()
           .stream()
           .map(gav -> {
             final var dependency = new Dependency();
@@ -120,33 +138,16 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
 
     // setting dependencies
     {
-      // TODO: dependency order matters here
-      final Set<GroupArtifact> compileClasspathArtifacts = project.mainSourceSet()
+      final Set<GroupArtifact> compileClasspathArtifacts = sourceSet
           .compileDependencies()
           .stream()
-          .map(d -> switch (d) {
-            case Jar ignored -> null;
-            case OnProject onProject -> onProject.project().gav().groupArtifact();
-            // Maven cannot depend on source set explicitly
-            // TODO: should we handle this differently?
-            case OnSourceSet ignored -> null;
-            case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
-            case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
-          })
+          .map(ProjectWorkspaceReader::mapDependencyToGa)
           .filter(Objects::nonNull)
           .collect(toUnmodifiableSet());
-      final Set<GroupArtifact> runtimeClasspathArtifacts = project.mainSourceSet()
+      final Set<GroupArtifact> runtimeClasspathArtifacts = sourceSet
           .runtimeDependencies()
           .stream()
-          .map(d -> switch (d) {
-            case Jar ignored -> null;
-            case OnProject onProject -> onProject.project().gav().groupArtifact();
-            // Maven cannot depend on source set explicitly
-            // TODO: should we handle this differently?
-            case OnSourceSet ignored -> null;
-            case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
-            case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
-          })
+          .map(ProjectWorkspaceReader::mapDependencyToGa)
           .filter(Objects::nonNull)
           .collect(toUnmodifiableSet());
 
@@ -154,11 +155,10 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
           compileClasspathArtifacts.size() + runtimeClasspathArtifacts.size()
       );
 
-      for (final var d : project.mainSourceSet().compileDependencies()) {
-        final var dependency = new Dependency();
-
+      for (final var d : sourceSet.compileDependencies()) {
         switch (d) {
           case Remote.WithVersion withVersion -> {
+            final var dependency = new Dependency();
             final GroupArtifactVersion gav = withVersion.gav();
             dependency.setGroupId(gav.groupId());
             dependency.setArtifactId(gav.artifactId());
@@ -170,9 +170,15 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             } else {
               dependency.setScope("provided");
             }
+
+            // avoid extracting this part from switch - adding dependency
+            // with null groupId/artifactId (in case of plain JAR) will
+            // silently break dependency resolution
+            dependencies.add(dependency);
           }
 
           case Remote.WithoutVersion withoutVersion -> {
+            final var dependency = new Dependency();
             final GroupArtifact ga = withoutVersion.ga();
             dependency.setGroupId(ga.groupId());
             dependency.setArtifactId(ga.artifactId());
@@ -183,9 +189,12 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             } else {
               dependency.setScope("provided");
             }
+
+            dependencies.add(dependency);
           }
 
           case OnProject onProject -> {
+            final var dependency = new Dependency();
             final GroupArtifactVersion gav = onProject.project().gav();
             dependency.setGroupId(gav.groupId());
             dependency.setArtifactId(gav.artifactId());
@@ -197,24 +206,37 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             } else {
               dependency.setScope("provided");
             }
+
+            dependencies.add(dependency);
           }
-          case OnSourceSet ignored -> {
-            // do nothing
+          case OnSourceSet onSourceSet -> {
+            final var dependency = new Dependency();
+            final SourceSet ss = onSourceSet.sourceSet();
+            final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (runtimeClasspathArtifacts.contains(ga)) {
+              dependency.setScope("compile");
+            } else {
+              dependency.setScope("provided");
+            }
+
+            dependencies.add(dependency);
           }
           case Jar ignored -> {
             // do nothing
-            // TODO: check if it's possible to expose JAR as part of POM
           }
         }
 
-        dependencies.add(dependency);
       }
 
-      for (final var d : project.mainSourceSet().runtimeDependencies()) {
-        final var dependency = new Dependency();
-
+      for (final var d : sourceSet.runtimeDependencies()) {
         switch (d) {
           case Remote.WithVersion withVersion -> {
+            final var dependency = new Dependency();
             final GroupArtifactVersion gav = withVersion.gav();
             dependency.setGroupId(gav.groupId());
             dependency.setArtifactId(gav.artifactId());
@@ -224,9 +246,12 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             if (!compileClasspathArtifacts.contains(ga)) {
               dependency.setScope("runtime");
             }
+
+            dependencies.add(dependency);
           }
 
           case Remote.WithoutVersion withoutVersion -> {
+            final var dependency = new Dependency();
             final GroupArtifact ga = withoutVersion.ga();
             dependency.setGroupId(ga.groupId());
             dependency.setArtifactId(ga.artifactId());
@@ -235,9 +260,12 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             if (!compileClasspathArtifacts.contains(ga)) {
               dependency.setScope("runtime");
             }
+
+            dependencies.add(dependency);
           }
 
           case OnProject onProject -> {
+            final var dependency = new Dependency();
             final GroupArtifactVersion gav = onProject.project().gav();
             dependency.setGroupId(gav.groupId());
             dependency.setArtifactId(gav.artifactId());
@@ -247,17 +275,28 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             if (!compileClasspathArtifacts.contains(ga)) {
               dependency.setScope("runtime");
             }
+
+            dependencies.add(dependency);
           }
-          case OnSourceSet ignored -> {
-            // do nothing
+          case OnSourceSet onSourceSet -> {
+            final var dependency = new Dependency();
+            final SourceSet ss = onSourceSet.sourceSet();
+            final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+            dependency.setGroupId(gav.groupId());
+            dependency.setArtifactId(gav.artifactId());
+            dependency.setVersion(gav.version());
+
+            final GroupArtifact ga = gav.groupArtifact();
+            if (!compileClasspathArtifacts.contains(ga)) {
+              dependency.setScope("runtime");
+            }
+
+            dependencies.add(dependency);
           }
           case Jar ignored -> {
             // do nothing
-            // TODO: check if it's possible to expose JAR as part of POM
           }
         }
-
-        dependencies.add(dependency);
       }
 
       model.setDependencies(dependencies);
@@ -266,7 +305,8 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
     final Path pomDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir());
-    final Path pomPath = pomDir.resolve(project.artifactId() + '-' + project.version() + ".pom");
+    final Path pomPath = pomDir.resolve(
+        sourceSetGav.artifactId() + '-' + sourceSetGav.version() + ".pom");
 
     try {
       Files.createDirectories(pomDir);
@@ -283,6 +323,18 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
 
     log.debug("Generated {} POM file at {}", project.artifactId(), pomPath);
     return pomPath.toFile();
+  }
+
+  @Nullable
+  private static GroupArtifact mapDependencyToGa(com.github.build.deps.Dependency d) {
+    return switch (d) {
+      case Jar ignored -> null;
+      case OnProject onProject -> onProject.project().gav().groupArtifact();
+      case OnSourceSet onSourceSet ->
+          MavenArtifactResolverUtils.makeSourceSetGav(onSourceSet.sourceSet()).groupArtifact();
+      case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
+      case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
+    };
   }
 
   @Override

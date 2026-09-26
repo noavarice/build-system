@@ -4,11 +4,8 @@ import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
-import com.github.build.deps.DependencyServiceImpl;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
-import com.github.build.deps.LocalRepository;
-import com.github.build.deps.RemoteRepositoryImpl;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
 import com.github.build.test.TestResults;
@@ -29,10 +26,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.io.UncheckedIOException;
 import java.io.Writer;
-import java.net.URI;
-import java.net.http.HttpClient;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.FileAlreadyExistsException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -219,7 +213,7 @@ public class BuildItself {
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(workdir, project, Map.of(), null);
+    buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
 
     final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
     if (!testCompiled) {
@@ -227,6 +221,7 @@ public class BuildItself {
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+    buildService.createJar(workdir, project.testSourceSet(), Map.of(), null);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final List<Path> buildRuntimePath = Stream
@@ -251,7 +246,7 @@ public class BuildItself {
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(workdir, project, Map.of(), null);
+    buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
 
     final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
     if (!testCompiled) {
@@ -259,6 +254,7 @@ public class BuildItself {
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+    buildService.createJar(workdir, project.testSourceSet(), Map.of(), null);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final List<Path> buildRuntimePath = Stream
@@ -370,41 +366,6 @@ public class BuildItself {
       log.debug("XJC writing binary {} {}", pkg, fileName);
       return super.openBinary(pkg, fileName);
     }
-  }
-
-  private static DependencyService nativeDependencyService() {
-    final var httpClient = HttpClient.newHttpClient();
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-    final var nexusDocker = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
-        httpClient
-    );
-
-    final Path localRepositoryBasePath;
-    try {
-      localRepositoryBasePath = Files.createTempDirectory("build-local");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    try {
-      Files.createDirectory(localRepositoryBasePath);
-    } catch (final IOException e) {
-      if (!(e instanceof FileAlreadyExistsException)) {
-        throw new UncheckedIOException(e);
-      }
-    }
-    final var localRepository = new LocalRepository(
-        localRepositoryBasePath,
-        Map.of("sha256", "SHA-256")
-    );
-    return new DependencyServiceImpl(
-        List.of(nexusDocker),
-        localRepository
-    );
   }
 
   private static DependencyService mavenArtifactResolver() {

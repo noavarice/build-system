@@ -183,17 +183,17 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
   @Override
   public Map<GroupArtifactVersion, Path> resolveCompileClasspath(final SourceSet sourceSet) {
     Objects.requireNonNull(sourceSet);
-    final Project project = sourceSet.project();
 
     // step 1: collect dependency graph
     final CollectResult collectResult;
     {
+      final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(sourceSet);
       final var artifact = new DefaultArtifact(
-          project.groupId(),
-          project.artifactId(),
+          gav.groupId(),
+          gav.artifactId(),
           null,
-          null,
-          project.version()
+          "jar",
+          gav.version()
       );
       final var rootDependency = new Dependency(artifact, JavaScopes.COMPILE);
       final var request = new CollectRequest(rootDependency, repositories);
@@ -236,8 +236,8 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .map(ArtifactResult::getArtifact)
         .collect(toUnmodifiableMap(
             a -> new GroupArtifactVersion(a.getGroupId(), a.getArtifactId(), a.getVersion()),
-            a -> a.getFile().toPath())
-        );
+            a -> a.getFile().toPath()
+        ));
   }
 
   @Override

@@ -108,7 +108,7 @@ public final class BuildService {
 
     final Set<Path> classpath = new HashSet<>();
     try {
-      addSourceSetCompileClasspath(workdir, project, sourceSet, classpath);
+      addSourceSetCompileClasspath(sourceSet, classpath);
     } catch (final IllegalStateException e) {
       log.error("[project={}] [ss={}] Failed to gather compilation classpath",
           project.artifactId(),
@@ -123,8 +123,6 @@ public final class BuildService {
   }
 
   private void addSourceSetCompileClasspath(
-      final Path workdir,
-      final Project project,
       final SourceSet sourceSet,
       final Collection<Path> classpath
   ) {
@@ -133,15 +131,8 @@ public final class BuildService {
         case Dependency.OnProject ignored -> {
           // will be resolved as "remote" dependency
         }
-        case Dependency.OnSourceSet onSourceSet -> {
-          final Path sourceSetClassesDir = workdir
-              .resolve(project.path())
-              .resolve(project.artifactLayout().rootDir())
-              .resolve(project.artifactLayout().classesDir())
-              .resolve(onSourceSet.sourceSet().id().toString());
-          classpath.add(sourceSetClassesDir);
-          // TODO: make this clear whether we should add source set dependency compilation classpath
-          addSourceSetCompileClasspath(workdir, project, onSourceSet.sourceSet(), classpath);
+        case Dependency.OnSourceSet ignored -> {
+          // will be resolved as "remote" dependency
         }
         case Dependency.Jar file -> classpath.add(file.path());
         case Dependency.Remote.WithVersion ignored -> {
@@ -318,32 +309,51 @@ public final class BuildService {
     }
   }
 
+  /**
+   * @deprecated Use generic {@link #createJar(Path, SourceSet, Map, JarManifest)}
+   */
+  @Deprecated(forRemoval = true)
   public void createJar(
       final Path workdir,
       final Project project,
       final Map<Path, JarArgs.Content> additionalEntries,
       @Nullable final JarManifest manifest
   ) {
+    createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
+  }
+
+  public void createJar(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final Map<Path, JarArgs.Content> additionalEntries,
+      @Nullable final JarManifest manifest
+  ) {
     Objects.requireNonNull(workdir);
-    Objects.requireNonNull(project);
+    Objects.requireNonNull(sourceSet);
     Objects.requireNonNull(additionalEntries);
 
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
-    log.info("[project={}][ss={}] Creating JAR", project.artifactId(), SourceSet.Id.MAIN);
+    final Project project = sourceSet.project();
+    final SourceSet.Id sourceSetId = sourceSet.id();
+
+    log.info("[project={}][ss={}] Creating JAR", project.artifactId(), sourceSetId);
+    final String jarName = sourceSetId.equals(SourceSet.Id.MAIN)
+        ? project.artifactId() + ".jar"
+        : project.artifactId() + "-" + sourceSetId + ".jar";
     final Path jarPath = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         // TODO: customize JAR path/filename
-        .resolve(project.artifactId() + ".jar");
+        .resolve(jarName);
     final var content = new HashMap<Path, JarArgs.Content>();
 
     // collect compiled classes
     final Path classesDir = workdir
         .resolve(project.path()).resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
-        .resolve(SourceSet.Id.MAIN.value());
+        .resolve(sourceSetId.value());
     try {
       Files.walkFileTree(classesDir, new CollectJarContent(classesDir, content));
     } catch (final IOException e) {
@@ -354,7 +364,7 @@ public final class BuildService {
     final Path resourcesDir = workdir
         .resolve(project.path()).resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().resourcesDir())
-        .resolve(SourceSet.Id.MAIN.value());
+        .resolve(sourceSetId.value());
     try {
       Files.walkFileTree(resourcesDir, new CollectJarContent(resourcesDir, content));
     } catch (final IOException e) {
