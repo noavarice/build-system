@@ -2,6 +2,7 @@ package com.github.build;
 
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
+import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
@@ -23,6 +24,7 @@ import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -119,6 +121,10 @@ public final class BuildSpringSecurity {
       service.createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
 
       log.info("[project={}] Compiling test source set", project.artifactId());
+      final SourceSet testSourceSet = project.testSourceSet();
+
+      buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
+
       final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
       if (!testCompiled) {
         log.error("Build failed");
@@ -167,6 +173,44 @@ public final class BuildSpringSecurity {
     }
   }
 
+  private static void buildExtraSourceSets(final SourceSet testSourceSet,
+      final CompilerOptions compilerOptions, final Path workdir,
+      final BuildService service) {
+    final var processedExtraSourceSets = new HashSet<SourceSet>();
+    for (final Dependency dependency : testSourceSet.compileDependencies()) {
+      if (dependency instanceof Dependency.OnSourceSet sourceSetDependency) {
+        final SourceSet extraSourceSet = sourceSetDependency.sourceSet();
+        if (extraSourceSet.id().equals(SourceSet.Id.MAIN)) {
+          continue;
+        }
+
+        if (processedExtraSourceSets.contains(extraSourceSet)) {
+          continue;
+        }
+
+        buildExtraSourceSet(extraSourceSet, workdir, service, compilerOptions);
+        processedExtraSourceSets.add(extraSourceSet);
+      }
+    }
+  }
+
+  private static void buildExtraSourceSet(final SourceSet extraSourceSet, final Path workdir,
+      final BuildService service, final CompilerOptions compilerOptions) {
+    final var project = extraSourceSet.project();
+    log.debug("[project={}] Compiling extra source set {} first", project.artifactId(),
+        extraSourceSet.id());
+
+    final boolean compiled = service.compile(workdir, extraSourceSet, compilerOptions);
+    if (!compiled) {
+      log.error("Build failed");
+      System.exit(1);
+      return;
+    }
+
+    service.copyResources(workdir, extraSourceSet);
+    service.createJar(workdir, extraSourceSet, Map.of(), null);
+  }
+
   private static void generateSpringVersionsFile(
       final Path workdir,
       final Project project,
@@ -193,48 +237,48 @@ public final class BuildSpringSecurity {
   private static DependencyConstraints getPlatform(final DependencyService service) {
     return service
         .getConstraints(
-            GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.0"),
-            GroupArtifactVersion.parse("io.projectreactor:reactor-bom:2025.0.0"),
-            GroupArtifactVersion.parse("org.springframework.data:spring-data-bom:2025.1.0"),
+            GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.9"),
+            GroupArtifactVersion.parse("io.projectreactor:reactor-bom:2025.0.7"),
+            GroupArtifactVersion.parse("org.springframework.data:spring-data-bom:2025.1.7"),
             GroupArtifactVersion.parse("io.rsocket:rsocket-bom:1.1.5"),
-            GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1"),
+            GroupArtifactVersion.parse("org.junit:junit-bom:6.0.3"),
             GroupArtifactVersion.parse("org.mockito:mockito-bom:5.17.0"),
             GroupArtifactVersion.parse("org.jetbrains.kotlin:kotlin-bom:2.2.21"),
             GroupArtifactVersion.parse("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.10.2"),
-            GroupArtifactVersion.parse("com.fasterxml.jackson:jackson-bom:2.20.0"),
-            GroupArtifactVersion.parse("tools.jackson:jackson-bom:3.0.1")
+            GroupArtifactVersion.parse("com.fasterxml.jackson:jackson-bom:2.20.2"),
+            GroupArtifactVersion.parse("tools.jackson:jackson-bom:3.0.4")
         )
         .copy()
         .withExactVersion(
-            "ch.qos.logback:logback-classic:1.5.20",
+            "ch.qos.logback:logback-classic:1.5.38",
             "com.google.inject:guice:3.0",
             "com.nimbusds:nimbus-jose-jwt:10.4",
             "com.nimbusds:oauth2-oidc-sdk:11.26.1",
             "com.squareup.okhttp3:mockwebserver:3.14.9",
             "com.squareup.okhttp3:okhttp:3.14.9",
-            "com.unboundid:unboundid-ldapsdk:7.0.3",
+            "com.unboundid:unboundid-ldapsdk:7.0.5",
             "commons-collections:commons-collections:3.2.2",
-            "io.mockk:mockk:1.14.6",
-            "io.micrometer:context-propagation:1.1.3",
-            "io.micrometer:micrometer-observation:1.14.13",
+            "io.mockk:mockk:1.14.11",
+            "io.micrometer:context-propagation:1.1.4",
+            "io.micrometer:micrometer-observation:1.16.7",
             "jakarta.annotation:jakarta.annotation-api:3.0.0",
             "jakarta.inject:jakarta.inject-api:2.0.1",
             "jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api:3.0.2",
             "jakarta.servlet.jsp:jakarta.servlet.jsp-api:4.0.0",
             "jakarta.servlet:jakarta.servlet-api:6.1.0",
-            "jakarta.xml.bind:jakarta.xml.bind-api:4.0.4",
+            "jakarta.xml.bind:jakarta.xml.bind-api:4.0.5",
             "jakarta.persistence:jakarta.persistence-api:3.2.0",
             "jakarta.websocket:jakarta.websocket-api:2.2.0",
             "jakarta.websocket:jakarta.websocket-client-api:2.2.0",
             "ldapsdk:ldapsdk:4.1",
             "net.sourceforge.htmlunit:htmlunit:2.70.0",
             "org.htmlunit:htmlunit:4.11.1",
-            "org.apache.httpcomponents.client5:httpclient5:5.5.1",
-            "org.aspectj:aspectjrt:1.9.25",
-            "org.aspectj:aspectjweaver:1.9.25",
-            "org.assertj:assertj-core:3.27.6",
-            "org.bouncycastle:bcpkix-jdk18on:1.80",
-            "org.bouncycastle:bcprov-jdk18on:1.80",
+            "org.apache.httpcomponents.client5:httpclient5:5.5.2",
+            "org.aspectj:aspectjrt:1.9.25.1",
+            "org.aspectj:aspectjweaver:1.9.25.1",
+            "org.assertj:assertj-core:3.27.7",
+            "org.bouncycastle:bcpkix-jdk18on:1.80.2",
+            "org.bouncycastle:bcprov-jdk18on:1.80.2",
             "org.eclipse.jetty:jetty-server:11.0.26",
             "org.eclipse.jetty:jetty-servlet:11.0.26",
             "org.hamcrest:hamcrest:2.2",
@@ -250,13 +294,13 @@ public final class BuildSpringSecurity {
             "org.seleniumhq.selenium:selenium-support:3.141.59",
             "org.skyscreamer:jsonassert:1.5.3",
             "org.slf4j:log4j-over-slf4j:1.7.36",
-            "org.slf4j:slf4j-api:2.0.17",
-            "org.springframework.ldap:spring-ldap-core:4.0.0",
+            "org.slf4j:slf4j-api:2.0.19",
+            "org.springframework.ldap:spring-ldap-core:4.0.5",
             "org.synchronoss.cloud:nio-multipart-parser:1.1.0",
-            "org.apache.maven.resolver:maven-resolver-connector-basic:1.9.24",
-            "org.apache.maven.resolver:maven-resolver-impl:1.9.24",
-            "org.apache.maven.resolver:maven-resolver-transport-http:1.9.24",
-            "org.apache.maven:maven-resolver-provider:3.9.11",
+            "org.apache.maven.resolver:maven-resolver-connector-basic:1.9.27",
+            "org.apache.maven.resolver:maven-resolver-impl:1.9.27",
+            "org.apache.maven.resolver:maven-resolver-transport-http:1.9.27",
+            "org.apache.maven:maven-resolver-provider:3.9.16",
             "org.instancio:instancio-junit:3.7.1",
             "com.password4j:password4j:1.8.4"
         )
@@ -326,15 +370,25 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("com.password4j:password4j")
     );
     final var main = new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
+        "main",
         Set.of(Path.of("src", "main", "java")),
         Set.of(Path.of("src", "main", "resources")),
         mainDependencies,
         mainDependencies,
         platform
     );
+
+    final var testFixtures = new ExtraSourceSetArgs(
+        "testFixtures",
+        Set.of(Path.of("src", "testFixtures", "java")),
+        Set.of(Path.of("src", "testFixtures", "resources")),
+        List.of(GroupArtifact.parse("org.assertj:assertj-core")),
+        List.of(GroupArtifact.parse("org.assertj:assertj-core")),
+        platform
+    );
     final var testDependencies = List.<TestSourceSetDependency>of(
         main,
+        testFixtures,
         GroupArtifact.parse("org.assertj:assertj-core"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
@@ -344,7 +398,7 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.springframework:spring-test")
     );
     final var test = new TestSourceSetArgs(
-        SourceSet.Id.TEST.toString(),
+        "test",
         Set.of(Path.of("src", "test", "java")),
         Set.of(Path.of("src", "test", "resources")),
         testDependencies,
@@ -403,17 +457,17 @@ public final class BuildSpringSecurity {
     );
     final var testCompileAndRun = List.<TestSourceSetDependency>of(
         main,
+        GroupArtifact.parse("commons-collections:commons-collections"),
+        GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
         GroupArtifact.parse("org.assertj:assertj-core"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
         GroupArtifact.parse("org.mockito:mockito-core"),
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
-        GroupArtifact.parse("org.springframework:spring-test"),
-        GroupArtifact.parse("commons-collections:commons-collections"),
-        GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
-        GroupArtifact.parse("io.projectreactor:reactor-test"),
         GroupArtifact.parse("org.springframework:spring-core-test"),
+        GroupArtifact.parse("org.springframework:spring-test"),
         GroupArtifact.parse("org.skyscreamer:jsonassert"),
         GroupArtifact.parse("org.springframework:spring-test"),
         GroupArtifact.parse("org.jetbrains.kotlin:kotlin-reflect"),

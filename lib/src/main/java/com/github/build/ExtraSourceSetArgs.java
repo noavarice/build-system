@@ -10,32 +10,21 @@ import java.util.Objects;
 import java.util.Set;
 
 /**
- * Arguments for declaring main source set in a project.
+ * Arguments for declaring extra source set in a project.
  *
  * @author noavarice
  * @since 1.0.0
  */
-public record MainSourceSetArgs(
+public record ExtraSourceSetArgs(
     String id,
     Set<Path> sourceDirectories,
     Set<Path> resourceDirectories,
-    List<MainSourceSetDependency> compileDependencies,
-    List<MainSourceSetDependency> runtimeDependencies,
+    List<ExtraSourceSetDependency> compileDependencies,
+    List<ExtraSourceSetDependency> runtimeDependencies,
     DependencyConstraints dependencyConstraints
-) implements TestSourceSetDependency, ExtraSourceSetDependency {
+) implements TestSourceSetDependency {
 
-  public static MainSourceSetArgs withMainDefaults() {
-    return new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
-        Set.of(Path.of("src", "main", "resources")),
-        List.of(),
-        List.of(),
-        DependencyConstraints.EMPTY
-    );
-  }
-
-  public MainSourceSetArgs {
+  public ExtraSourceSetArgs {
     Objects.requireNonNull(id);
     sourceDirectories = sourceDirectories
         .stream()

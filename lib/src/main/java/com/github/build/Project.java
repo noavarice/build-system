@@ -15,7 +15,8 @@ import java.util.Objects;
  * @author noavarice
  * @since 1.0.0
  */
-public final class Project implements MainSourceSetDependency, TestSourceSetDependency {
+public final class Project implements MainSourceSetDependency, TestSourceSetDependency,
+    ExtraSourceSetDependency {
 
   private final String groupId;
 
@@ -62,13 +63,14 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     this.version = version.strip();
 
     this.path = Objects.requireNonNull(path);
-    this.mainSourceSet = mapToMainSourceSet(mainSourceSetArgs);
+    this.mainSourceSet = mapToSourceSet(mainSourceSetArgs);
 
     final var sourceSetMap = new HashMap<SourceSet.Id, SourceSet>();
     sourceSetMap.put(mainSourceSet.id(), mainSourceSet);
 
     for (final TestSourceSetArgs testSourceSetArgs : testSourceSetArgsList) {
-      final SourceSet testSourceSet = mapToTestSourceSet(testSourceSetArgs, mainSourceSet);
+      createExtraSourceSets(testSourceSetArgs, sourceSetMap);
+      final SourceSet testSourceSet = mapToSourceSet(testSourceSetArgs, sourceSetMap);
       sourceSetMap.put(testSourceSet.id(), testSourceSet);
     }
 
@@ -78,7 +80,7 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     this.artifactLayout = Objects.requireNonNull(artifactLayout);
   }
 
-  private SourceSet mapToMainSourceSet(final MainSourceSetArgs args) {
+  private SourceSet mapToSourceSet(final MainSourceSetArgs args) {
     final var compileDependencies = args.compileDependencies()
         .stream()
         .map(Project::mapDependency)
@@ -108,17 +110,77 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     };
   }
 
-  private SourceSet mapToTestSourceSet(
-      final TestSourceSetArgs args,
-      final SourceSet mainSourceSet
+  private void createExtraSourceSets(
+      final TestSourceSetArgs testSourceSetArgs,
+      final Map<SourceSet.Id, SourceSet> sourceSets
+  ) {
+    for (final TestSourceSetDependency dependency : testSourceSetArgs.compileDependencies()) {
+      if (dependency instanceof ExtraSourceSetArgs extraSourceSetArgs) {
+        final SourceSet extraSourceSet = mapToSourceSet(extraSourceSetArgs, sourceSets);
+        sourceSets.put(extraSourceSet.id(), extraSourceSet);
+      }
+    }
+
+    for (final TestSourceSetDependency dependency : testSourceSetArgs.runtimeDependencies()) {
+      if (dependency instanceof ExtraSourceSetArgs extraSourceSetArgs) {
+        final SourceSet extraSourceSet = mapToSourceSet(extraSourceSetArgs, sourceSets);
+        sourceSets.put(extraSourceSet.id(), extraSourceSet);
+      }
+    }
+  }
+
+  private SourceSet mapToSourceSet(
+      final ExtraSourceSetArgs args,
+      final Map<SourceSet.Id, SourceSet> sourceSets
   ) {
     final var compileDependencies = args.compileDependencies()
         .stream()
-        .map(d -> mapDependency(d, mainSourceSet))
+        .map(d -> mapDependency(d, sourceSets))
         .toList();
     final var runtimeDependencies = args.runtimeDependencies()
         .stream()
-        .map(d -> mapDependency(d, mainSourceSet))
+        .map(d -> mapDependency(d, sourceSets))
+        .toList();
+    return new SourceSet(
+        this,
+        new SourceSet.Id(args.id()),
+        args.sourceDirectories(),
+        args.resourceDirectories(),
+        compileDependencies,
+        runtimeDependencies,
+        List.of(),
+        args.dependencyConstraints()
+    );
+  }
+
+  private static Dependency mapDependency(
+      final ExtraSourceSetDependency dependency,
+      final Map<SourceSet.Id, SourceSet> sourceSets
+  ) {
+    return switch (dependency) {
+      case Project project -> new Dependency.OnProject(project);
+      case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
+      case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
+      case MainSourceSetArgs main -> {
+        final var id = new SourceSet.Id(main.id());
+        final SourceSet sourceSet = sourceSets.get(id);
+        yield new Dependency.OnSourceSet(sourceSet);
+      }
+      case LocalJar args -> new Dependency.Jar(args.path());
+    };
+  }
+
+  private SourceSet mapToSourceSet(
+      final TestSourceSetArgs args,
+      final Map<SourceSet.Id, SourceSet> sourceSets
+  ) {
+    final var compileDependencies = args.compileDependencies()
+        .stream()
+        .map(d -> mapDependency(d, sourceSets))
+        .toList();
+    final var runtimeDependencies = args.runtimeDependencies()
+        .stream()
+        .map(d -> mapDependency(d, sourceSets))
         .toList();
     return new SourceSet(
         this,
@@ -134,13 +196,22 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
 
   private static Dependency mapDependency(
       final TestSourceSetDependency dependency,
-      final SourceSet mainSourceSet
+      final Map<SourceSet.Id, SourceSet> sourceSets
   ) {
     return switch (dependency) {
       case Project project -> new Dependency.OnProject(project);
       case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
       case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
-      case MainSourceSetArgs ignored -> new Dependency.OnSourceSet(mainSourceSet);
+      case MainSourceSetArgs main -> {
+        final var id = new SourceSet.Id(main.id());
+        final SourceSet sourceSet = sourceSets.get(id);
+        yield new Dependency.OnSourceSet(sourceSet);
+      }
+      case ExtraSourceSetArgs extra -> {
+        final var id = new SourceSet.Id(extra.id());
+        final SourceSet sourceSet = sourceSets.get(id);
+        yield new Dependency.OnSourceSet(sourceSet);
+      }
       case LocalJar args -> new Dependency.Jar(args.path());
     };
   }

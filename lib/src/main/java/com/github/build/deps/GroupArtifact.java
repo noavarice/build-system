@@ -1,5 +1,6 @@
 package com.github.build.deps;
 
+import com.github.build.ExtraSourceSetDependency;
 import com.github.build.MainSourceSetDependency;
 import com.github.build.TestSourceSetDependency;
 import java.util.Objects;
@@ -9,7 +10,7 @@ import java.util.Objects;
  * @since 1.0.0
  */
 public record GroupArtifact(String groupId, String artifactId) implements MainSourceSetDependency,
-    TestSourceSetDependency {
+    TestSourceSetDependency, ExtraSourceSetDependency {
 
   public static GroupArtifact parse(final String value) {
     Objects.requireNonNull(value);

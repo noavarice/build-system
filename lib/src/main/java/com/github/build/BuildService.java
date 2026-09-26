@@ -60,7 +60,7 @@ public final class BuildService {
       final Project project,
       final CompilerOptions compilerOptions
   ) {
-    return compile(workdir, project, SourceSet.Id.MAIN, compilerOptions);
+    return compile(workdir, project.mainSourceSet(), compilerOptions);
   }
 
   public boolean compileTest(
@@ -68,23 +68,22 @@ public final class BuildService {
       final Project project,
       final CompilerOptions compilerOptions
   ) {
-    return compile(workdir, project, SourceSet.Id.TEST, compilerOptions);
+    return compile(workdir, project.testSourceSet(), compilerOptions);
   }
 
   public boolean compile(
       final Path workdir,
-      final Project project,
-      final SourceSet.Id sourceSetId,
+      final SourceSet sourceSet,
       final CompilerOptions compilerOptions
   ) {
     Objects.requireNonNull(workdir);
-    Objects.requireNonNull(project);
-    Objects.requireNonNull(sourceSetId);
+    Objects.requireNonNull(sourceSet);
     Objects.requireNonNull(compilerOptions);
 
     PathUtils.checkAbsolute(workdir);
 
-    final SourceSet sourceSet = project.sourceSet(sourceSetId);
+    final Project project = sourceSet.project();
+    final SourceSet.Id sourceSetId = sourceSet.id();
     log.info("[project={}] [ss={}] Compiling", project.artifactId(), sourceSetId);
 
     final Path classesDir = workdir
@@ -273,9 +272,18 @@ public final class BuildService {
     Objects.requireNonNull(project);
     Objects.requireNonNull(sourceSetId);
 
+    copyResources(workdir, project.sourceSet(sourceSetId));
+  }
+
+  public void copyResources(final Path workdir, final SourceSet sourceSet) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+
     PathUtils.checkAbsolute(workdir);
     PathUtils.checkDirectory(workdir);
 
+    final Project project = sourceSet.project();
+    final SourceSet.Id sourceSetId = sourceSet.id();
     log.info("[project={}][ss={}] Copying resources", project.artifactId(), sourceSetId);
 
     final Path targetDir = workdir
@@ -295,7 +303,6 @@ public final class BuildService {
       throw new UncheckedIOException(e);
     }
 
-    final SourceSet sourceSet = project.sourceSet(sourceSetId);
     for (final Path dir : sourceSet.resourceDirectories()) {
       final var absolutePath = workdir
           .resolve(project.path())
