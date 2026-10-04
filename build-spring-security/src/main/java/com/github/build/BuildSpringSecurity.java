@@ -75,6 +75,8 @@ public final class BuildSpringSecurity {
     final Project data = createProjectData(projectService, platform, core);
     final var projects = List.of(crypto, core, data);
 
+    projects.forEach(project -> service.clean(workdir, project));
+
     final Path license = workdir.resolve("LICENSE.txt");
     final var compilerOptions = CompilerOptions
         .builder()

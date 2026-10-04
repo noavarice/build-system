@@ -236,62 +236,59 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
       for (final var d : sourceSet.runtimeDependencies()) {
         switch (d) {
           case Remote.WithVersion withVersion -> {
-            final var dependency = new Dependency();
             final GroupArtifactVersion gav = withVersion.gav();
-            dependency.setGroupId(gav.groupId());
-            dependency.setArtifactId(gav.artifactId());
-            dependency.setVersion(gav.version());
-
             final GroupArtifact ga = gav.groupArtifact();
             if (!compileClasspathArtifacts.contains(ga)) {
+              final var dependency = new Dependency();
+              dependency.setGroupId(gav.groupId());
+              dependency.setArtifactId(gav.artifactId());
+              dependency.setVersion(gav.version());
               dependency.setScope("runtime");
-            }
 
-            dependencies.add(dependency);
+              dependencies.add(dependency);
+            }
           }
 
           case Remote.WithoutVersion withoutVersion -> {
-            final var dependency = new Dependency();
             final GroupArtifact ga = withoutVersion.ga();
-            dependency.setGroupId(ga.groupId());
-            dependency.setArtifactId(ga.artifactId());
-            // version should be complemented by dependency constraints
-
             if (!compileClasspathArtifacts.contains(ga)) {
+              final var dependency = new Dependency();
+              dependency.setGroupId(ga.groupId());
+              dependency.setArtifactId(ga.artifactId());
+              // version should be complemented by dependency constraints
               dependency.setScope("runtime");
-            }
 
-            dependencies.add(dependency);
+              dependencies.add(dependency);
+            }
           }
 
           case OnProject onProject -> {
-            final var dependency = new Dependency();
             final GroupArtifactVersion gav = onProject.project().gav();
-            dependency.setGroupId(gav.groupId());
-            dependency.setArtifactId(gav.artifactId());
-            dependency.setVersion(gav.version());
-
             final GroupArtifact ga = gav.groupArtifact();
             if (!compileClasspathArtifacts.contains(ga)) {
+              final var dependency = new Dependency();
+              dependency.setGroupId(gav.groupId());
+              dependency.setArtifactId(gav.artifactId());
+              dependency.setVersion(gav.version());
               dependency.setScope("runtime");
-            }
 
-            dependencies.add(dependency);
+              dependencies.add(dependency);
+            }
           }
           case OnSourceSet onSourceSet -> {
-            final var dependency = new Dependency();
             final SourceSet ss = onSourceSet.sourceSet();
             final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
-            dependency.setGroupId(gav.groupId());
-            dependency.setArtifactId(gav.artifactId());
-            dependency.setVersion(gav.version());
-
             final GroupArtifact ga = gav.groupArtifact();
-            if (!compileClasspathArtifacts.contains(ga)) {
-              dependency.setScope("runtime");
-            }
 
-            dependencies.add(dependency);
+            if (!compileClasspathArtifacts.contains(ga)) {
+              final var dependency = new Dependency();
+              dependency.setGroupId(gav.groupId());
+              dependency.setArtifactId(gav.artifactId());
+              dependency.setVersion(gav.version());
+              dependency.setScope("runtime");
+
+              dependencies.add(dependency);
+            }
           }
           case Jar ignored -> {
             // do nothing
