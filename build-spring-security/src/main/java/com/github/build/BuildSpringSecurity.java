@@ -95,7 +95,9 @@ public final class BuildSpringSecurity {
     // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
+      final boolean mainCompiled = service.compile(
+          workdir, project.mainSourceSet(), compilerOptions
+      );
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -426,7 +428,7 @@ public final class BuildSpringSecurity {
       final DependencyConstraints platform,
       final Project crypto
   ) {
-    final var mainDependencies = List.<MainSourceSetDependency>of(
+    final List<MainSourceSetDependency> api = List.of(
         crypto,
         // api
         GroupArtifact.parse("org.springframework:spring-aop"),
@@ -434,9 +436,9 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.springframework:spring-context"),
         GroupArtifact.parse("org.springframework:spring-core"),
         GroupArtifact.parse("org.springframework:spring-expression"),
-        GroupArtifact.parse("io.micrometer:micrometer-observation"),
-
-        // optional
+        GroupArtifact.parse("io.micrometer:micrometer-observation")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
         GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
         GroupArtifact.parse("io.micrometer:context-propagation"),
         GroupArtifact.parse("io.projectreactor:reactor-core"),
@@ -451,11 +453,11 @@ public final class BuildSpringSecurity {
         SourceSet.Id.MAIN.toString(),
         Set.of(Path.of("src", "main", "java")),
         Set.of(Path.of("src", "main", "resources")),
-        mainDependencies,
-        mainDependencies,
+        Stream.concat(api.stream(), optional.stream()).toList(),
+        api,
         platform
     );
-    final var testCompileAndRun = List.<TestSourceSetDependency>of(
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
         main,
         GroupArtifact.parse("commons-collections:commons-collections"),
         GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
@@ -473,7 +475,17 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.jetbrains.kotlin:kotlin-reflect"),
         GroupArtifact.parse("org.jetbrains.kotlin:kotlin-stdlib-jdk8"),
         GroupArtifact.parse("io.mockk:mockk")
-    );
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      switch (d) {
+        case LocalJar localJar -> testCompileAndRun.add(localJar);
+        case Project project -> testCompileAndRun.add(project);
+        case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
+        case GroupArtifactVersion groupArtifactVersion ->
+            testCompileAndRun.add(groupArtifactVersion);
+      }
+    }
+
     final var testRuntime = new ArrayList<>(testCompileAndRun);
     testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
     testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
