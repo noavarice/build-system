@@ -340,6 +340,7 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
         GroupArtifact.parse("org.springframework:spring-test")
     );
+    // TODO: find out why JUnit cannot find tests
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         Set.of(Path.of("src", "test", "java")),
