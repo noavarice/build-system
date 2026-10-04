@@ -2,9 +2,12 @@ package com.github.build.deps.maven;
 
 import com.github.build.Project;
 import com.github.build.SourceSet;
+import com.github.build.deps.Dependency;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import java.util.Map;
 import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -14,6 +17,18 @@ import org.jspecify.annotations.Nullable;
 public final class MavenArtifactResolverUtils {
 
   private MavenArtifactResolverUtils() {
+  }
+
+  @Nullable
+  public static GroupArtifact mapDependencyToGa(com.github.build.deps.Dependency d) {
+    return switch (d) {
+      case Dependency.Jar ignored -> null;
+      case Dependency.OnProject onProject -> onProject.project().gav().groupArtifact();
+      case Dependency.OnSourceSet onSourceSet ->
+          MavenArtifactResolverUtils.makeSourceSetGav(onSourceSet.sourceSet()).groupArtifact();
+      case Dependency.Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
+      case Dependency.Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
+    };
   }
 
   /**
@@ -34,6 +49,30 @@ public final class MavenArtifactResolverUtils {
         projectGav.artifactId() + SOURCE_SET_ARTIFACT_PREFIX + sourceSet.id(),
         projectGav.version()
     );
+  }
+
+  public static Artifact toArtifact(final Project project) {
+    return new DefaultArtifact(
+        project.groupId(),
+        project.artifactId(),
+        null,
+        "jar",
+        project.version()
+    );
+  }
+
+  public static org.eclipse.aether.graph.Dependency toDependency(
+      final GroupArtifactVersion gav,
+      @Nullable final String scope
+  ) {
+    final var artifact = new DefaultArtifact(
+        gav.groupId(),
+        gav.artifactId(),
+        null,
+        "jar",
+        gav.version()
+    );
+    return new org.eclipse.aether.graph.Dependency(artifact, scope);
   }
 
   @Nullable

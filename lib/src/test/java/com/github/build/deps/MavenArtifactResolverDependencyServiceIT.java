@@ -13,7 +13,6 @@ import com.github.build.SourceSet;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
-import java.io.IOException;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
@@ -743,26 +742,45 @@ class MavenArtifactResolverDependencyServiceIT {
   @Nested
   class CompileClasspath {
 
+    private final GroupArtifactVersion jacksonDatabind220 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-databind:2.20.2"
+    );
+    private final GroupArtifactVersion jacksonAnnotations220 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-annotations:2.20"
+    );
+    private final GroupArtifactVersion jacksonCore220 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-core:2.20.2"
+    );
+
+    private final GroupArtifactVersion jacksonDatabind221 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-databind:2.21.7"
+    );
+    private final GroupArtifactVersion jacksonAnnotations221 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-annotations:2.21"
+    );
+    private final GroupArtifactVersion jacksonCore221 = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-core:2.21.7"
+    );
+
     private final Project lib;
 
-    private final Project appA;
-
-    private final Project appB;
+    private final Project app;
 
     private final DependencyService service;
 
-    CompileClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath)
-        throws IOException {
+    CompileClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
       final var projectService = new ProjectService();
-      lib = projectService.create("org.example", "app-lib", "0.1.0",
+
+      // depends on compile-only Jackson Databind 2.20.0
+      lib = projectService.create("org.example", "lib", "0.1.0",
           builder -> builder
-              .withPath("app-lib")
+              .withPath("lib")
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
                       Set.of(Path.of("src", "main", "java")),
                       Set.of(Path.of("src", "main", "resources")),
-                      List.of(),
+                      List.of(jacksonDatabind220),
                       List.of(),
                       DependencyConstraints.EMPTY
                   ),
@@ -770,94 +788,67 @@ class MavenArtifactResolverDependencyServiceIT {
               )
       );
 
-      // compile-only dependency, so it is exposed as provided in the generated POM
-      appA = projectService.create("org.example", "app-a", "0.1.0",
+      // depends on lib (compile/runtime) and another version of Jackson (compile-only)
+      app = projectService.create("org.example", "app", "0.1.0",
           builder -> builder
-              .withPath("app-a")
+              .withPath("app")
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
                       Set.of(Path.of("src", "main", "java")),
                       Set.of(Path.of("src", "main", "resources")),
+                      List.of(lib, jacksonDatabind221),
                       List.of(lib),
-                      List.of(),
                       DependencyConstraints.EMPTY
                   ),
                   TestSourceSetArgs.withTestDefaults()
               )
       );
 
-      // compile-and-runtime dependency, so it is exposed as compile in the generated POM
-      appB = projectService.create("org.example", "app-b", "0.1.0",
-          builder -> builder
-              .withPath("app-b")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(appA),
-                      List.of(appA),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-      session.setSystemProperty("java.version", "21");
-      session.setWorkspaceReader(
-          new ProjectWorkspaceReader(
-              new WorkspaceRepository("build-system"),
-              workdir,
-              projectService
-          )
-      );
-      // keep provided dependencies in the collected graph, the classpath filter will
-      // only expose them as direct dependencies of the root project
-      session.setDependencySelector(new AndDependencySelector(
-          new ScopeDependencySelector("test"),
-          new OptionalDependencySelector(),
-          new ExclusionDependencySelector()
-      ));
-      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-          localRepositoryBasePath.toFile()
-      );
-      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-      session.setLocalRepositoryManager(manager);
-
-      final String nexusHost = Objects.requireNonNullElse(
-          System.getenv("NEXUS_HOST"),
-          "localhost"
-      );
-      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-          new org.eclipse.aether.repository.RemoteRepository
-              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
-              .build()
-      );
-      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+      service = dependencyService(workdir, localRepositoryBasePath, projectService);
     }
 
     @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
     @Test
     @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingDirectProvidedDependency() {
+    void testDirectProvidedDependencyResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          appA.mainSourceSet()
+          lib.mainSourceSet()
       );
-      assertThat(result.keySet()).contains(lib.gav());
+      assertThat(result.keySet())
+          .withFailMessage("Must contain direct compile-only dependency")
+          .contains(jacksonDatabind220);
+      assertThat(result.keySet())
+          .withFailMessage("Must contain transitive dependencies of direct compile-only dependency")
+          .contains(jacksonAnnotations220, jacksonCore220);
+      assertThat(result.keySet())
+          .containsOnly(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
     }
 
-    @DisplayName("Check that provided dependencies on deeper levels are not resolved")
+    @DisplayName("Check transitive provided dependencies are not resolved")
     @Test
     @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testNotResolvingTransitiveProvidedDependency() {
+    void testTransitiveProvidedDependenciesNotResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          appB.mainSourceSet()
+          app.mainSourceSet()
       );
-      // direct compile dependency on app-a is resolved, its provided dependency on app-lib is not
-      assertThat(result.keySet()).contains(appA.gav()).doesNotContain(lib.gav());
+      final Set<GroupArtifactVersion> dependencies = result.keySet();
+      assertThat(dependencies)
+          .withFailMessage("Must contain lib as direct dependency")
+          .contains(lib.gav());
+      assertThat(dependencies)
+          .withFailMessage("Must contain Jackson Databind 2.21.0 as direct compile-only dependency")
+          .contains(jacksonDatabind221);
+      assertThat(dependencies)
+          .withFailMessage(
+              "Must contain Jackson Core/Annotations as transitive dependencies of direct compile-only Jackson 2.21.0 dependency")
+          .contains(jacksonAnnotations221, jacksonCore221);
+      assertThat(dependencies)
+          .withFailMessage(
+              "Must not contain Jackson 2.20.0 as transitive compile-only dependency")
+          .doesNotContain(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
+      assertThat(dependencies)
+          .containsOnly(lib.gav(), jacksonDatabind221, jacksonAnnotations221, jacksonCore221);
     }
   }
 
@@ -922,38 +913,7 @@ class MavenArtifactResolverDependencyServiceIT {
                 .withSourceSets(main, test);
           }
       );
-
-      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-      session.setSystemProperty("java.version", "21");
-      session.setWorkspaceReader(
-          new ProjectWorkspaceReader(
-              new WorkspaceRepository("build-system"),
-              workdir,
-              projectService
-          )
-      );
-      session.setDependencySelector(new AndDependencySelector(
-          new ScopeDependencySelector("test"),
-          new OptionalDependencySelector(),
-          new ExclusionDependencySelector()
-      ));
-      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-          localRepositoryBasePath.toFile()
-      );
-      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-      session.setLocalRepositoryManager(manager);
-
-      final String nexusHost = Objects.requireNonNullElse(
-          System.getenv("NEXUS_HOST"),
-          "localhost"
-      );
-      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-          new org.eclipse.aether.repository.RemoteRepository
-              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
-              .build()
-      );
-      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+      service = dependencyService(workdir, localRepositoryBasePath, projectService);
     }
 
     @DisplayName("Check resolving dependency on a source set")
@@ -973,5 +933,45 @@ class MavenArtifactResolverDependencyServiceIT {
       );
       assertThat(result).containsOnlyKeys(projectP.gav(), projectQ.gav());
     }
+  }
+
+  private static MavenArtifactResolverDependencyService dependencyService(
+      final Path workdir,
+      final Path localRepositoryBasePath,
+      final ProjectService projectService
+  ) {
+    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+    session.setSystemProperty("java.version", "21");
+    session.setWorkspaceReader(
+        new ProjectWorkspaceReader(
+            new WorkspaceRepository("build-system"),
+            workdir,
+            projectService
+        )
+    );
+    // keep provided dependencies in the collected graph, the classpath filter will
+    // only expose them as direct dependencies of the root project
+    session.setDependencySelector(new AndDependencySelector(
+        new ScopeDependencySelector("provided", "test"),
+        new OptionalDependencySelector(),
+        new ExclusionDependencySelector()
+    ));
+    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
+        localRepositoryBasePath.toFile()
+    );
+    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+    session.setLocalRepositoryManager(manager);
+
+    final String nexusHost = Objects.requireNonNullElse(
+        System.getenv("NEXUS_HOST"),
+        "localhost"
+    );
+    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build()
+    );
+    return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
   }
 }

@@ -1,11 +1,13 @@
 package com.github.build.deps.maven;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.Project;
 import com.github.build.SourceSet;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import java.io.File;
 import java.nio.file.Path;
@@ -25,7 +27,6 @@ import org.eclipse.aether.collection.CollectRequest;
 import org.eclipse.aether.collection.CollectResult;
 import org.eclipse.aether.collection.DependencyCollectionException;
 import org.eclipse.aether.graph.Dependency;
-import org.eclipse.aether.graph.DependencyFilter;
 import org.eclipse.aether.graph.DependencyNode;
 import org.eclipse.aether.repository.LocalArtifactRequest;
 import org.eclipse.aether.repository.RemoteRepository;
@@ -39,7 +40,7 @@ import org.eclipse.aether.resolution.DependencyRequest;
 import org.eclipse.aether.resolution.DependencyResolutionException;
 import org.eclipse.aether.resolution.DependencyResult;
 import org.eclipse.aether.util.artifact.JavaScopes;
-import org.eclipse.aether.util.filter.AndDependencyFilter;
+import org.eclipse.aether.util.filter.ScopeDependencyFilter;
 import org.jspecify.annotations.Nullable;
 
 /**
@@ -187,16 +188,85 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     // step 1: collect dependency graph
     final CollectResult collectResult;
     {
-      final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(sourceSet);
-      final var artifact = new DefaultArtifact(
-          gav.groupId(),
-          gav.artifactId(),
-          null,
-          "jar",
-          gav.version()
-      );
-      final var rootDependency = new Dependency(artifact, JavaScopes.COMPILE);
-      final var request = new CollectRequest(rootDependency, repositories);
+      final List<Dependency> managedDependencies = sourceSet.dependencyConstraints()
+          .stream()
+          .map(gav -> MavenArtifactResolverUtils.toDependency(gav, null))
+          .toList();
+
+      final var dependencies = new ArrayList<Dependency>();
+      final Set<GroupArtifact> runtimeClasspathArtifacts = sourceSet
+          .runtimeDependencies()
+          .stream()
+          .map(MavenArtifactResolverUtils::mapDependencyToGa)
+          .filter(Objects::nonNull)
+          .collect(toUnmodifiableSet());
+      for (final var d : sourceSet.compileDependencies()) {
+        switch (d) {
+          case com.github.build.deps.Dependency.Remote.WithVersion withVersion -> {
+            final GroupArtifactVersion gav = withVersion.gav();
+            final GroupArtifact ga = gav.groupArtifact();
+            final String scope = runtimeClasspathArtifacts.contains(ga)
+                ? JavaScopes.COMPILE
+                : JavaScopes.PROVIDED;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+
+          case com.github.build.deps.Dependency.Remote.WithoutVersion withoutVersion -> {
+            final GroupArtifact ga = withoutVersion.ga();
+            final String scope = runtimeClasspathArtifacts.contains(ga)
+                ? JavaScopes.COMPILE
+                : JavaScopes.PROVIDED;
+
+            // there seems to be a bug in Maven Resolver v1 - ClassicDependencyManager
+            // does not apply dependency management for direct dependencies,
+            // so setting version manually
+            final String version = sourceSet.dependencyConstraints().getConstraint(ga);
+            if (version == null) {
+              final String message = "Source set %s (project %s) has no managed version for %s"
+                  .formatted(sourceSet.id(), sourceSet.project().gav(), ga);
+              throw new IllegalStateException(message);
+            }
+
+            final GroupArtifactVersion gav = ga.withVersion(version);
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+
+          case com.github.build.deps.Dependency.OnProject onProject -> {
+            final GroupArtifactVersion gav = onProject.project().gav();
+            final String scope = runtimeClasspathArtifacts.contains(gav.groupArtifact())
+                ? JavaScopes.COMPILE
+                : JavaScopes.PROVIDED;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+          case com.github.build.deps.Dependency.OnSourceSet onSourceSet -> {
+            final SourceSet ss = onSourceSet.sourceSet();
+            final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+            final String scope = runtimeClasspathArtifacts.contains(gav.groupArtifact())
+                ? JavaScopes.COMPILE
+                : JavaScopes.PROVIDED;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+          case com.github.build.deps.Dependency.Jar ignored -> {
+            // do nothing
+          }
+        }
+      }
+
+      final var request = new CollectRequest();
+
+      final Project project = sourceSet.project();
+      final Artifact rootArtifact = MavenArtifactResolverUtils.toArtifact(project);
+      request.setRootArtifact(rootArtifact);
+
+      request.setManagedDependencies(managedDependencies);
+
+      request.setDependencies(dependencies);
+      request.setRepositories(repositories);
+
       try {
         collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
       } catch (DependencyCollectionException e) {
@@ -207,25 +277,18 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     // step 2: resolve graph to actual JARs on disk
     final DependencyResult dependencyResult;
     {
-      // Compile dependencies are transitively inherited, provided and system ones are not:
-      // they must only be on the classpath when declared as direct dependencies of the root
-      final DependencyFilter compileFilter = (node, parents) -> {
-        final String scope = node.getDependency().getScope();
-        return JavaScopes.COMPILE.equals(scope)
-            || (parents.size() == 1 && (
-            JavaScopes.PROVIDED.equals(scope) || JavaScopes.SYSTEM.equals(scope)));
-      };
-      // resolver will attempt to find root dependency JAR, but it will likely not exist yet
-      final DependencyFilter rootExcludingFilter = (node, parents) -> !parents.isEmpty();
-
-      final var dependencyRequest = new DependencyRequest(
-          collectResult.getRoot(),
-          new AndDependencyFilter(compileFilter, rootExcludingFilter)
+      final var scopeFilter = new ScopeDependencyFilter(List.of(
+          JavaScopes.COMPILE, JavaScopes.PROVIDED),
+          null
       );
 
+      final var dependencyRequest = new DependencyRequest(collectResult.getRoot(), scopeFilter);
+
       try {
-        dependencyResult = repositorySystem.resolveDependencies(repositorySystemSession,
-            dependencyRequest);
+        dependencyResult = repositorySystem.resolveDependencies(
+            repositorySystemSession,
+            dependencyRequest
+        );
       } catch (final DependencyResolutionException e) {
         throw new IllegalStateException(e);
       }

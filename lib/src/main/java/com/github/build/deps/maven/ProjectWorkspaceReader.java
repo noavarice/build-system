@@ -141,13 +141,13 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
       final Set<GroupArtifact> compileClasspathArtifacts = sourceSet
           .compileDependencies()
           .stream()
-          .map(ProjectWorkspaceReader::mapDependencyToGa)
+          .map(MavenArtifactResolverUtils::mapDependencyToGa)
           .filter(Objects::nonNull)
           .collect(toUnmodifiableSet());
       final Set<GroupArtifact> runtimeClasspathArtifacts = sourceSet
           .runtimeDependencies()
           .stream()
-          .map(ProjectWorkspaceReader::mapDependencyToGa)
+          .map(MavenArtifactResolverUtils::mapDependencyToGa)
           .filter(Objects::nonNull)
           .collect(toUnmodifiableSet());
 
@@ -323,18 +323,6 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
 
     log.debug("Generated {} POM file at {}", project.artifactId(), pomPath);
     return pomPath.toFile();
-  }
-
-  @Nullable
-  private static GroupArtifact mapDependencyToGa(com.github.build.deps.Dependency d) {
-    return switch (d) {
-      case Jar ignored -> null;
-      case OnProject onProject -> onProject.project().gav().groupArtifact();
-      case OnSourceSet onSourceSet ->
-          MavenArtifactResolverUtils.makeSourceSetGav(onSourceSet.sourceSet()).groupArtifact();
-      case Remote.WithoutVersion withoutVersion -> withoutVersion.ga();
-      case Remote.WithVersion withVersion -> withVersion.gav().groupArtifact();
-    };
   }
 
   @Override
