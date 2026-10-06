@@ -30,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
-import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -69,18 +68,26 @@ public final class TestService {
     this.dependencyService = Objects.requireNonNull(dependencyService);
   }
 
-  // TODO: handle failed tests
   public TestResults withJUnit(
       final Path workdir,
       final Project project,
       final JUnitTestArgs args
   ) {
-    Objects.requireNonNull(workdir);
-    Objects.requireNonNull(project);
-    Objects.requireNonNull(args);
-    log.info("[project={}] Setting up tests", project.artifactId());
+    return withJUnit(workdir, project.testSourceSet(), args);
+  }
 
-    final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
+  // TODO: handle failed tests
+  public TestResults withJUnit(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final JUnitTestArgs args
+  ) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+    Objects.requireNonNull(args);
+    log.info("[project={}] Setting up tests", sourceSet.project().artifactId());
+
+    final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
 
     final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
     try (final var classLoader = createModifiedClassLoader(
@@ -106,8 +113,6 @@ public final class TestService {
     }
   }
 
-  // TODO: handle failed tests
-  // TODO: pass environment and other JVM properties
   public TestResults withJUnitAsProcess(
       final Path workdir,
       final Project project,
@@ -116,12 +121,27 @@ public final class TestService {
       final List<String> systemProperties,
       final Duration timeout
   ) {
+    return withJUnitAsProcess(workdir, project.testSourceSet(), args, agents, systemProperties,
+        timeout);
+  }
+
+  // TODO: handle failed tests
+  // TODO: pass environment and other JVM properties
+  public TestResults withJUnitAsProcess(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final JUnitTestArgs args,
+      final List<JavaCommandBuilder.Agent> agents,
+      final List<String> systemProperties,
+      final Duration timeout
+  ) {
     Objects.requireNonNull(workdir);
-    Objects.requireNonNull(project);
+    Objects.requireNonNull(sourceSet);
     Objects.requireNonNull(args);
 
-    log.info("[project={}] Setting up tests", project.artifactId());
-    final TestRuntime testRuntime = getTestRuntime(workdir, project, args);
+    final Project project = sourceSet.project();
+    log.info("[project={}] Setting up tests", sourceSet.project().artifactId());
+    final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
 
     final Path unixSocketPath = getSocketPath();
     // TODO: allow test JVM customization
@@ -142,8 +162,8 @@ public final class TestService {
         .command(commandBuilder.toCommand())
         .directory(workdir.toFile())
         // TODO: handle child process logging
-        .redirectOutput(ProcessBuilder.Redirect.DISCARD)
-        .redirectError(ProcessBuilder.Redirect.DISCARD);
+        .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+        .redirectError(ProcessBuilder.Redirect.INHERIT);
 
     final var testEventHandler = new AccumulateTestResults();
     final Process process;
@@ -217,9 +237,10 @@ public final class TestService {
 
   private TestRuntime getTestRuntime(
       final Path workdir,
-      final Project project,
+      final SourceSet sourceSet,
       final JUnitTestArgs args
   ) {
+    final Project project = sourceSet.project();
     final Path testClasses = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
@@ -231,26 +252,37 @@ public final class TestService {
         .resolve(project.artifactLayout().resourcesDir())
         .resolve("test");
 
+    final Map<GroupArtifactVersion, Path> runtimeClasspath = dependencyService
+        .resolveRuntimeClasspath(sourceSet);
+
+    final boolean missingLauncher = runtimeClasspath.keySet()
+        .stream()
+        .noneMatch(gav -> gav.groupArtifact().equals(JUNIT_LAUNCHER_GA));
+    // TODO: maybe it's better to add launcher when it's missing
+    if (missingLauncher) {
+      // TODO: use dedicated exception
+      throw new IllegalStateException(
+          "Test runtime classpath must include JUnit Platform Launcher"
+      );
+    }
+
     // adding build library runtime
-    final var remoteDependencies = new ArrayList<GroupArtifactVersion>();
     final var testRuntimeClasspath = new ArrayList<>(args.buildRuntimeClasspath());
 
     // adding user classes
     testRuntimeClasspath.add(testClasses);
     testRuntimeClasspath.add(testResources);
+    testRuntimeClasspath.addAll(runtimeClasspath.values());
 
-    final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
-    // adding JUnit Platform
-    {
-      // TODO: allow overriding launcher version (e.g., via method arguments)
-      final var ga = GroupArtifact.parse("org.junit.platform:junit-platform-launcher");
-      final String launcherVersion = constraints.getConstraint(ga);
-      remoteDependencies.add(ga.withVersion(launcherVersion));
+    // adding local JARs explicitly
+    // TODO: handle this differently
+    for (final Dependency dependency : sourceSet.runtimeDependencies()) {
+      if (dependency instanceof Dependency.Jar jar) {
+        testRuntimeClasspath.add(jar.path());
+      }
     }
 
-    addSourceSetRuntimeClasspath(
-        workdir, project, project.testSourceSet(), testRuntimeClasspath, remoteDependencies
-    );
+    final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
 
     // TODO: figure out how we can configure logging when there's no SLF4J provider in the test classpath.
     // Remember that logging should be configurable and compatible
@@ -264,19 +296,10 @@ public final class TestService {
       log.debug("Test runtime classpath has no SLF4J provider, adding fallback provider {}",
           slf4jProviderFallback
       );
-      remoteDependencies.addFirst(slf4jProviderFallback);
-    }
-
-    if (!remoteDependencies.isEmpty()) {
-      final Set<GroupArtifactVersion> artifacts = dependencyService.resolveTransitive(
-          remoteDependencies,
-          // TODO: should we add constraints from main source set here too?
-          project.testSourceSet().dependencyConstraints()
-      );
-      final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.fetchToLocal(
-          artifacts
-      );
-      testRuntimeClasspath.addAll(localArtifacts.values());
+      // FIXME: introduce resolveRuntimeClasspath for remote dependencies and use it here
+      final var gavs = dependencyService.resolveTransitive(args.slf4jProviderFallback());
+      final var jars = dependencyService.fetchToLocal(gavs);
+      testRuntimeClasspath.addAll(jars.values());
     }
 
     if (log.isDebugEnabled()) {
@@ -400,4 +423,8 @@ public final class TestService {
         .toArray(URL[]::new);
     return new URLClassLoader(additionalTestClasspathEntries, parent);
   }
+
+  private static final GroupArtifact JUNIT_LAUNCHER_GA = GroupArtifact.parse(
+      "org.junit.platform:junit-platform-launcher"
+  );
 }

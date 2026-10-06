@@ -330,7 +330,8 @@ public final class BuildSpringSecurity {
         mainDependencies,
         platform
     );
-    final var testDependencies = List.<TestSourceSetDependency>of(
+
+    final var testCompileClasspath = List.<TestSourceSetDependency>of(
         main,
         GroupArtifact.parse("org.assertj:assertj-core"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
@@ -340,13 +341,16 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
         GroupArtifact.parse("org.springframework:spring-test")
     );
+    final var testRuntimeClasspath = new ArrayList<>(testCompileClasspath);
+    testRuntimeClasspath.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     // TODO: find out why JUnit cannot find tests
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         Set.of(Path.of("src", "test", "java")),
         Set.of(Path.of("src", "test", "resources")),
-        testDependencies,
-        testDependencies,
+        testCompileClasspath,
+        testRuntimeClasspath,
         platform
     );
     final var artifactLayout = new Project.ArtifactLayout(
@@ -391,7 +395,7 @@ public final class BuildSpringSecurity {
         List.of(GroupArtifact.parse("org.assertj:assertj-core")),
         platform
     );
-    final var testDependencies = List.<TestSourceSetDependency>of(
+    final var testCompileClasspath = List.<TestSourceSetDependency>of(
         main,
         testFixtures,
         GroupArtifact.parse("org.assertj:assertj-core"),
@@ -402,12 +406,16 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
         GroupArtifact.parse("org.springframework:spring-test")
     );
+
+    final var testRuntimeClasspath = new ArrayList<>(testCompileClasspath);
+    testRuntimeClasspath.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         "test",
         Set.of(Path.of("src", "test", "java")),
         Set.of(Path.of("src", "test", "resources")),
-        testDependencies,
-        testDependencies,
+        testCompileClasspath,
+        testRuntimeClasspath,
         platform
     );
     final var artifactLayout = new Project.ArtifactLayout(
