@@ -25,6 +25,8 @@ public interface DependencyService {
 
   Map<GroupArtifactVersion, Path> resolveCompileClasspath(SourceSet sourceSet);
 
+  Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(SourceSet sourceSet);
+
   Set<GroupArtifactVersion> resolve(Project project);
 
   Map<GroupArtifactVersion, Path> fetchToLocal(Set<GroupArtifactVersion> artifacts);

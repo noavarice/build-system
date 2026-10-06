@@ -810,7 +810,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
     @Test
-    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testDirectProvidedDependencyResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
           lib.mainSourceSet()
@@ -827,7 +827,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check transitive provided dependencies are not resolved")
     @Test
-    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testTransitiveProvidedDependenciesNotResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
           app.mainSourceSet()
@@ -849,6 +849,118 @@ class MavenArtifactResolverDependencyServiceIT {
           .doesNotContain(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
       assertThat(dependencies)
           .containsOnly(lib.gav(), jacksonDatabind221, jacksonAnnotations221, jacksonCore221);
+    }
+  }
+
+  @DisplayName("Tests for resolving runtime classpath for a source set")
+  @Nested
+  class RuntimeClasspath {
+
+    private final GroupArtifactVersion jacksonDatabind = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-databind:2.20.2"
+    );
+    private final GroupArtifactVersion jacksonAnnotations = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-annotations:2.20"
+    );
+    private final GroupArtifactVersion jacksonCore = GroupArtifactVersion.parse(
+        "com.fasterxml.jackson.core:jackson-core:2.20.2"
+    );
+
+    private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
+        "ch.qos.logback:logback-classic:1.6.5"
+    );
+    private final GroupArtifactVersion logbackCore = GroupArtifactVersion.parse(
+        "ch.qos.logback:logback-core:1.6.5"
+    );
+    private final GroupArtifactVersion slf4jApi = GroupArtifactVersion.parse(
+        "org.slf4j:slf4j-api:2.0.19"
+    );
+
+    private final Project lib;
+
+    private final Project app;
+
+    private final DependencyService service;
+
+    RuntimeClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+      final var projectService = new ProjectService();
+
+      // depends on compile-only Jackson Databind 2.20.0
+      lib = projectService.create("org.example", "lib", "0.1.0",
+          builder -> builder
+              .withPath("lib")
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(),
+                      List.of(jacksonDatabind),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
+              )
+      );
+
+      // depends on lib (compile/runtime) and another version of Jackson (compile-only)
+      app = projectService.create("org.example", "app", "0.1.0",
+          builder -> builder
+              .withPath("app")
+              .withSourceSets(
+                  new MainSourceSetArgs(
+                      SourceSet.Id.MAIN.toString(),
+                      Set.of(Path.of("src", "main", "java")),
+                      Set.of(Path.of("src", "main", "resources")),
+                      List.of(lib, logbackClassic),
+                      List.of(lib, logbackClassic),
+                      DependencyConstraints.EMPTY
+                  ),
+                  TestSourceSetArgs.withTestDefaults()
+              )
+      );
+
+      service = dependencyService(workdir, localRepositoryBasePath, projectService);
+    }
+
+    @DisplayName("Check that direct runtime dependencies are resolved to the runtime classpath")
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testDirectRuntimeDependencyResolved() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(
+          lib.mainSourceSet()
+      );
+      assertThat(result.keySet())
+          .withFailMessage("Must contain direct runtime-only dependency")
+          .contains(jacksonDatabind);
+      assertThat(result.keySet())
+          .withFailMessage("Must contain transitive dependencies of direct runtime-only dependency")
+          .contains(jacksonAnnotations, jacksonCore);
+      assertThat(result.keySet())
+          .containsOnly(jacksonDatabind, jacksonAnnotations, jacksonCore);
+    }
+
+    @DisplayName("Check transitive runtime dependencies are resolved")
+    @Test
+    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void testTransitiveRuntimeDependenciesResolved() {
+      final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(
+          app.mainSourceSet()
+      );
+      final Set<GroupArtifactVersion> dependencies = result.keySet();
+      assertThat(dependencies)
+          .withFailMessage("Must contain Logback and slf4j as direct dependency")
+          .contains(logbackClassic, logbackCore, slf4jApi);
+      assertThat(dependencies)
+          .withFailMessage("Must contain lib as direct dependency")
+          .contains(lib.gav());
+      assertThat(dependencies)
+          .withFailMessage("Must contain Jackson modules as transitive runtime-only dependency")
+          .contains(jacksonDatabind, jacksonAnnotations, jacksonCore);
+      assertThat(dependencies)
+          .containsOnly(
+              lib.gav(),
+              logbackClassic, logbackCore, slf4jApi,
+              jacksonDatabind, jacksonAnnotations, jacksonCore);
     }
   }
 

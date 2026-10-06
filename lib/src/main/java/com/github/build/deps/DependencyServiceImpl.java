@@ -184,6 +184,11 @@ public final class DependencyServiceImpl implements DependencyService {
   }
 
   @Override
+  public Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(final SourceSet sourceSet) {
+    throw new UnsupportedOperationException();
+  }
+
+  @Override
   public Set<GroupArtifactVersion> resolve(final Project project) {
     throw new UnsupportedOperationException();
   }

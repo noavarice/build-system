@@ -304,6 +304,127 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
   }
 
   @Override
+  public Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(final SourceSet sourceSet) {
+    Objects.requireNonNull(sourceSet);
+
+    // step 1: collect dependency graph
+    final CollectResult collectResult;
+    {
+      final List<Dependency> managedDependencies = sourceSet.dependencyConstraints()
+          .stream()
+          .map(gav -> MavenArtifactResolverUtils.toDependency(gav, null))
+          .toList();
+
+      final var dependencies = new ArrayList<Dependency>();
+      final Set<GroupArtifact> compileClasspathArtifacts = sourceSet.compileDependencies()
+          .stream()
+          .map(MavenArtifactResolverUtils::mapDependencyToGa)
+          .filter(Objects::nonNull)
+          .collect(toUnmodifiableSet());
+      for (final var d : sourceSet.runtimeDependencies()) {
+        switch (d) {
+          case com.github.build.deps.Dependency.Remote.WithVersion withVersion -> {
+            final GroupArtifactVersion gav = withVersion.gav();
+            final GroupArtifact ga = gav.groupArtifact();
+            final String scope = compileClasspathArtifacts.contains(ga)
+                ? JavaScopes.COMPILE
+                : JavaScopes.RUNTIME;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+
+          case com.github.build.deps.Dependency.Remote.WithoutVersion withoutVersion -> {
+            final GroupArtifact ga = withoutVersion.ga();
+            final String scope = compileClasspathArtifacts.contains(ga)
+                ? JavaScopes.COMPILE
+                : JavaScopes.RUNTIME;
+
+            // there seems to be a bug in Maven Resolver v1 - ClassicDependencyManager
+            // does not apply dependency management for direct dependencies,
+            // so setting version manually
+            final String version = sourceSet.dependencyConstraints().getConstraint(ga);
+            if (version == null) {
+              final String message = "Source set %s (project %s) has no managed version for %s"
+                  .formatted(sourceSet.id(), sourceSet.project().gav(), ga);
+              throw new IllegalStateException(message);
+            }
+
+            final GroupArtifactVersion gav = ga.withVersion(version);
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+
+          case com.github.build.deps.Dependency.OnProject onProject -> {
+            final GroupArtifactVersion gav = onProject.project().gav();
+            final String scope = compileClasspathArtifacts.contains(gav.groupArtifact())
+                ? JavaScopes.COMPILE
+                : JavaScopes.RUNTIME;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+          case com.github.build.deps.Dependency.OnSourceSet onSourceSet -> {
+            final SourceSet ss = onSourceSet.sourceSet();
+            final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+            final String scope = compileClasspathArtifacts.contains(gav.groupArtifact())
+                ? JavaScopes.COMPILE
+                : JavaScopes.RUNTIME;
+            final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+            dependencies.add(dependency);
+          }
+          case com.github.build.deps.Dependency.Jar ignored -> {
+            // do nothing
+          }
+        }
+      }
+
+      final var request = new CollectRequest();
+
+      final Project project = sourceSet.project();
+      final Artifact rootArtifact = MavenArtifactResolverUtils.toArtifact(project);
+      request.setRootArtifact(rootArtifact);
+
+      request.setManagedDependencies(managedDependencies);
+
+      request.setDependencies(dependencies);
+      request.setRepositories(repositories);
+
+      try {
+        collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+      } catch (DependencyCollectionException e) {
+        throw new IllegalStateException(e);
+      }
+    }
+
+    // step 2: resolve graph to actual JARs on disk
+    final DependencyResult dependencyResult;
+    {
+      final var scopeFilter = new ScopeDependencyFilter(List.of(
+          JavaScopes.COMPILE, JavaScopes.RUNTIME),
+          null
+      );
+
+      final var dependencyRequest = new DependencyRequest(collectResult.getRoot(), scopeFilter);
+
+      try {
+        dependencyResult = repositorySystem.resolveDependencies(
+            repositorySystemSession,
+            dependencyRequest
+        );
+      } catch (final DependencyResolutionException e) {
+        throw new IllegalStateException(e);
+      }
+    }
+
+    return dependencyResult.getArtifactResults()
+        .stream()
+        .map(ArtifactResult::getArtifact)
+        .collect(toUnmodifiableMap(
+            a -> new GroupArtifactVersion(a.getGroupId(), a.getArtifactId(), a.getVersion()),
+            a -> a.getFile().toPath()
+        ));
+  }
+
+  @Override
   public Set<GroupArtifactVersion> resolve(final Project project) {
     Objects.requireNonNull(project);
     final var artifact = new DefaultArtifact(
