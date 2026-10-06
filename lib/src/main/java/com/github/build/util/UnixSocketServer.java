@@ -29,11 +29,16 @@ public final class UnixSocketServer<T> implements AutoCloseable {
   public static <T> UnixSocketServer<T> of(
       final Path socketPath,
       final EventCodec<T> codec,
-      final Consumer<T> handler
+      final Consumer<T> handler,
+      final int bufferSizeBytes
   ) {
     final Path absoluteSocketPath = Objects.requireNonNull(socketPath).normalize().toAbsolutePath();
     Objects.requireNonNull(codec);
     Objects.requireNonNull(handler);
+
+    if (bufferSizeBytes < 1) {
+      throw new IllegalArgumentException("Buffer size must be positive");
+    }
 
     final ServerSocketChannel socketChannel;
     try {
@@ -53,7 +58,8 @@ public final class UnixSocketServer<T> implements AutoCloseable {
         absoluteSocketPath,
         socketChannel,
         codec,
-        handler
+        handler,
+        bufferSizeBytes
     );
   }
 
@@ -71,18 +77,22 @@ public final class UnixSocketServer<T> implements AutoCloseable {
    */
   private final Consumer<T> handler;
 
+  private final int bufferSizeBytes;
+
   private final AtomicBoolean stopListening = new AtomicBoolean(false);
 
   private UnixSocketServer(
       final Path socketPath,
       final ServerSocketChannel socketChannel,
       final EventCodec<T> codec,
-      final Consumer<T> handler
+      final Consumer<T> handler,
+      final int bufferSizeBytes
   ) {
     this.socketPath = Objects.requireNonNull(socketPath);
     this.socketChannel = Objects.requireNonNull(socketChannel);
     this.codec = Objects.requireNonNull(codec);
     this.handler = Objects.requireNonNull(handler);
+    this.bufferSizeBytes = bufferSizeBytes;
   }
 
   public void listen() {
@@ -91,7 +101,7 @@ public final class UnixSocketServer<T> implements AutoCloseable {
       final byte[] bytes;
       try (final SocketChannel clientChannel = socketChannel.accept()) {
         // TODO: value is random, consider some specific value
-        final var buffer = ByteBuffer.allocate(4096);
+        final var buffer = ByteBuffer.allocate(bufferSizeBytes);
         int bytesRead = clientChannel.read(buffer);
         if (bytesRead < 0) {
           continue;

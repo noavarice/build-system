@@ -150,7 +150,8 @@ public final class TestService {
     try (final UnixSocketServer<JUnitEvent> eventServer = UnixSocketServer.of(
         unixSocketPath,
         new JUnitEventJsonCodec(),
-        testEventHandler
+        testEventHandler,
+        8192
     )) {
       // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
       log.debug("[project={}] Receive test process events over Unix socket at {}",
