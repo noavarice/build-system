@@ -1,5 +1,7 @@
 package com.github.build;
 
+import static java.util.stream.Collectors.toUnmodifiableMap;
+
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.Dependency;
@@ -16,8 +18,10 @@ import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import com.github.build.test.junit.JUnitTestArgs;
 import com.github.build.util.JavaCommandBuilder;
+import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.UncheckedIOException;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
@@ -30,6 +34,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Properties;
 import java.util.Set;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
@@ -73,7 +78,8 @@ public final class BuildSpringSecurity {
     final Project crypto = createProjectCrypto(projectService, platform);
     final Project core = createProjectCore(projectService, platform, crypto);
     final Project data = createProjectData(projectService, platform, core);
-    final var projects = List.of(crypto, core, data);
+    final Project web = createProjectWeb(workdir, projectService, platform, core);
+    final var projects = List.of(crypto, core, data, web);
 
     projects.forEach(project -> service.clean(workdir, project));
 
@@ -112,6 +118,12 @@ public final class BuildSpringSecurity {
 
       final var additionalEntries = new HashMap<Path, JarArgs.Content>();
       additionalEntries.put(Path.of("META-INF/LICENSE.txt"), new JarArgs.Content.File(license));
+      if (project == web) {
+        // web depends on JS module - building it and add output to JAR
+        final Path jsDistDir = buildJsModule(workdir);
+        final Map<Path, JarArgs.Content> jsFiles = prepareJsFilesForJar(jsDistDir);
+        additionalEntries.putAll(jsFiles);
+      }
 
       final var manifest = JarManifest
           .builder()
@@ -174,6 +186,93 @@ public final class BuildSpringSecurity {
         log.error("Build failed");
         System.exit(1);
       }
+    }
+  }
+
+  private static Path buildJsModule(final Path workdir) {
+    final Path jsModuleDir = workdir.resolve("javascript");
+
+    runProcess(jsModuleDir, "npm", "install");
+    runProcess(jsModuleDir, "npm", "run", "assemble");
+
+    final Path distDir = jsModuleDir.resolve("build").resolve("dist");
+    if (!Files.isDirectory(distDir)) {
+      throw new IllegalStateException("JS build succeeded but dist directory is not found");
+    }
+
+    return distDir;
+  }
+
+  private static void runProcess(final Path directory, final String... command) {
+    final ProcessBuilder processBuilder = new ProcessBuilder()
+        .command(command)
+        .directory(directory.toFile())
+        .redirectOutput(ProcessBuilder.Redirect.PIPE)
+        .redirectError(ProcessBuilder.Redirect.PIPE);
+
+    final Process process;
+    try {
+      process = processBuilder.start();
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+
+    final String commandStr = String.join(" ", command);
+    final long pid = process.pid();
+    log.debug("[pid={}] {} started", pid, commandStr);
+
+    Thread.ofVirtual().start(() -> {
+      try (final BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
+        reader.lines().forEach(line -> log.info("[pid={}] {}: {}", pid, commandStr, line));
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    });
+
+    Thread.ofVirtual().start(() -> {
+      try (final BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
+        reader.lines().forEach(line -> log.error("[pid={}] {}: {}", pid, commandStr, line));
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    });
+
+    final boolean exited;
+    try {
+      exited = process.waitFor(JS_BUILD_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS);
+    } catch (final InterruptedException e) {
+      Thread.currentThread().interrupt();
+      throw new IllegalStateException(e);
+    }
+
+    if (!exited) {
+      log.error("[pid={}] {}:  timed out, destroying", pid, commandStr);
+      process.destroyForcibly();
+      throw new IllegalStateException();
+    }
+
+    final int exitValue = process.exitValue();
+    if (exitValue != 0) {
+      throw new IllegalStateException("JS build process " + pid + " failed with code " + exitValue);
+    }
+  }
+
+  private static final Duration JS_BUILD_TIMEOUT = Duration.ofSeconds(120);
+
+  private static Map<Path, JarArgs.Content> prepareJsFilesForJar(final Path jsDistDir) {
+    final var baseJarPath = Path.of("org").resolve("springframework").resolve("security");
+    try (final Stream<Path> files = Files.list(jsDistDir)) {
+      return files
+          .filter(Files::isRegularFile)
+          .collect(toUnmodifiableMap(
+              file -> {
+                final Path relative = jsDistDir.relativize(file);
+                return baseJarPath.resolve(relative);
+              },
+              JarArgs.Content.File::new
+          ));
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
     }
   }
 
@@ -309,6 +408,112 @@ public final class BuildSpringSecurity {
             "com.password4j:password4j:1.8.4"
         )
         .build();
+  }
+
+  private static Project createProjectWeb(
+      final Path workdir,
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project core
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        // api
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-expression"),
+        GroupArtifact.parse("org.springframework:spring-web")
+    );
+    final List<MainSourceSetDependency> compileOnly = List.of(
+        // optional
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("io.micrometer:context-propagation"),
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("org.springframework:spring-webflux"),
+        GroupArtifact.parse("org.springframework:spring-webmvc"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
+        GroupArtifactVersion.parse("com.webauthn4j:webauthn4j-core:0.31.6.RELEASE"),
+
+        // provided
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        Stream.concat(api.stream(), compileOnly.stream()).toList(),
+        api,
+        platform
+    );
+
+    final Path springCoreTestsJar = workdir
+        .resolve(core.path())
+        .resolve(core.artifactLayout().rootDir())
+        .resolve("spring-security-core-test.jar");
+
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
+        GroupArtifact.parse("jakarta.xml.bind:jakarta.xml.bind-api"),
+        GroupArtifact.parse("jakarta.websocket:jakarta.websocket-api"),
+        GroupArtifact.parse("jakarta.websocket:jakarta.websocket-client-api"),
+        GroupArtifact.parse("org.hamcrest:hamcrest"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.skyscreamer:jsonassert"),
+        GroupArtifact.parse("org.springframework:spring-webflux"),
+        GroupArtifact.parse("org.synchronoss.cloud:nio-multipart-parser"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test"),
+        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
+        // web tests depend on core's tests...
+        // TODO: consider allowing JAR paths relative to workdir
+        new LocalJar(springCoreTestsJar)
+    ));
+    for (final MainSourceSetDependency d : compileOnly) {
+      switch (d) {
+        case LocalJar localJar -> testCompileAndRun.add(localJar);
+        case Project project -> testCompileAndRun.add(project);
+        case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
+        case GroupArtifactVersion groupArtifactVersion ->
+            testCompileAndRun.add(groupArtifactVersion);
+      }
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
+    final var artifactLayout = new Project.ArtifactLayout(
+        Path.of("build-system"),
+        Path.of("classes"),
+        Path.of("resources")
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-web",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("web"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
   }
 
   private static Project createProjectData(
