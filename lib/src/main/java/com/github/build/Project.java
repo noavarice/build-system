@@ -8,6 +8,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Project to build.
@@ -17,6 +19,8 @@ import java.util.Objects;
  */
 public final class Project implements MainSourceSetDependency, TestSourceSetDependency,
     ExtraSourceSetDependency {
+
+  private static final Logger log = LoggerFactory.getLogger(Project.class);
 
   private final String groupId;
 
@@ -107,7 +111,37 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
       case GroupArtifact ga -> new Dependency.Remote.WithoutVersion(ga);
       case GroupArtifactVersion gav -> new Dependency.Remote.WithVersion(gav);
       case LocalJar args -> new Dependency.Jar(args.path());
+      case SourceSet sourceSet -> mapSourceSetDependency(sourceSet);
     };
+  }
+
+  /**
+   * Maps a {@link SourceSet} dependency. Depending on another project's source set is
+   * considered bad practice: such a source set should be made a separate project with its own
+   * build cycle. It is allowed only as a technical workaround (e.g. for the cross-project test
+   * source set dependencies that Spring Security relies on), not as a general mechanism.
+   *
+   * @param sourceSet Referenced source set
+   * @return {@link Dependency} corresponding to the source set
+   */
+  private static Dependency mapSourceSetDependency(final SourceSet sourceSet) {
+    // TODO: depending on another project's source set is bad practice - the source set should
+    // become a separate project with its own build cycle
+    // TODO: consider deprecating this mechanism in favor of dedicated projects
+    if (sourceSet.project().mainSourceSet() == sourceSet) {
+      throw new IllegalStateException(
+          "Dependency on a project's main source set is invalid: "
+              + sourceSet.project().gav()
+              + ". If you want to depend on the project as a whole, depend on the Project "
+              + "instead (it is resolved as the project's main artifact)."
+      );
+    }
+    log.warn("[project={}] Depending on a source set {} is bad practice - the source set "
+            + "should be made a separate project with its own build cycle",
+        sourceSet.project().artifactId(),
+        sourceSet.id()
+    );
+    return new Dependency.OnSourceSet(sourceSet);
   }
 
   private void createExtraSourceSets(
@@ -167,6 +201,7 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
         yield new Dependency.OnSourceSet(sourceSet);
       }
       case LocalJar args -> new Dependency.Jar(args.path());
+      case SourceSet sourceSet -> mapSourceSetDependency(sourceSet);
     };
   }
 
@@ -213,6 +248,7 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
         yield new Dependency.OnSourceSet(sourceSet);
       }
       case LocalJar args -> new Dependency.Jar(args.path());
+      case SourceSet sourceSet -> mapSourceSetDependency(sourceSet);
     };
   }
 

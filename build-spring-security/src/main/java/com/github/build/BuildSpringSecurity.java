@@ -90,15 +90,14 @@ public final class BuildSpringSecurity {
     final Project core = createProjectCore(projectService, platform, artifactLayout, crypto);
     final Project acl = createProjectAcl(projectService, platform, artifactLayout, core);
     final Project data = createProjectData(projectService, platform, artifactLayout, core);
-    final Project web = createProjectWeb(workdir, projectService, platform, artifactLayout, core);
+    final Project web = createProjectWeb(projectService, platform, artifactLayout, core);
     final Project messaging =
-        createProjectMessaging(workdir, projectService, platform, artifactLayout, core, web);
+        createProjectMessaging(projectService, platform, artifactLayout, core, web);
     final Project access =
-        createProjectAccess(workdir, projectService, platform, artifactLayout, core, web, acl,
-            messaging);
+        createProjectAccess(projectService, platform, artifactLayout, core, web, acl, messaging);
     final Project aspects = createProjectAspects(projectService, platform, artifactLayout, access);
     final Project cas = createProjectCas(
-        workdir, projectService, platform, artifactLayout, core, web
+        projectService, platform, artifactLayout, core, web
     );
     final List<Project> projects = List.of(crypto, core, acl, data, web, messaging, access, aspects,
         cas);
@@ -557,7 +556,6 @@ public final class BuildSpringSecurity {
   }
 
   private static Project createProjectCas(
-      final Path workdir,
       final ProjectService projectService,
       final DependencyConstraints platform,
       final Project.ArtifactLayout artifactLayout,
@@ -591,28 +589,15 @@ public final class BuildSpringSecurity {
         platform
     );
 
-    // TODO: resolve path to JAR from source set
-    final Path coreTestsJar = workdir
-        .resolve(core.path())
-        .resolve(core.artifactLayout().rootDir())
-        .resolve("spring-security-core-test.jar");
-
-    final Path webTestsJar = workdir
-        .resolve(web.path())
-        .resolve(web.artifactLayout().rootDir())
-        .resolve("spring-security-web-test.jar");
-
     final List<TestSourceSetDependency> testCompileDependencies = Stream
         .of(
             main,
 
-            // Referencing web module test JARs, which we build ourselves.
-            // Web tests is not only JAR - it's a full-fledged dependency
-            // which probably pulls its dependencies transitively, including
-            // core tests.
-            // TODO: find a way to integrate into overall build concept
-            new LocalJar(coreTestsJar),
-            new LocalJar(webTestsJar),
+            // Referencing web module test source sets, which we build ourselves.
+            // Web tests are not only a JAR - they pull their dependencies
+            // transitively, including core tests.
+            core.testSourceSet(),
+            web.testSourceSet(),
 
             GroupArtifact.parse("org.assertj:assertj-core"),
             GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
@@ -631,6 +616,7 @@ public final class BuildSpringSecurity {
         case Project project -> project;
         case GroupArtifact groupArtifact -> groupArtifact;
         case GroupArtifactVersion groupArtifactVersion -> groupArtifactVersion;
+        case SourceSet sourceSet -> sourceSet;
       };
       testCompileDependencies.add(testDependency);
     }
@@ -658,7 +644,6 @@ public final class BuildSpringSecurity {
   }
 
   private static Project createProjectMessaging(
-      final Path workdir,
       final ProjectService projectService,
       final DependencyConstraints platform,
       final Project.ArtifactLayout artifactLayout,
@@ -690,11 +675,6 @@ public final class BuildSpringSecurity {
         platform
     );
 
-    final Path springCoreTestsJar = workdir
-        .resolve(core.path())
-        .resolve(core.artifactLayout().rootDir())
-        .resolve("spring-security-core-test.jar");
-
     final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
         main,
         GroupArtifact.parse("org.assertj:assertj-core"),
@@ -707,7 +687,7 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.slf4j:slf4j-api"),
         GroupArtifact.parse("org.slf4j:log4j-over-slf4j"),
         GroupArtifact.parse("ch.qos.logback:logback-classic"),
-        new LocalJar(springCoreTestsJar)
+        core.testSourceSet()
     ));
     for (final MainSourceSetDependency d : compileOnly) {
       switch (d) {
@@ -716,6 +696,7 @@ public final class BuildSpringSecurity {
         case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
         case GroupArtifactVersion groupArtifactVersion ->
             testCompileAndRun.add(groupArtifactVersion);
+        case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
       }
     }
 
@@ -743,7 +724,6 @@ public final class BuildSpringSecurity {
   }
 
   private static Project createProjectWeb(
-      final Path workdir,
       final ProjectService projectService,
       final DependencyConstraints platform,
       final Project.ArtifactLayout artifactLayout, final Project core
@@ -782,11 +762,6 @@ public final class BuildSpringSecurity {
         platform
     );
 
-    final Path springCoreTestsJar = workdir
-        .resolve(core.path())
-        .resolve(core.artifactLayout().rootDir())
-        .resolve("spring-security-core-test.jar");
-
     final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
         main,
         GroupArtifact.parse("io.projectreactor:reactor-test"),
@@ -806,9 +781,8 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
         GroupArtifact.parse("org.springframework:spring-test"),
         GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
-        // web tests depend on core's tests...
-        // TODO: consider allowing JAR paths relative to workdir
-        new LocalJar(springCoreTestsJar)
+        // web tests depend on core's tests
+        core.testSourceSet()
     ));
     for (final MainSourceSetDependency d : compileOnly) {
       switch (d) {
@@ -817,6 +791,7 @@ public final class BuildSpringSecurity {
         case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
         case GroupArtifactVersion groupArtifactVersion ->
             testCompileAndRun.add(groupArtifactVersion);
+        case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
       }
     }
 
@@ -956,7 +931,6 @@ public final class BuildSpringSecurity {
   }
 
   private static Project createProjectAccess(
-      final Path workdir,
       final ProjectService projectService,
       final DependencyConstraints platform,
       final Project.ArtifactLayout artifactLayout,
@@ -1006,15 +980,10 @@ public final class BuildSpringSecurity {
         platform
     );
 
-    final Path webTestsJar = workdir
-        .resolve(web.path())
-        .resolve(web.artifactLayout().rootDir())
-        .resolve("spring-security-web-test.jar");
-
     final List<TestSourceSetDependency> testCompileClasspath = Stream
         .of(
             main,
-            new LocalJar(webTestsJar),
+            web.testSourceSet(),
             GroupArtifact.parse("commons-collections:commons-collections"),
             GroupArtifact.parse("io.projectreactor:reactor-test"),
             GroupArtifact.parse("org.assertj:assertj-core"),
@@ -1035,6 +1004,7 @@ public final class BuildSpringSecurity {
         case GroupArtifact groupArtifact -> testCompileClasspath.add(groupArtifact);
         case GroupArtifactVersion groupArtifactVersion ->
             testCompileClasspath.add(groupArtifactVersion);
+        case SourceSet sourceSet -> testCompileClasspath.add(sourceSet);
       }
     }
 
@@ -1237,6 +1207,7 @@ public final class BuildSpringSecurity {
         case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
         case GroupArtifactVersion groupArtifactVersion ->
             testCompileAndRun.add(groupArtifactVersion);
+        case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
       }
     }
 

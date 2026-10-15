@@ -8,6 +8,6 @@ import com.github.build.deps.GroupArtifactVersion;
  * @since 1.0.0
  */
 public sealed interface TestSourceSetDependency permits ExtraSourceSetArgs, LocalJar,
-    MainSourceSetArgs, Project, GroupArtifact, GroupArtifactVersion {
+    MainSourceSetArgs, Project, GroupArtifact, GroupArtifactVersion, SourceSet {
 
 }
