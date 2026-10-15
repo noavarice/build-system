@@ -71,6 +71,24 @@ public final class BuildService {
     return compile(workdir, project.testSourceSet(), compilerOptions);
   }
 
+  /**
+   * Resolves the compile classpath for the specified source set. Includes locally built
+   * artifacts (JARs, projects) and remotely resolved dependencies.
+   *
+   * @param workdir   Build working directory
+   * @param sourceSet Source set to resolve compile classpath for
+   * @return Compile classpath
+   */
+  public Set<Path> compileClasspath(final Path workdir, final SourceSet sourceSet) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+    PathUtils.checkAbsolute(workdir);
+
+    final Set<Path> classpath = new HashSet<>();
+    addSourceSetCompileClasspath(sourceSet, classpath);
+    return classpath;
+  }
+
   public boolean compile(
       final Path workdir,
       final SourceSet sourceSet,

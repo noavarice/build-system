@@ -38,6 +38,10 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
+import org.aspectj.ajdt.ajc.AjdtCommand;
+import org.aspectj.bridge.AbortException;
+import org.aspectj.bridge.IMessage;
+import org.aspectj.bridge.MessageHandler;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.WorkspaceRepository;
@@ -87,10 +91,17 @@ public final class BuildSpringSecurity {
     final Project acl = createProjectAcl(projectService, platform, artifactLayout, core);
     final Project data = createProjectData(projectService, platform, artifactLayout, core);
     final Project web = createProjectWeb(workdir, projectService, platform, artifactLayout, core);
+    final Project messaging =
+        createProjectMessaging(workdir, projectService, platform, artifactLayout, core, web);
+    final Project access =
+        createProjectAccess(workdir, projectService, platform, artifactLayout, core, web, acl,
+            messaging);
+    final Project aspects = createProjectAspects(projectService, platform, artifactLayout, access);
     final Project cas = createProjectCas(
         workdir, projectService, platform, artifactLayout, core, web
     );
-    final List<Project> projects = List.of(crypto, core, acl, data, web, cas);
+    final List<Project> projects = List.of(crypto, core, acl, data, web, messaging, access, aspects,
+        cas);
 
     projects.forEach(project -> service.clean(workdir, project));
 
@@ -114,9 +125,14 @@ public final class BuildSpringSecurity {
     // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled = service.compile(
-          workdir, project.mainSourceSet(), compilerOptions
-      );
+      final boolean mainCompiled;
+      if (project == aspects) {
+        mainCompiled = compileAspectJMain(workdir, project, service);
+      } else {
+        mainCompiled = service.compile(
+            workdir, project.mainSourceSet(), compilerOptions
+        );
+      }
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -152,7 +168,12 @@ public final class BuildSpringSecurity {
 
       buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
 
-      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
+      final boolean testCompiled;
+      if (project == aspects) {
+        testCompiled = compileAspectJTest(workdir, project, service);
+      } else {
+        testCompiled = service.compileTest(workdir, project, compilerOptions);
+      }
       if (!testCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -165,6 +186,7 @@ public final class BuildSpringSecurity {
       final List<Path> buildRuntimePath = Stream
           .of(buildRuntimePathStr.split(",", -1))
           .map(Path::of)
+          .map(Path::toAbsolutePath)
           .toList();
       final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
       log.info("[project={}] Running tests", project.artifactId());
@@ -323,6 +345,119 @@ public final class BuildSpringSecurity {
 
     service.copyResources(workdir, extraSourceSet);
     service.createJar(workdir, extraSourceSet, Map.of(), null);
+  }
+
+  /**
+   * Compiles the main source set of the {@code aspects} project with AspectJ compiler.
+   *
+   * <p>The module is written in AspectJ (<code>.aj</code> files) which can't be compiled with
+   * regular javac. AspectJ compiler also generates {@code META-INF/aop.xml} to enable load-time
+   * weaving for consuming applications.
+   */
+  private static boolean compileAspectJMain(
+      final Path workdir,
+      final Project project,
+      final BuildService service
+  ) {
+    final SourceSet sourceSet = project.mainSourceSet();
+    final Path classesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
+    final Set<Path> classpath = service.compileClasspath(workdir, sourceSet);
+
+    final var args = new ArrayList<String>();
+    addAspectJVersionArgs(args);
+    args.add("-classpath");
+    args.add(classpath.stream().map(Path::toString).collect(Collectors.joining(":")));
+    for (final Path sourceDir : sourceSet.sourceDirectories()) {
+      final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
+      args.add("-sourceroots");
+      args.add(absoluteSourceDir.toString());
+    }
+    args.add("-d");
+    args.add(classesDir.toString());
+    args.add("-outxmlfile");
+    args.add("META-INF/aop.xml");
+
+    return runAspectJCompile(args);
+  }
+
+  /**
+   * Compiles the test source set of the {@code aspects} project.
+   *
+   * <p>Test classes are woven with the main aspects at compile time, which is an equivalent of
+   * Gradle's {@code testAspect sourceSets.main.output}.
+   */
+  private static boolean compileAspectJTest(
+      final Path workdir,
+      final Project project,
+      final BuildService service
+  ) {
+    final SourceSet sourceSet = project.testSourceSet();
+    final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
+    final Path testClassesDir = classesDir(workdir, project, SourceSet.Id.TEST);
+
+    final Set<Path> classpath = new HashSet<>(service.compileClasspath(workdir, sourceSet));
+    classpath.add(mainClassesDir);
+
+    final var args = new ArrayList<String>();
+    addAspectJVersionArgs(args);
+    args.add("-classpath");
+    args.add(classpath.stream().map(Path::toString).collect(Collectors.joining(":")));
+    // main aspect output weaves test classes at compile time
+    args.add("-aspectpath");
+    args.add(mainClassesDir.toString());
+    for (final Path sourceDir : sourceSet.sourceDirectories()) {
+      final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
+      args.add("-sourceroots");
+      args.add(absoluteSourceDir.toString());
+    }
+    args.add("-d");
+    args.add(testClassesDir.toString());
+
+    return runAspectJCompile(args);
+  }
+
+  private static void addAspectJVersionArgs(final List<String> args) {
+    // AspectJ compiler uses -source/-target instead of javac's --release
+    args.add("-source");
+    args.add("17");
+    args.add("-target");
+    args.add("17");
+    args.add("-parameters");
+  }
+
+  private static Path classesDir(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId
+  ) {
+    return workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().classesDir())
+        .resolve(sourceSetId.toString());
+  }
+
+  private static boolean runAspectJCompile(final List<String> args) {
+    log.info("[ajc] Compiling with AspectJ compiler: {}", String.join(" ", args));
+    final var command = new AjdtCommand();
+    final var messageHandler = new MessageHandler();
+    final boolean success;
+    try {
+      success = command.runCommand(args.toArray(String[]::new), messageHandler);
+    } catch (final AbortException e) {
+      log.error("[ajc] Compilation aborted", e);
+      return false;
+    }
+    for (final IMessage message : messageHandler.getMessages(IMessage.ERROR, true)) {
+      log.error("[ajc] {}", message);
+    }
+    for (final IMessage message : messageHandler.getMessages(IMessage.WARNING, true)) {
+      log.warn("[ajc] {}", message);
+    }
+    if (!success) {
+      log.error("[ajc] Compilation failed");
+    }
+    return success;
   }
 
   private static void generateSpringVersionsFile(
@@ -542,18 +677,9 @@ public final class BuildSpringSecurity {
     final List<MainSourceSetDependency> compileOnly = List.of(
         // optional
         web,
-        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
-        GroupArtifact.parse("io.micrometer:context-propagation"),
         GroupArtifact.parse("io.projectreactor:reactor-core"),
-        GroupArtifact.parse("org.springframework:spring-jdbc"),
-        GroupArtifact.parse("org.springframework:spring-tx"),
-        GroupArtifact.parse("org.springframework:spring-webflux"),
-        GroupArtifact.parse("org.springframework:spring-webmvc"),
-        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
-        GroupArtifactVersion.parse("com.webauthn4j:webauthn4j-core:0.31.6.RELEASE"),
-
-        // provided
-        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+        GroupArtifact.parse("org.springframework:spring-web"),
+        GroupArtifact.parse("org.springframework:spring-websocket")
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
@@ -571,15 +697,6 @@ public final class BuildSpringSecurity {
 
     final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
         main,
-        GroupArtifact.parse("io.projectreactor:reactor-test"),
-        GroupArtifact.parse("jakarta.xml.bind:jakarta.xml.bind-api"),
-        GroupArtifact.parse("jakarta.websocket:jakarta.websocket-api"),
-        GroupArtifact.parse("jakarta.websocket:jakarta.websocket-client-api"),
-        GroupArtifact.parse("org.hamcrest:hamcrest"),
-        GroupArtifact.parse("org.mockito:mockito-core"),
-        GroupArtifact.parse("org.skyscreamer:jsonassert"),
-        GroupArtifact.parse("org.springframework:spring-webflux"),
-        GroupArtifact.parse("org.synchronoss.cloud:nio-multipart-parser"),
         GroupArtifact.parse("org.assertj:assertj-core"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
@@ -587,9 +704,9 @@ public final class BuildSpringSecurity {
         GroupArtifact.parse("org.mockito:mockito-core"),
         GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
         GroupArtifact.parse("org.springframework:spring-test"),
-        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
-        // web tests depend on core's tests...
-        // TODO: consider allowing JAR paths relative to workdir
+        GroupArtifact.parse("org.slf4j:slf4j-api"),
+        GroupArtifact.parse("org.slf4j:log4j-over-slf4j"),
+        GroupArtifact.parse("ch.qos.logback:logback-classic"),
         new LocalJar(springCoreTestsJar)
     ));
     for (final MainSourceSetDependency d : compileOnly) {
@@ -616,10 +733,10 @@ public final class BuildSpringSecurity {
     );
     return projectService.create(
         "org.springframework.security",
-        "spring-security-web",
+        "spring-security-messaging",
         "7.0.0",
         projectBuilder -> projectBuilder
-            .withPath(Path.of("web"))
+            .withPath(Path.of("messaging"))
             .withArtifactLayout(artifactLayout)
             .withSourceSets(main, test)
     );
@@ -833,6 +950,168 @@ public final class BuildSpringSecurity {
         "7.0.0",
         projectBuilder -> projectBuilder
             .withPath(Path.of("acl"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectAccess(
+      final Path workdir,
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web,
+      final Project acl,
+      final Project messaging
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        // api
+        GroupArtifact.parse("io.micrometer:micrometer-observation"),
+        GroupArtifact.parse("jakarta.annotation:jakarta.annotation-api"),
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-expression"),
+        GroupArtifact.parse("org.springframework:spring-messaging")
+    );
+    final List<MainSourceSetDependency> compileOnly = List.of(
+        // optional projects
+        web,
+        acl,
+        messaging,
+
+        // optional
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("io.micrometer:context-propagation"),
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.aspectj:aspectjrt"),
+        GroupArtifact.parse("org.jetbrains.kotlinx:kotlinx-coroutines-reactor"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("org.springframework:spring-webmvc"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
+
+        // provided
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        Stream.concat(api.stream(), compileOnly.stream()).toList(),
+        api,
+        platform
+    );
+
+    final Path webTestsJar = workdir
+        .resolve(web.path())
+        .resolve(web.artifactLayout().rootDir())
+        .resolve("spring-security-web-test.jar");
+
+    final List<TestSourceSetDependency> testCompileClasspath = Stream
+        .of(
+            main,
+            new LocalJar(webTestsJar),
+            GroupArtifact.parse("commons-collections:commons-collections"),
+            GroupArtifact.parse("io.projectreactor:reactor-test"),
+            GroupArtifact.parse("org.assertj:assertj-core"),
+            GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+            GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+            GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+            GroupArtifact.parse("org.mockito:mockito-core"),
+            GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+            GroupArtifact.parse("org.springframework:spring-core-test"),
+            GroupArtifact.parse("org.springframework:spring-test"),
+            GroupArtifact.parse("org.skyscreamer:jsonassert")
+        )
+        .collect(Collectors.toList());
+    for (final MainSourceSetDependency d : compileOnly) {
+      switch (d) {
+        case LocalJar localJar -> testCompileClasspath.add(localJar);
+        case Project project -> testCompileClasspath.add(project);
+        case GroupArtifact groupArtifact -> testCompileClasspath.add(groupArtifact);
+        case GroupArtifactVersion groupArtifactVersion ->
+            testCompileClasspath.add(groupArtifactVersion);
+      }
+    }
+
+    final var testRuntimeClasspath = new ArrayList<>(testCompileClasspath);
+    testRuntimeClasspath.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
+    testRuntimeClasspath.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileClasspath,
+        testRuntimeClasspath,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-access",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("access"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectAspects(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project access
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        access,
+        GroupArtifact.parse("org.aspectj:aspectjrt"),
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        api,
+        api,
+        platform
+    );
+
+    final var testCompileClasspath = List.<TestSourceSetDependency>of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    );
+    final var testRuntimeClasspath = new ArrayList<>(testCompileClasspath);
+    testRuntimeClasspath.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileClasspath,
+        testRuntimeClasspath,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-aspects",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("aspects"))
             .withArtifactLayout(artifactLayout)
             .withSourceSets(main, test)
     );

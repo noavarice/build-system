@@ -1,0 +1,18 @@
+<component name="ProjectRunConfigurationManager">
+  <configuration default="false" name="build Spring Security" type="Application" factoryName="Application">
+    <option name="MAIN_CLASS_NAME" value="com.github.build.BuildSpringSecurity" />
+    <module name="build-spring-security" />
+    <option name="PROGRAM_PARAMETERS" value="spring-security" />
+    <selectedOptions>
+      <option name="environmentVariables" visible="false" />
+    </selectedOptions>
+    <option name="VM_PARAMETERS" value="-DbuildRuntimePath=junit-integration/target/junit-integration-0.1.0.jar,lib/target/lib-0.1.0.jar" />
+    <extension name="coverage">
+      <pattern>
+        <option name="PATTERN" value="com.github.build.test.junit.*" />
+        <option name="ENABLED" value="true" />
+      </pattern>
+    </extension>
+    <method v="2" />
+  </configuration>
+</component>
