@@ -160,7 +160,7 @@ public final class TestService {
         .build();
     final ProcessBuilder processBuilder = new ProcessBuilder()
         .command(commandBuilder.toCommand())
-        .directory(workdir.toFile())
+        .directory(workdir.resolve(project.path()).toFile())
         // TODO: handle child process logging
         .redirectOutput(ProcessBuilder.Redirect.INHERIT)
         .redirectError(ProcessBuilder.Redirect.INHERIT);
