@@ -99,8 +99,25 @@ public final class BuildSpringSecurity {
     final Project cas = createProjectCas(
         projectService, platform, artifactLayout, core, web
     );
+    final Project oauth2Core = createProjectOauth2Core(
+        projectService, platform, artifactLayout, core
+    );
+    final Project taglibs = createProjectTaglibs(
+        projectService, platform, artifactLayout, core, web, acl, access
+    );
+    final Project kerberosCore = createProjectKerberosCore(
+        projectService, platform, artifactLayout, core
+    );
+    final Project kerberosTest = createProjectKerberosTest(
+        projectService, platform, artifactLayout
+    );
+    // Some modules are not built yet because they require build features the project does not
+    // support: Kotlin compilation and generated sources (config, saml2), integration test source
+    // sets (ldap), classifier-qualified runtime artifacts (oauth2-jose/oauth2-client/
+    // oauth2-resource-server and their dependents), and Gradle-style highest-version conflict
+    // resolution (webauthn). Modules depending on the skipped config/test modules are skipped too.
     final List<Project> projects = List.of(crypto, core, acl, data, web, messaging, access, aspects,
-        cas);
+        cas, oauth2Core, taglibs, kerberosCore, kerberosTest);
 
     projects.forEach(project -> service.clean(workdir, project));
 
@@ -507,6 +524,7 @@ public final class BuildSpringSecurity {
             "com.unboundid:unboundid-ldapsdk:7.0.5",
             "commons-collections:commons-collections:3.2.2",
             "io.mockk:mockk:1.14.11",
+            "org.apache.kerby:kerb-simplekdc:2.1.2",
             "io.micrometer:context-propagation:1.1.4",
             "io.micrometer:micrometer-observation:1.16.7",
             "jakarta.annotation:jakarta.annotation-api:3.0.0",
@@ -1142,6 +1160,250 @@ public final class BuildSpringSecurity {
         "7.0.0",
         projectBuilder -> projectBuilder
             .withPath(Path.of("crypto"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  /**
+   * Adds a main source set dependency to a test classpath.
+   *
+   * <p>Optional and provided dependencies are not transitive, so they have to be repeated in the
+   * test source set to be available at test compile and runtime.
+   */
+  private static void addTestDependency(
+      final List<TestSourceSetDependency> testDependencies,
+      final MainSourceSetDependency dependency
+  ) {
+    final TestSourceSetDependency testDependency = switch (dependency) {
+      case LocalJar localJar -> localJar;
+      case Project project -> project;
+      case GroupArtifact groupArtifact -> groupArtifact;
+      case GroupArtifactVersion groupArtifactVersion -> groupArtifactVersion;
+      case SourceSet sourceSet -> sourceSet;
+    };
+    testDependencies.add(testDependency);
+  }
+
+  private static Project createProjectOauth2Core(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-web")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("com.nimbusds:oauth2-oidc-sdk"),
+        GroupArtifact.parse("org.springframework:spring-webflux")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        Stream.concat(api.stream(), optional.stream()).toList(),
+        api,
+        platform
+    );
+
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-oauth2-core",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("oauth2", "oauth2-core"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectTaglibs(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web,
+      final Project acl,
+      final Project access
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        acl,
+        core,
+        web,
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-expression"),
+        GroupArtifact.parse("org.springframework:spring-web")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet.jsp:jakarta.servlet.jsp-api"),
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        Stream.concat(api.stream(), provided.stream()).toList(),
+        api,
+        platform
+    );
+
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        access,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : provided) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("jakarta.servlet.jsp.jstl:jakarta.servlet.jsp.jstl-api"));
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-taglibs",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("taglibs"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectKerberosCore(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core
+  ) {
+    final List<MainSourceSetDependency> api = List.of(core);
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        api,
+        api,
+        platform
+    );
+
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter")
+    ));
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-kerberos-core",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("kerberos", "kerberos-core"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectKerberosTest(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        GroupArtifact.parse("org.apache.kerby:kerb-simplekdc"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter")
+    );
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        api,
+        api,
+        platform
+    );
+
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        testCompileAndRun,
+        testRuntime,
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-kerberos-test",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("kerberos", "kerberos-test"))
             .withArtifactLayout(artifactLayout)
             .withSourceSets(main, test)
     );
