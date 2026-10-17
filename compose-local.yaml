@@ -10,6 +10,30 @@ services:
       - no-new-privileges
     ports:
       - 127.0.0.1:8081:8081
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8081/service/rest/v1/status"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 60s
+  nexus-init:
+    image: alpine:3.20
+    container_name: build-nexus-init
+    depends_on:
+      nexus:
+        condition: service_healthy
+    environment:
+      NEXUS_ADMIN_PASSWORD: ${NEXUS_ADMIN_PASSWORD:-admin123}
+    volumes:
+      - nexus-data:/nexus-data:ro
+      - ./scripts/nexus-init.sh:/nexus-init.sh:ro
+    entrypoint:
+      - sh
+      - -c
+      - apk add --no-cache curl jq >/dev/null && sh /nexus-init.sh
+    networks:
+      - default
+    restart: "no"
   maven:
     image: maven:3.9.11-eclipse-temurin-21
     container_name: build-maven-local
@@ -27,7 +51,8 @@ services:
     security_opt:
       - no-new-privileges
     depends_on:
-      - nexus
+      nexus-init:
+        condition: service_completed_successfully
   build-itself:
     build:
       dockerfile: build-itself/Dockerfile
@@ -42,8 +67,8 @@ services:
     networks:
       - default
     depends_on:
-      nexus:
-        condition: service_started
+      nexus-init:
+        condition: service_completed_successfully
 
 configs:
   settings.xml:

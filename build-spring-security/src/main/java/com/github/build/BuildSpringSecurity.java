@@ -2,6 +2,7 @@ package com.github.build;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
+import com.github.build.compile.CompileArgs;
 import com.github.build.compile.CompileService;
 import com.github.build.compile.CompilerOptions;
 import com.github.build.deps.Dependency;
@@ -17,6 +18,7 @@ import com.github.build.jar.JarService;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import com.github.build.test.junit.JUnitTestArgs;
+import com.github.build.util.FileUtils;
 import com.github.build.util.JavaCommandBuilder;
 import java.io.BufferedReader;
 import java.io.IOException;
@@ -24,9 +26,11 @@ import java.io.UncheckedIOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -74,6 +78,7 @@ public final class BuildSpringSecurity {
 
     final var projectService = new ProjectService();
     final var compileService = new CompileService();
+    final var kotlinCompileService = new KotlinCompileService(compileService);
     final var dependencyService = mavenArtifactResolver(workdir, projectService);
     final var testService = new TestService(dependencyService);
     final var jarService = new JarService();
@@ -111,13 +116,43 @@ public final class BuildSpringSecurity {
     final Project kerberosTest = createProjectKerberosTest(
         projectService, platform, artifactLayout
     );
-    // Some modules are not built yet because they require build features the project does not
-    // support: Kotlin compilation and generated sources (config, saml2), integration test source
-    // sets (ldap), classifier-qualified runtime artifacts (oauth2-jose/oauth2-client/
-    // oauth2-resource-server and their dependents), and Gradle-style highest-version conflict
-    // resolution (webauthn). Modules depending on the skipped config/test modules are skipped too.
+    final Project ldap = createProjectLdap(projectService, platform, artifactLayout, core);
+    final Project saml2 = createProjectSaml2(projectService, platform, artifactLayout, web);
+    final Project oauth2Jose = createProjectOauth2Jose(
+        projectService, platform, artifactLayout, core, oauth2Core
+    );
+    final Project oauth2Client = createProjectOauth2Client(
+        projectService, platform, artifactLayout, core, web, oauth2Core, oauth2Jose
+    );
+    final Project oauth2ResourceServer = createProjectOauth2ResourceServer(
+        projectService, platform, artifactLayout, core, web, oauth2Core, oauth2Jose
+    );
+    final Project oauth2AuthorizationServer = createProjectOauth2AuthorizationServer(
+        projectService, platform, artifactLayout, web, oauth2Core, oauth2Jose, oauth2ResourceServer
+    );
+    final Project rsocket = createProjectRsocket(
+        projectService, platform, artifactLayout, core, oauth2ResourceServer
+    );
+    final Project webauthn = createProjectWebauthn(
+        projectService, platform, artifactLayout, core, web
+    );
+    final Project config = createProjectConfig(
+        projectService, platform, artifactLayout, core, data, web, messaging, access, ldap, saml2,
+        oauth2Client, oauth2Jose, oauth2ResourceServer, oauth2AuthorizationServer, rsocket, webauthn
+    );
+    final Project test = createProjectTest(
+        projectService, platform, artifactLayout, core, web, oauth2Jose, oauth2Client,
+        oauth2ResourceServer, config
+    );
     final List<Project> projects = List.of(crypto, core, acl, data, web, messaging, access, aspects,
-        cas, oauth2Core, taglibs, kerberosCore, kerberosTest);
+        cas, oauth2Core, taglibs, kerberosCore, kerberosTest, ldap, saml2, oauth2Jose, oauth2Client,
+        oauth2ResourceServer, oauth2AuthorizationServer, rsocket, webauthn, config, test);
+    // These modules currently build main source sets only: their test source sets need build
+    // features the project does not support yet (generated sources, extra source sets,
+    // classifier-qualified runtime artifacts, Gradle-style highest-version conflict resolution).
+    // See BLOCKED_MODULES.md.
+    final Set<Project> projectsWithoutTests = Set.of(ldap, saml2, oauth2Jose, oauth2Client,
+        oauth2ResourceServer, oauth2AuthorizationServer, rsocket, webauthn, config, test);
 
     projects.forEach(project -> service.clean(workdir, project));
 
@@ -145,8 +180,8 @@ public final class BuildSpringSecurity {
       if (project == aspects) {
         mainCompiled = compileAspectJMain(workdir, project, service);
       } else {
-        mainCompiled = service.compile(
-            workdir, project.mainSourceSet(), compilerOptions
+        mainCompiled = compile(
+            workdir, project.mainSourceSet(), compilerOptions, service, kotlinCompileService
         );
       }
       if (!mainCompiled) {
@@ -157,6 +192,15 @@ public final class BuildSpringSecurity {
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
       if (project == core) {
         generateSpringVersionsFile(workdir, project, springCoreVersion);
+      }
+      if (project == saml2) {
+        // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
+        // duplicate classes (one shared Saml2Utils class).
+        if (!compileOpenSaml5Main(workdir, project, service, compileService, compilerOptions)) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
       }
 
       final var additionalEntries = new HashMap<Path, JarArgs.Content>();
@@ -178,6 +222,12 @@ public final class BuildSpringSecurity {
           .setImplementationVersion(project.version())
           .build();
       service.createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
+
+      if (projectsWithoutTests.contains(project)) {
+        log.info("[project={}] Skipping test source set (not supported yet)",
+            project.artifactId());
+        continue;
+      }
 
       log.info("[project={}] Compiling test source set", project.artifactId());
       final SourceSet testSourceSet = project.testSourceSet();
@@ -361,6 +411,116 @@ public final class BuildSpringSecurity {
 
     service.copyResources(workdir, extraSourceSet);
     service.createJar(workdir, extraSourceSet, Map.of(), null);
+  }
+
+  /**
+   * Compiles a source set, dispatching to mixed Kotlin/Java compilation when it contains Kotlin
+   * sources and to plain javac otherwise.
+   */
+  private static boolean compile(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final CompilerOptions compilerOptions,
+      final BuildService service,
+      final KotlinCompileService kotlinCompileService
+  ) {
+    if (!KotlinCompileService.hasKotlinSources(workdir, sourceSet)) {
+      return service.compile(workdir, sourceSet, compilerOptions);
+    }
+
+    final Path classesDir = classesDir(workdir, sourceSet.project(), sourceSet.id());
+    final Set<Path> classpath = service.compileClasspath(workdir, sourceSet);
+    return kotlinCompileService.compile(
+        workdir, sourceSet, classesDir, classpath, compilerOptions
+    );
+  }
+
+  private static final String OPEN_SAML5_SOURCE_SET = "opensaml5Main";
+
+  /**
+   * Compiles the {@code opensaml5Main} source set of the saml2 module and merges its classes into
+   * the main output.
+   *
+   * <p>Gradle compiles this source set separately (it depends on the main output and shares a single
+   * class with it: {@code Saml2Utils}), then adds it to the main jar with
+   * {@code DuplicatesStrategy.EXCLUDE}, so the main output wins on collisions.
+   */
+  private static boolean compileOpenSaml5Main(
+      final Path workdir,
+      final Project project,
+      final BuildService service,
+      final CompileService compileService,
+      final CompilerOptions compilerOptions
+  ) {
+    final Path sourceDir = workdir
+        .resolve(project.path())
+        .resolve("src")
+        .resolve(OPEN_SAML5_SOURCE_SET)
+        .resolve("java");
+    if (!Files.isDirectory(sourceDir)) {
+      return true;
+    }
+
+    final Set<Path> sources = collectJavaSources(sourceDir);
+    if (sources.isEmpty()) {
+      return true;
+    }
+
+    log.info("[project={}] Compiling {} source set ({} files)",
+        project.artifactId(), OPEN_SAML5_SOURCE_SET, sources.size());
+
+    final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
+    final Path sourceSetClassesDir =
+        classesDir(workdir, project, new SourceSet.Id(OPEN_SAML5_SOURCE_SET));
+    final Set<Path> classpath = new HashSet<>(
+        service.compileClasspath(workdir, project.mainSourceSet())
+    );
+    classpath.add(mainClassesDir);
+
+    final boolean compiled = compileService.compile(new CompileArgs(
+        sources, sourceSetClassesDir, classpath, compilerOptions
+    ));
+    if (!compiled) {
+      return false;
+    }
+
+    mergeClasses(sourceSetClassesDir, mainClassesDir);
+    return true;
+  }
+
+  private static Set<Path> collectJavaSources(final Path sourceDir) {
+    try (final Stream<Path> files = Files.walk(sourceDir)) {
+      return files
+          .filter(Files::isRegularFile)
+          .filter(file -> file.getFileName().toString().endsWith(".java"))
+          .collect(Collectors.toUnmodifiableSet());
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  /**
+   * Copies files from {@code sourceDir} to {@code targetDir}, never overwriting existing files.
+   */
+  private static void mergeClasses(final Path sourceDir, final Path targetDir) {
+    for (final Path file : FileUtils.listAll(sourceDir, Comparator.naturalOrder())) {
+      if (Files.isDirectory(file)) {
+        continue;
+      }
+
+      // the main output wins on duplicate classes
+      final Path target = targetDir.resolve(sourceDir.relativize(file));
+      if (Files.exists(target)) {
+        continue;
+      }
+
+      try {
+        Files.createDirectories(target.getParent());
+        Files.copy(file, target, StandardCopyOption.COPY_ATTRIBUTES);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+    }
   }
 
   /**
@@ -1105,6 +1265,588 @@ public final class BuildSpringSecurity {
     );
   }
 
+  private static Project createProjectConfig(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project data,
+      final Project web,
+      final Project messaging,
+      final Project access,
+      final Project ldap,
+      final Project saml2,
+      final Project oauth2Client,
+      final Project oauth2Jose,
+      final Project oauth2ResourceServer,
+      final Project oauth2AuthorizationServer,
+      final Project rsocket,
+      final Project webauthn
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        GroupArtifact.parse("org.springframework:spring-aop"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.jetbrains.kotlin:kotlin-stdlib")
+    );
+    // Optional dependencies are compile-only for consumers but are required to compile this
+    // module.
+    final List<MainSourceSetDependency> optional = List.of(
+        access,
+        data,
+        messaging,
+        web,
+        ldap,
+        saml2,
+        oauth2Client,
+        oauth2Jose,
+        oauth2ResourceServer,
+        oauth2AuthorizationServer,
+        rsocket,
+        webauthn,
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.aspectj:aspectjweaver"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-messaging"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("org.springframework:spring-web"),
+        GroupArtifact.parse("org.springframework:spring-webflux"),
+        GroupArtifact.parse("org.springframework:spring-webmvc"),
+        GroupArtifact.parse("org.springframework:spring-websocket"),
+        GroupArtifact.parse("org.jetbrains.kotlin:kotlin-reflect"),
+        GroupArtifact.parse("jakarta.annotation:jakarta.annotation-api")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java"), Path.of("src", "main", "kotlin")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    // TODO: config tests depend on the test source sets of access/core/web/test/ldap/oauth2-*/
+    // saml2/webauthn, which are not built yet. Enable once those are available.
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java"), Path.of("src", "test", "kotlin")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-config",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("config"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectTest(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web,
+      final Project oauth2Jose,
+      final Project oauth2Client,
+      final Project oauth2ResourceServer,
+      final Project config
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        web,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        oauth2Client,
+        oauth2Jose,
+        oauth2ResourceServer,
+        config,
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.springframework:spring-webmvc"),
+        GroupArtifact.parse("org.springframework:spring-webflux")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    // TODO: test tests depend on the config test source set and on test classes from
+    // oauth2-core/oauth2-client/oauth2-jose, which are not built yet.
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-test",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("test"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectLdap(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-context"),
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("org.springframework.ldap:spring-ldap-core")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("ldapsdk:ldapsdk"),
+        GroupArtifact.parse("com.unboundid:unboundid-ldapsdk"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-ldap",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("ldap"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectSaml2(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project web
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        web,
+        GroupArtifact.parse("org.opensaml:opensaml-saml-api"),
+        GroupArtifact.parse("org.opensaml:opensaml-saml-impl")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    // src/opensaml5Main/java is compiled separately (see compileOpenSaml5Main): it depends on the
+    // main output and shares one class (Saml2Utils) with it.
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-saml2-service-provider",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("saml2", "saml2-service-provider"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectOauth2Jose(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project oauth2Core
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        oauth2Core,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("com.nimbusds:nimbus-jose-jwt")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.springframework:spring-webflux")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-oauth2-jose",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("oauth2", "oauth2-jose"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectOauth2Client(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web,
+      final Project oauth2Core,
+      final Project oauth2Jose
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        oauth2Core,
+        web,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("com.nimbusds:oauth2-oidc-sdk")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        oauth2Jose,
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.springframework:spring-webflux"),
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-r2dbc"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-oauth2-client",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("oauth2", "oauth2-client"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectOauth2ResourceServer(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web,
+      final Project oauth2Core,
+      final Project oauth2Jose
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        oauth2Core,
+        web,
+        GroupArtifact.parse("org.springframework:spring-core")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        oauth2Jose,
+        GroupArtifact.parse("com.nimbusds:oauth2-oidc-sdk"),
+        GroupArtifact.parse("io.projectreactor:reactor-core"),
+        GroupArtifact.parse("org.springframework:spring-webflux")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-oauth2-resource-server",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("oauth2", "oauth2-resource-server"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectOauth2AuthorizationServer(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project web,
+      final Project oauth2Core,
+      final Project oauth2Jose,
+      final Project oauth2ResourceServer
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        web,
+        oauth2Core,
+        oauth2Jose,
+        oauth2ResourceServer,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("com.nimbusds:nimbus-jose-jwt"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+        GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
+        GroupArtifact.parse("org.springframework:spring-jdbc")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-oauth2-authorization-server",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("oauth2", "oauth2-authorization-server"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectRsocket(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project oauth2ResourceServer
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        GroupArtifact.parse("io.rsocket:rsocket-core")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        oauth2ResourceServer,
+        GroupArtifact.parse("org.springframework:spring-messaging")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-rsocket",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("rsocket"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
+  private static Project createProjectWebauthn(
+      final ProjectService projectService,
+      final DependencyConstraints platform,
+      final Project.ArtifactLayout artifactLayout,
+      final Project core,
+      final Project web
+  ) {
+    final List<MainSourceSetDependency> api = List.of(
+        core,
+        web,
+        GroupArtifact.parse("org.springframework:spring-core"),
+        GroupArtifact.parse("org.springframework:spring-beans"),
+        GroupArtifact.parse("org.springframework:spring-web"),
+        GroupArtifactVersion.parse("com.webauthn4j:webauthn4j-core:0.31.6.RELEASE")
+    );
+    final List<MainSourceSetDependency> optional = List.of(
+        GroupArtifact.parse("org.springframework:spring-jdbc"),
+        GroupArtifact.parse("org.springframework:spring-tx"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
+        GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind")
+    );
+    final List<MainSourceSetDependency> provided = List.of(
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api")
+    );
+    final var mainCompileDependencies = new ArrayList<>(api);
+    mainCompileDependencies.addAll(optional);
+    mainCompileDependencies.addAll(provided);
+
+    final var main = new MainSourceSetArgs(
+        SourceSet.Id.MAIN.toString(),
+        Set.of(Path.of("src", "main", "java")),
+        Set.of(Path.of("src", "main", "resources")),
+        mainCompileDependencies,
+        api,
+        platform
+    );
+
+    final var test = new TestSourceSetArgs(
+        SourceSet.Id.TEST.toString(),
+        Set.of(Path.of("src", "test", "java")),
+        Set.of(Path.of("src", "test", "resources")),
+        List.of(main),
+        List.of(main),
+        platform
+    );
+    return projectService.create(
+        "org.springframework.security",
+        "spring-security-webauthn",
+        "7.0.0",
+        projectBuilder -> projectBuilder
+            .withPath(Path.of("webauthn"))
+            .withArtifactLayout(artifactLayout)
+            .withSourceSets(main, test)
+    );
+  }
+
   private static Project createProjectCrypto(
       final ProjectService projectService,
       final DependencyConstraints platform,
@@ -1531,9 +2273,16 @@ public final class BuildSpringSecurity {
         System.getenv("NEXUS_HOST"),
         "localhost"
     );
+    // OpenSAML 5.x (a transitive dependency of spring-security-saml2-service-provider, which
+    // spring-security-config compiles against) is not published to Maven Central. The local Nexus
+    // proxies it through the 'shibboleth' repository configured by scripts/nexus-init.sh.
     final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
         new org.eclipse.aether.repository.RemoteRepository
             .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .build(),
+        new org.eclipse.aether.repository.RemoteRepository
+            .Builder("shibboleth", "default",
+                "http://" + nexusHost + ":8081/repository/shibboleth")
             .build()
     );
     return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
