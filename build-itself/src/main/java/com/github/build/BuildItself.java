@@ -1,7 +1,7 @@
 package com.github.build;
 
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
@@ -57,7 +57,7 @@ public class BuildItself {
   private static final TestService testService = new TestService(dependencyService);
 
   private static final BuildService buildService = new BuildService(
-      new CompileService(),
+      new JavaCompileService(),
       dependencyService,
       new JarService()
   );
@@ -76,7 +76,7 @@ public class BuildItself {
         GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
     );
 
-    final CompilerOptions java21 = CompilerOptions
+    final JavaCompilerOptions java21 = JavaCompilerOptions
         .builder()
         .release("21")
         .build();
@@ -155,7 +155,11 @@ public class BuildItself {
             GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"),
             GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"),
             GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"),
-            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4")
+            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4"),
+            GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"),
+            GroupArtifactVersion.parse(
+                "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21"
+            )
         ),
         List.of(
             GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
@@ -179,6 +183,10 @@ public class BuildItself {
     testCompileAndRun.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"));
     testCompileAndRun.add(GroupArtifactVersion.parse(
         "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
+    ));
+    testCompileAndRun.add(GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"));
+    testCompileAndRun.add(GroupArtifactVersion.parse(
+        "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21"
     ));
 
     final var testRuntime = new ArrayList<TestSourceSetDependency>(testCompileAndRun);
@@ -204,7 +212,7 @@ public class BuildItself {
   private static boolean buildTestUtils(
       final Path workdir,
       final Project project,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     log.info("Building {}", project.artifactId());
     final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
@@ -236,7 +244,7 @@ public class BuildItself {
   private static boolean buildLib(
       final Path workdir,
       final Project project,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     log.info("Building {}", project.artifactId());
     generateSourcesFromMavenXsd(workdir, project);

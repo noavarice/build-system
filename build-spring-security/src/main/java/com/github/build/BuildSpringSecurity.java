@@ -2,9 +2,9 @@ package com.github.build;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
-import com.github.build.compile.CompileArgs;
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.JavaCompileArgs;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
@@ -42,10 +42,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
-import org.aspectj.ajdt.ajc.AjdtCommand;
-import org.aspectj.bridge.AbortException;
-import org.aspectj.bridge.IMessage;
-import org.aspectj.bridge.MessageHandler;
 import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.repository.WorkspaceRepository;
@@ -77,12 +73,12 @@ public final class BuildSpringSecurity {
     }
 
     final var projectService = new ProjectService();
-    final var compileService = new CompileService();
-    final var kotlinCompileService = new KotlinCompileService(compileService);
     final var dependencyService = mavenArtifactResolver(workdir, projectService);
     final var testService = new TestService(dependencyService);
     final var jarService = new JarService();
-    final BuildService service = new BuildService(compileService, dependencyService, jarService);
+    final BuildService service = new BuildService(
+        new JavaCompileService(), dependencyService, jarService
+    );
 
     final DependencyConstraints platform = getPlatform(dependencyService);
     // TODO: consider setting this default via ProjectService
@@ -157,7 +153,7 @@ public final class BuildSpringSecurity {
     projects.forEach(project -> service.clean(workdir, project));
 
     final Path license = workdir.resolve("LICENSE.txt");
-    final var compilerOptions = CompilerOptions
+    final var compilerOptions = JavaCompilerOptions
         .builder()
         .release("17")
         .parameters(true)
@@ -176,14 +172,7 @@ public final class BuildSpringSecurity {
     // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled;
-      if (project == aspects) {
-        mainCompiled = compileAspectJMain(workdir, project, service);
-      } else {
-        mainCompiled = compile(
-            workdir, project.mainSourceSet(), compilerOptions, service, kotlinCompileService
-        );
-      }
+      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -196,7 +185,7 @@ public final class BuildSpringSecurity {
       if (project == saml2) {
         // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
         // duplicate classes (one shared Saml2Utils class).
-        if (!compileOpenSaml5Main(workdir, project, service, compileService, compilerOptions)) {
+        if (!compileOpenSaml5Main(workdir, project, service, compilerOptions)) {
           log.error("Build failed");
           System.exit(1);
           return;
@@ -234,12 +223,7 @@ public final class BuildSpringSecurity {
 
       buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
 
-      final boolean testCompiled;
-      if (project == aspects) {
-        testCompiled = compileAspectJTest(workdir, project, service);
-      } else {
-        testCompiled = service.compileTest(workdir, project, compilerOptions);
-      }
+      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
       if (!testCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -376,7 +360,7 @@ public final class BuildSpringSecurity {
   }
 
   private static void buildExtraSourceSets(final SourceSet testSourceSet,
-      final CompilerOptions compilerOptions, final Path workdir,
+      final JavaCompilerOptions compilerOptions, final Path workdir,
       final BuildService service) {
     final var processedExtraSourceSets = new HashSet<SourceSet>();
     for (final Dependency dependency : testSourceSet.compileDependencies()) {
@@ -397,7 +381,7 @@ public final class BuildSpringSecurity {
   }
 
   private static void buildExtraSourceSet(final SourceSet extraSourceSet, final Path workdir,
-      final BuildService service, final CompilerOptions compilerOptions) {
+      final BuildService service, final JavaCompilerOptions compilerOptions) {
     final var project = extraSourceSet.project();
     log.debug("[project={}] Compiling extra source set {} first", project.artifactId(),
         extraSourceSet.id());
@@ -411,28 +395,6 @@ public final class BuildSpringSecurity {
 
     service.copyResources(workdir, extraSourceSet);
     service.createJar(workdir, extraSourceSet, Map.of(), null);
-  }
-
-  /**
-   * Compiles a source set, dispatching to mixed Kotlin/Java compilation when it contains Kotlin
-   * sources and to plain javac otherwise.
-   */
-  private static boolean compile(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final CompilerOptions compilerOptions,
-      final BuildService service,
-      final KotlinCompileService kotlinCompileService
-  ) {
-    if (!KotlinCompileService.hasKotlinSources(workdir, sourceSet)) {
-      return service.compile(workdir, sourceSet, compilerOptions);
-    }
-
-    final Path classesDir = classesDir(workdir, sourceSet.project(), sourceSet.id());
-    final Set<Path> classpath = service.compileClasspath(workdir, sourceSet);
-    return kotlinCompileService.compile(
-        workdir, sourceSet, classesDir, classpath, compilerOptions
-    );
   }
 
   private static final String OPEN_SAML5_SOURCE_SET = "opensaml5Main";
@@ -449,8 +411,7 @@ public final class BuildSpringSecurity {
       final Path workdir,
       final Project project,
       final BuildService service,
-      final CompileService compileService,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     final Path sourceDir = workdir
         .resolve(project.path())
@@ -477,7 +438,7 @@ public final class BuildSpringSecurity {
     );
     classpath.add(mainClassesDir);
 
-    final boolean compiled = compileService.compile(new CompileArgs(
+    final boolean compiled = service.compileJava(new JavaCompileArgs(
         sources, sourceSetClassesDir, classpath, compilerOptions
     ));
     if (!compiled) {
@@ -523,84 +484,6 @@ public final class BuildSpringSecurity {
     }
   }
 
-  /**
-   * Compiles the main source set of the {@code aspects} project with AspectJ compiler.
-   *
-   * <p>The module is written in AspectJ (<code>.aj</code> files) which can't be compiled with
-   * regular javac. AspectJ compiler also generates {@code META-INF/aop.xml} to enable load-time
-   * weaving for consuming applications.
-   */
-  private static boolean compileAspectJMain(
-      final Path workdir,
-      final Project project,
-      final BuildService service
-  ) {
-    final SourceSet sourceSet = project.mainSourceSet();
-    final Path classesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
-    final Set<Path> classpath = service.compileClasspath(workdir, sourceSet);
-
-    final var args = new ArrayList<String>();
-    addAspectJVersionArgs(args);
-    args.add("-classpath");
-    args.add(classpath.stream().map(Path::toString).collect(Collectors.joining(":")));
-    for (final Path sourceDir : sourceSet.aspectjSourceRoots().directories()) {
-      final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
-      args.add("-sourceroots");
-      args.add(absoluteSourceDir.toString());
-    }
-    args.add("-d");
-    args.add(classesDir.toString());
-    args.add("-outxmlfile");
-    args.add("META-INF/aop.xml");
-
-    return runAspectJCompile(args);
-  }
-
-  /**
-   * Compiles the test source set of the {@code aspects} project.
-   *
-   * <p>Test classes are woven with the main aspects at compile time, which is an equivalent of
-   * Gradle's {@code testAspect sourceSets.main.output}.
-   */
-  private static boolean compileAspectJTest(
-      final Path workdir,
-      final Project project,
-      final BuildService service
-  ) {
-    final SourceSet sourceSet = project.testSourceSet();
-    final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
-    final Path testClassesDir = classesDir(workdir, project, SourceSet.Id.TEST);
-
-    final Set<Path> classpath = new HashSet<>(service.compileClasspath(workdir, sourceSet));
-    classpath.add(mainClassesDir);
-
-    final var args = new ArrayList<String>();
-    addAspectJVersionArgs(args);
-    args.add("-classpath");
-    args.add(classpath.stream().map(Path::toString).collect(Collectors.joining(":")));
-    // main aspect output weaves test classes at compile time
-    args.add("-aspectpath");
-    args.add(mainClassesDir.toString());
-    for (final Path sourceDir : sourceSet.aspectjSourceRoots().directories()) {
-      final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
-      args.add("-sourceroots");
-      args.add(absoluteSourceDir.toString());
-    }
-    args.add("-d");
-    args.add(testClassesDir.toString());
-
-    return runAspectJCompile(args);
-  }
-
-  private static void addAspectJVersionArgs(final List<String> args) {
-    // AspectJ compiler uses -source/-target instead of javac's --release
-    args.add("-source");
-    args.add("17");
-    args.add("-target");
-    args.add("17");
-    args.add("-parameters");
-  }
-
   private static Path classesDir(
       final Path workdir,
       final Project project,
@@ -611,29 +494,6 @@ public final class BuildSpringSecurity {
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
         .resolve(sourceSetId.toString());
-  }
-
-  private static boolean runAspectJCompile(final List<String> args) {
-    log.info("[ajc] Compiling with AspectJ compiler: {}", String.join(" ", args));
-    final var command = new AjdtCommand();
-    final var messageHandler = new MessageHandler();
-    final boolean success;
-    try {
-      success = command.runCommand(args.toArray(String[]::new), messageHandler);
-    } catch (final AbortException e) {
-      log.error("[ajc] Compilation aborted", e);
-      return false;
-    }
-    for (final IMessage message : messageHandler.getMessages(IMessage.ERROR, true)) {
-      log.error("[ajc] {}", message);
-    }
-    for (final IMessage message : messageHandler.getMessages(IMessage.WARNING, true)) {
-      log.warn("[ajc] {}", message);
-    }
-    if (!success) {
-      log.error("[ajc] Compilation failed");
-    }
-    return success;
   }
 
   private static void generateSpringVersionsFile(

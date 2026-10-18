@@ -13,4 +13,6 @@ module com.github.build {
   requires plexus.utils;
   requires org.apache.maven.resolver;
   requires org.apache.maven.resolver.util;
+  requires org.aspectj.tools;
+  requires kotlin.compiler.embeddable;
 }

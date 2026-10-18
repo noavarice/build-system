@@ -7,9 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.compile.CompileArgs;
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.JavaCompileArgs;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarService;
 import java.nio.charset.StandardCharsets;
@@ -31,7 +31,7 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("JAR tests")
 class JarServiceTest {
 
-  private final CompileService compileService = new CompileService();
+  private final JavaCompileService compileService = new JavaCompileService();
 
   private final JarService service = new JarService();
 
@@ -66,11 +66,11 @@ class JarServiceTest {
     final Path classFile;
     {
       final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
-      final var args = new CompileArgs(
+      final var args = new JavaCompileArgs(
           Set.of(source),
           tempDir.resolve("classes"),
           Set.of(),
-          CompilerOptions.EMPTY
+          JavaCompilerOptions.EMPTY
       );
       compileService.compile(args);
       classFile = tempDir.resolve("classes/org/example/HelloWorld.class");

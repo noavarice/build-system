@@ -1,8 +1,8 @@
-package com.github.build;
+package com.github.build.compile;
 
-import com.github.build.compile.CompileArgs;
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.Project;
+import com.github.build.SourceRoots;
+import com.github.build.SourceSet;
 import java.io.File;
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -38,9 +38,9 @@ public final class KotlinCompileService {
 
   private static final String KOTLIN_LANGUAGE_VERSION = "2.2";
 
-  private final CompileService compileService;
+  private final JavaCompileService compileService;
 
-  public KotlinCompileService(final CompileService compileService) {
+  public KotlinCompileService(final JavaCompileService compileService) {
     this.compileService = Objects.requireNonNull(compileService);
   }
 
@@ -87,7 +87,7 @@ public final class KotlinCompileService {
       final SourceSet sourceSet,
       final Path classesDir,
       final Set<Path> classpath,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
@@ -138,7 +138,7 @@ public final class KotlinCompileService {
         project.artifactId(), sourceSetId, javaSources.size());
     final var javaClasspath = new LinkedHashSet<>(classpath);
     javaClasspath.add(classesDir);
-    return compileService.compile(new CompileArgs(
+    return compileService.compile(new JavaCompileArgs(
         new LinkedHashSet<>(javaSources),
         classesDir,
         javaClasspath,

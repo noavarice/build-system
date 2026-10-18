@@ -10,12 +10,12 @@ import org.junit.jupiter.api.Test;
  * @author noavarice
  */
 @DisplayName("Compiler options domain object tests")
-class CompilerOptionsTest {
+class JavaCompilerOptionsTest {
 
   @DisplayName("Check converting object to list of compiler option strings")
   @Test
   void testToList() {
-    final var options = CompilerOptions
+    final var options = JavaCompilerOptions
         .builder()
         .release("17")
         .parameters(true)

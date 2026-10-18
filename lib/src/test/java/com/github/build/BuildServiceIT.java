@@ -7,8 +7,8 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
@@ -57,7 +57,7 @@ class BuildServiceIT {
         projectService,
         null // without project workspace reader, so does not suit all tests
     );
-    service = new BuildService(new CompileService(), dependencyService, new JarService());
+    service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
   }
 
   @DisplayName("Check compiling main source set")
@@ -93,7 +93,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Classes directory created but empty",
@@ -124,7 +124,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file exists",
@@ -160,7 +160,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file exists",
@@ -191,7 +191,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -225,7 +225,7 @@ class BuildServiceIT {
           tempDir
       );
       final var service = new BuildService(
-          new CompileService(),
+          new JavaCompileService(),
           dependencyService,
           new JarService()
       );
@@ -239,7 +239,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file exists",
@@ -281,7 +281,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -326,7 +326,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -369,7 +369,7 @@ class BuildServiceIT {
       );
 
       final BuildService service = new BuildService(
-          new CompileService(),
+          new JavaCompileService(),
           dependencyService,
           new JarService()
       );
@@ -383,7 +383,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file exists",
@@ -439,7 +439,7 @@ class BuildServiceIT {
           tempDir
       );
       final var service = new BuildService(
-          new CompileService(),
+          new JavaCompileService(),
           dependencyService,
           new JarService()
       );
@@ -454,7 +454,7 @@ class BuildServiceIT {
           dynamicTest(
               "Compilation fails",
               () -> assertFalse(
-                  service.compileMain(tempDir, calculatorConsumerProject, CompilerOptions.EMPTY)
+                  service.compileMain(tempDir, calculatorConsumerProject, JavaCompilerOptions.EMPTY)
               )
           ),
           dynamicTest(
@@ -506,12 +506,12 @@ class BuildServiceIT {
           tempDir
       );
       final var service = new BuildService(
-          new CompileService(),
+          new JavaCompileService(),
           dependencyService,
           new JarService()
       );
 
-      assertThat(service.compileMain(tempDir, calculatorProject, CompilerOptions.EMPTY)).isTrue();
+      assertThat(service.compileMain(tempDir, calculatorProject, JavaCompilerOptions.EMPTY)).isTrue();
       service.createJar(tempDir, calculatorProject, Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
@@ -524,7 +524,7 @@ class BuildServiceIT {
           dynamicTest(
               "Compilation succeeds",
               () -> assertTrue(
-                  service.compileMain(tempDir, calculatorConsumerProject, CompilerOptions.EMPTY)
+                  service.compileMain(tempDir, calculatorConsumerProject, JavaCompilerOptions.EMPTY)
               )
           ),
           dynamicTest(
@@ -571,7 +571,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileTest(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertFalse(service.compileTest(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file does not exist",
@@ -606,11 +606,11 @@ class BuildServiceIT {
       final var dependencyService =
           createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
       final BuildService service = new BuildService(
-          new CompileService(),
+          new JavaCompileService(),
           dependencyService,
           new JarService()
       );
-      assertTrue(service.compileMain(tempDir, project, CompilerOptions.EMPTY));
+      assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY));
       service.createJar(tempDir, project.mainSourceSet(), Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/test");
@@ -622,7 +622,7 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileTest(tempDir, project, CompilerOptions.EMPTY))
+              () -> assertTrue(service.compileTest(tempDir, project, JavaCompilerOptions.EMPTY))
           ),
           dynamicTest(
               "Class file exists",
@@ -689,7 +689,7 @@ class BuildServiceIT {
                   TestSourceSetArgs.withTestDefaults()
               )
       );
-      final var java21 = CompilerOptions
+      final var java21 = JavaCompilerOptions
           .builder()
           .release("21")
           .build();

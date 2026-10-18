@@ -5,7 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assumptions.assumeThat;
 import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 
-import com.github.build.compile.CompileService;
+import com.github.build.compile.JavaCompileService;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.DependencyServiceImpl;
@@ -42,7 +42,7 @@ class CopyTest {
 
   CopyTest(@TempDir final Path localRepoBase) {
     projectService = new ProjectService();
-    final CompileService compileService = new CompileService();
+    final JavaCompileService compileService = new JavaCompileService();
     final var remoteRepository = new RemoteRepositoryImpl(
         // TODO: externalize
         URI.create("http://localhost:8081/repository/maven-central"),

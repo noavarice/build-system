@@ -20,14 +20,14 @@ import java.util.Set;
  * undesired implementation-dependent path resolution
  * @since 1.0.0
  */
-public record CompileArgs(
+public record JavaCompileArgs(
     Set<Path> sources,
     Path classesDir,
     Set<Path> classpath,
-    CompilerOptions options
+    JavaCompilerOptions options
 ) {
 
-  public CompileArgs {
+  public JavaCompileArgs {
     sources = Objects.requireNonNull(sources)
         .stream()
         .map(Objects::requireNonNull)

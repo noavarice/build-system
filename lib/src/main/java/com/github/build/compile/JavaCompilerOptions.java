@@ -7,9 +7,9 @@ import org.jspecify.annotations.Nullable;
 /**
  * @author noavarice
  */
-public final class CompilerOptions {
+public final class JavaCompilerOptions {
 
-  public static final CompilerOptions EMPTY = new CompilerOptions(null, false);
+  public static final JavaCompilerOptions EMPTY = new JavaCompilerOptions(null, false);
 
   public static Builder builder() {
     return new Builder();
@@ -20,7 +20,7 @@ public final class CompilerOptions {
 
   private final boolean parameters;
 
-  private CompilerOptions(@Nullable final String release, final boolean parameters) {
+  private JavaCompilerOptions(@Nullable final String release, final boolean parameters) {
     this.release = release;
     this.parameters = parameters;
   }
@@ -70,8 +70,8 @@ public final class CompilerOptions {
       return this;
     }
 
-    public CompilerOptions build() {
-      return new CompilerOptions(release, parameters);
+    public JavaCompilerOptions build() {
+      return new JavaCompilerOptions(release, parameters);
     }
   }
 }

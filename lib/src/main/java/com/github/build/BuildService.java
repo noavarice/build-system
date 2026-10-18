@@ -1,8 +1,11 @@
 package com.github.build;
 
-import com.github.build.compile.CompileArgs;
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.AspectJCompileArgs;
+import com.github.build.compile.AspectJCompileService;
+import com.github.build.compile.JavaCompileArgs;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
+import com.github.build.compile.KotlinCompileService;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
@@ -40,18 +43,24 @@ public final class BuildService {
 
   private static final Logger log = LoggerFactory.getLogger(BuildService.class);
 
-  private final CompileService compileService;
+  private final JavaCompileService javaCompileService;
+
+  private final KotlinCompileService kotlinCompileService;
+
+  private final AspectJCompileService aspectJCompileService;
 
   private final DependencyService dependencyService;
 
   private final JarService jarService;
 
   public BuildService(
-      final CompileService compileService,
+      final JavaCompileService javaCompileService,
       final DependencyService dependencyService,
       final JarService jarService
   ) {
-    this.compileService = Objects.requireNonNull(compileService);
+    this.javaCompileService = Objects.requireNonNull(javaCompileService);
+    this.kotlinCompileService = new KotlinCompileService(javaCompileService);
+    this.aspectJCompileService = new AspectJCompileService();
     this.dependencyService = Objects.requireNonNull(dependencyService);
     this.jarService = jarService;
   }
@@ -59,7 +68,7 @@ public final class BuildService {
   public boolean compileMain(
       final Path workdir,
       final Project project,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     return compile(workdir, project.mainSourceSet(), compilerOptions);
   }
@@ -67,7 +76,7 @@ public final class BuildService {
   public boolean compileTest(
       final Path workdir,
       final Project project,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
   ) {
     return compile(workdir, project.testSourceSet(), compilerOptions);
   }
@@ -90,10 +99,45 @@ public final class BuildService {
     return classpath;
   }
 
+  /**
+   * Compiles a source set with the compiler matching the languages it declares. AspectJ sources
+   * take precedence over Kotlin, and Kotlin over Java.
+   *
+   * @param workdir         Build working directory
+   * @param sourceSet       Source set to compile
+   * @param compilerOptions Java compiler options
+   * @return True if compilation succeeds, false otherwise
+   */
   public boolean compile(
       final Path workdir,
       final SourceSet sourceSet,
-      final CompilerOptions compilerOptions
+      final JavaCompilerOptions compilerOptions
+  ) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+    Objects.requireNonNull(compilerOptions);
+
+    if (!sourceSet.aspectjSourceRoots().isEmpty()) {
+      return compileAspectJ(workdir, sourceSet);
+    }
+    if (KotlinCompileService.hasKotlinSources(workdir, sourceSet)) {
+      return compileKotlin(workdir, sourceSet, compilerOptions);
+    }
+    return compileJava(workdir, sourceSet, compilerOptions);
+  }
+
+  /**
+   * Compiles Java sources of a source set with javac.
+   *
+   * @param workdir         Build working directory
+   * @param sourceSet       Source set to compile
+   * @param compilerOptions Java compiler options
+   * @return True if compilation succeeds, false otherwise
+   */
+  public boolean compileJava(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final JavaCompilerOptions compilerOptions
   ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
@@ -103,19 +147,10 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    log.info("[project={}] [ss={}] Compiling", project.artifactId(), sourceSetId);
+    log.info("[project={}] [ss={}] Compiling Java", project.artifactId(), sourceSetId);
 
-    final Path classesDir = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().classesDir())
-        .resolve(sourceSetId.toString());
-
-    try {
-      Files.createDirectories(classesDir);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
+    final Path classesDir = classesDir(workdir, project, sourceSetId);
+    createDirectories(classesDir);
 
     final Set<Path> sources = collectSources(workdir, project, sourceSetId);
     if (sources.isEmpty()) {
@@ -136,8 +171,127 @@ public final class BuildService {
       return false;
     }
 
-    final var compileArgs = new CompileArgs(sources, classesDir, classpath, compilerOptions);
-    return compileService.compile(compileArgs);
+    return javaCompileService.compile(
+        new JavaCompileArgs(sources, classesDir, classpath, compilerOptions)
+    );
+  }
+
+  /**
+   * Compiles sources described by pre-built {@link JavaCompileArgs}. Useful for sources that are
+   * not described by a {@link SourceSet}.
+   *
+   * @param args Compilation arguments
+   * @return True if compilation succeeds, false otherwise
+   */
+  public boolean compileJava(final JavaCompileArgs args) {
+    Objects.requireNonNull(args);
+    return javaCompileService.compile(args);
+  }
+
+  /**
+   * Compiles Kotlin and Java sources of a source set. Kotlin is compiled first with the Java sources
+   * exposed as source roots, then Java is compiled against the Kotlin output.
+   *
+   * @param workdir         Build working directory
+   * @param sourceSet       Source set to compile
+   * @param compilerOptions Java compiler options
+   * @return True if compilation succeeds, false otherwise
+   */
+  public boolean compileKotlin(
+      final Path workdir,
+      final SourceSet sourceSet,
+      final JavaCompilerOptions compilerOptions
+  ) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+    Objects.requireNonNull(compilerOptions);
+
+    PathUtils.checkAbsolute(workdir);
+
+    final Project project = sourceSet.project();
+    final Path classesDir = classesDir(workdir, project, sourceSet.id());
+    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+    return kotlinCompileService.compile(
+        workdir, sourceSet, classesDir, classpath, compilerOptions
+    );
+  }
+
+  /**
+   * Compiles AspectJ and Java sources of a source set with the AspectJ compiler.
+   *
+   * <p>When compiling a test source set, the main source set output is added to the aspect path so
+   * test classes are woven against the main aspects at compile time.
+   *
+   * @param workdir   Build working directory
+   * @param sourceSet Source set to compile
+   * @return True if compilation succeeds, false otherwise
+   */
+  public boolean compileAspectJ(final Path workdir, final SourceSet sourceSet) {
+    Objects.requireNonNull(workdir);
+    Objects.requireNonNull(sourceSet);
+
+    PathUtils.checkAbsolute(workdir);
+
+    final Project project = sourceSet.project();
+    final SourceSet.Id sourceSetId = sourceSet.id();
+    final Path classesDir = classesDir(workdir, project, sourceSetId);
+    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+    final Set<Path> sourceRoots = resolveDirectories(
+        workdir, project, sourceSet.aspectjSourceRoots()
+    );
+
+    final Set<Path> aspectPath = new HashSet<>();
+    final Path outXmlFile;
+    if (sourceSetId.equals(SourceSet.Id.TEST)) {
+      // main aspects weave test classes at compile time
+      final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
+      aspectPath.add(mainClassesDir);
+      classpath.add(mainClassesDir);
+      outXmlFile = null;
+    } else if (sourceSetId.equals(SourceSet.Id.MAIN)) {
+      outXmlFile = Path.of("META-INF", "aop.xml");
+    } else {
+      outXmlFile = null;
+    }
+
+    return aspectJCompileService.compile(
+        new AspectJCompileArgs(sourceRoots, classesDir, classpath, aspectPath, outXmlFile)
+    );
+  }
+
+  private static Path classesDir(
+      final Path workdir,
+      final Project project,
+      final SourceSet.Id sourceSetId
+  ) {
+    return workdir
+        .resolve(project.path())
+        .resolve(project.artifactLayout().rootDir())
+        .resolve(project.artifactLayout().classesDir())
+        .resolve(sourceSetId.toString());
+  }
+
+  private static Set<Path> resolveDirectories(
+      final Path workdir,
+      final Project project,
+      final SourceRoots sourceRoots
+  ) {
+    final Set<Path> directories = new HashSet<>();
+    for (final Path relativeDir : sourceRoots.directories()) {
+      final Path directory = workdir.resolve(project.path()).resolve(relativeDir);
+      if (Files.isDirectory(directory)) {
+        directories.add(directory);
+      }
+    }
+    return directories;
+  }
+
+  private static void createDirectories(final Path directory) {
+    try {
+      Files.createDirectories(directory);
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
   }
 
   private void addSourceSetCompileClasspath(

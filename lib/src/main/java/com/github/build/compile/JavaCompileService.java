@@ -21,9 +21,9 @@ import org.slf4j.event.Level;
 /**
  * @author noavarice
  */
-public final class CompileService {
+public final class JavaCompileService {
 
-  private static final Logger log = LoggerFactory.getLogger(CompileService.class);
+  private static final Logger log = LoggerFactory.getLogger(JavaCompileService.class);
 
   /**
    * Performs compilation with specified arguments.
@@ -31,7 +31,7 @@ public final class CompileService {
    * @param args Compilation arguments (sources, classes directory, etc.)
    * @return True if compilation succeeds, false otherwise
    */
-  public boolean compile(final CompileArgs args) {
+  public boolean compile(final JavaCompileArgs args) {
     Objects.requireNonNull(args);
     log.debug("Compiling {} files: {}", args.sources().size(), args.sources());
 

@@ -9,8 +9,8 @@ import com.github.build.SourceSet;
 import com.github.build.SourceRoots;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.TestSourceSetDependency;
-import com.github.build.compile.CompileService;
-import com.github.build.compile.CompilerOptions;
+import com.github.build.compile.JavaCompileService;
+import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
@@ -75,7 +75,7 @@ class JUnitIT {
         repositories
     );
     testService = new TestService(dependencyService);
-    buildService = new BuildService(new CompileService(), dependencyService, new JarService());
+    buildService = new BuildService(new JavaCompileService(), dependencyService, new JarService());
   }
 
   @DisplayName("Check running tests work")
@@ -116,10 +116,10 @@ class JUnitIT {
     );
 
     // compile main and test source sets
-    Assertions.assertTrue(buildService.compileMain(tempDir, project, CompilerOptions.EMPTY));
+    Assertions.assertTrue(buildService.compileMain(tempDir, project, JavaCompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
 
-    Assertions.assertTrue(buildService.compileTest(tempDir, project, CompilerOptions.EMPTY));
+    Assertions.assertTrue(buildService.compileTest(tempDir, project, JavaCompilerOptions.EMPTY));
     buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
