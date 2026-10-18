@@ -2,6 +2,7 @@ package com.github.build;
 
 import com.github.build.compile.AspectJCompileArgs;
 import com.github.build.compile.AspectJCompileService;
+import com.github.build.compile.CompilationResult;
 import com.github.build.compile.JavaCompileArgs;
 import com.github.build.compile.JavaCompileService;
 import com.github.build.compile.JavaCompilerOptions;
@@ -59,7 +60,7 @@ public final class BuildService {
       final JarService jarService
   ) {
     this.javaCompileService = Objects.requireNonNull(javaCompileService);
-    this.kotlinCompileService = new KotlinCompileService(javaCompileService);
+    this.kotlinCompileService = new KotlinCompileService();
     this.aspectJCompileService = new AspectJCompileService();
     this.dependencyService = Objects.requireNonNull(dependencyService);
     this.jarService = jarService;
@@ -84,14 +85,14 @@ public final class BuildService {
   }
 
   /**
-   * Compiles Java sources of a source set with javac.
+   * Compiles Java sources of a source set with javac into a dedicated Java output directory.
    *
    * @param workdir         Build working directory
    * @param sourceSet       Source set to compile
    * @param compilerOptions Java compiler options
-   * @return True if compilation succeeds, false otherwise
+   * @return Compilation result with the Java class output directory
    */
-  public boolean compileJava(
+  public CompilationResult compileJava(
       final Path workdir,
       final SourceSet sourceSet,
       final JavaCompilerOptions compilerOptions
@@ -106,14 +107,16 @@ public final class BuildService {
     final SourceSet.Id sourceSetId = sourceSet.id();
     log.info("[project={}] [ss={}] Compiling Java", project.artifactId(), sourceSetId);
 
-    final Path classesDir = classesDir(workdir, project, sourceSetId);
-    createDirectories(classesDir);
+    final Path outputDirectory = classOutputDirectory(
+        workdir, project, sourceSetId, Language.JAVA
+    );
+    createDirectories(outputDirectory);
 
-    final Set<Path> sources = collectSources(workdir, project, sourceSetId);
+    final Set<Path> sources = collectJavaSources(workdir, project, sourceSetId);
     if (sources.isEmpty()) {
-      log.info("[project={}] [ss={}] No sources found, do nothing", project.artifactId(),
+      log.info("[project={}] [ss={}] No Java sources found, do nothing", project.artifactId(),
           sourceSetId);
-      return true;
+      return CompilationResult.success(outputDirectory);
     }
 
     final Set<Path> classpath = new HashSet<>();
@@ -125,12 +128,27 @@ public final class BuildService {
           sourceSetId,
           e
       );
-      return false;
+      return CompilationResult.failure(outputDirectory);
     }
 
-    return javaCompileService.compile(
-        new JavaCompileArgs(sources, classesDir, classpath, compilerOptions)
+    // Kotlin is compiled before Java and its classes may be referenced from Java sources
+    for (final Language sibling : Language.values()) {
+      if (sibling == Language.JAVA) {
+        continue;
+      }
+
+      final Path siblingDirectory = classOutputDirectory(workdir, project, sourceSetId, sibling);
+      if (Files.isDirectory(siblingDirectory)) {
+        classpath.add(siblingDirectory);
+      }
+    }
+
+    final boolean successful = javaCompileService.compile(
+        new JavaCompileArgs(sources, outputDirectory, classpath, compilerOptions)
     );
+    return successful
+        ? CompilationResult.success(outputDirectory)
+        : CompilationResult.failure(outputDirectory);
   }
 
   /**
@@ -138,52 +156,56 @@ public final class BuildService {
    * not described by a {@link SourceSet}.
    *
    * @param args Compilation arguments
-   * @return True if compilation succeeds, false otherwise
+   * @return Compilation result with the directory from {@link JavaCompileArgs#classesDir()}
    */
-  public boolean compileJava(final JavaCompileArgs args) {
+  public CompilationResult compileJava(final JavaCompileArgs args) {
     Objects.requireNonNull(args);
-    return javaCompileService.compile(args);
+    final boolean successful = javaCompileService.compile(args);
+    return successful
+        ? CompilationResult.success(args.classesDir())
+        : CompilationResult.failure(args.classesDir());
   }
 
   /**
-   * Compiles Kotlin and Java sources of a source set. Kotlin is compiled first with the Java
-   * sources exposed as source roots, then Java is compiled against the Kotlin output.
+   * Compiles Kotlin sources of a source set into a dedicated Kotlin output directory. Java sources
+   * are passed to the Kotlin compiler as source roots for resolution and must be compiled
+   * separately with {@link #compileJava(Path, SourceSet, JavaCompilerOptions)}.
    *
-   * @param workdir         Build working directory
-   * @param sourceSet       Source set to compile
-   * @param compilerOptions Java compiler options
-   * @return True if compilation succeeds, false otherwise
+   * @param workdir   Build working directory
+   * @param sourceSet Source set to compile
+   * @return Compilation result with the Kotlin class output directory
    */
-  public boolean compileKotlin(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final JavaCompilerOptions compilerOptions
-  ) {
+  public CompilationResult compileKotlin(final Path workdir, final SourceSet sourceSet) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
-    Objects.requireNonNull(compilerOptions);
 
     PathUtils.checkAbsolute(workdir);
 
     final Project project = sourceSet.project();
-    final Path classesDir = classesDir(workdir, project, sourceSet.id());
-    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
-    return kotlinCompileService.compile(
-        workdir, sourceSet, classesDir, classpath, compilerOptions
+    final Path outputDirectory = classOutputDirectory(
+        workdir, project, sourceSet.id(), Language.KOTLIN
     );
+    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+    final boolean successful = kotlinCompileService.compile(
+        workdir, sourceSet, outputDirectory, classpath
+    );
+    return successful
+        ? CompilationResult.success(outputDirectory)
+        : CompilationResult.failure(outputDirectory);
   }
 
   /**
-   * Compiles AspectJ and Java sources of a source set with the AspectJ compiler.
+   * Compiles AspectJ and Java sources of a source set with the AspectJ compiler into a dedicated
+   * AspectJ output directory.
    *
-   * <p>When compiling a test source set, the main source set output is added to the aspect path so
-   * test classes are woven against the main aspects at compile time.
+   * <p>When compiling a test source set, the main source set AspectJ output is added to the aspect
+   * path so test classes are woven against the main aspects at compile time.
    *
    * @param workdir   Build working directory
    * @param sourceSet Source set to compile
-   * @return True if compilation succeeds, false otherwise
+   * @return Compilation result with the AspectJ class output directory
    */
-  public boolean compileAspectJ(final Path workdir, final SourceSet sourceSet) {
+  public CompilationResult compileAspectJ(final Path workdir, final SourceSet sourceSet) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
 
@@ -191,7 +213,9 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    final Path classesDir = classesDir(workdir, project, sourceSetId);
+    final Path outputDirectory = classOutputDirectory(
+        workdir, project, sourceSetId, Language.ASPECTJ
+    );
     final Set<Path> classpath = compileClasspath(workdir, sourceSet);
     final Set<Path> sourceRoots = resolveDirectories(
         workdir, project, sourceSet.aspectjSourceRoots()
@@ -201,9 +225,11 @@ public final class BuildService {
     final Path outXmlFile;
     if (sourceSetId.equals(SourceSet.Id.TEST)) {
       // main aspects weave test classes at compile time
-      final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
-      aspectPath.add(mainClassesDir);
-      classpath.add(mainClassesDir);
+      final Path mainOutputDirectory = classOutputDirectory(
+          workdir, project, SourceSet.Id.MAIN, Language.ASPECTJ
+      );
+      aspectPath.add(mainOutputDirectory);
+      classpath.add(mainOutputDirectory);
       outXmlFile = null;
     } else if (sourceSetId.equals(SourceSet.Id.MAIN)) {
       outXmlFile = Path.of("META-INF", "aop.xml");
@@ -211,21 +237,26 @@ public final class BuildService {
       outXmlFile = null;
     }
 
-    return aspectJCompileService.compile(
-        new AspectJCompileArgs(sourceRoots, classesDir, classpath, aspectPath, outXmlFile)
+    final boolean successful = aspectJCompileService.compile(
+        new AspectJCompileArgs(sourceRoots, outputDirectory, classpath, aspectPath, outXmlFile)
     );
+    return successful
+        ? CompilationResult.success(outputDirectory)
+        : CompilationResult.failure(outputDirectory);
   }
 
-  private static Path classesDir(
+  private static Path classOutputDirectory(
       final Path workdir,
       final Project project,
-      final SourceSet.Id sourceSetId
+      final SourceSet.Id sourceSetId,
+      final Language language
   ) {
     return workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
-        .resolve(sourceSetId.toString());
+        .resolve(sourceSetId.toString())
+        .resolve(language.directory());
   }
 
   private static Set<Path> resolveDirectories(
@@ -290,7 +321,7 @@ public final class BuildService {
   /**
    * Collects Java source files matching the source set's Java source roots glob.
    */
-  private static Set<Path> collectSources(
+  private static Set<Path> collectJavaSources(
       final Path workdir,
       final Project project,
       final SourceSet.Id sourceSetId
@@ -449,26 +480,39 @@ public final class BuildService {
   }
 
   /**
-   * @deprecated Use generic {@link #createJar(Path, SourceSet, Map, JarManifest)}
+   * @deprecated Use generic
+   *     {@link #createJar(Path, SourceSet, Collection, Map, JarManifest)}
    */
   @Deprecated(forRemoval = true)
   public void createJar(
       final Path workdir,
       final Project project,
+      final Collection<Path> classDirectories,
       final Map<Path, JarArgs.Content> additionalEntries,
       @Nullable final JarManifest manifest
   ) {
-    createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
+    createJar(workdir, project.mainSourceSet(), classDirectories, additionalEntries, manifest);
   }
 
+  /**
+   * Creates a JAR from the given compiled class directories and the source set resources.
+   *
+   * @param workdir           Working directory
+   * @param sourceSet         Source set the JAR is created for
+   * @param classDirectories  Directories containing compiled classes to put in the JAR
+   * @param additionalEntries Additional JAR entries
+   * @param manifest          JAR manifest
+   */
   public void createJar(
       final Path workdir,
       final SourceSet sourceSet,
+      final Collection<Path> classDirectories,
       final Map<Path, JarArgs.Content> additionalEntries,
       @Nullable final JarManifest manifest
   ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
+    Objects.requireNonNull(classDirectories);
     Objects.requireNonNull(additionalEntries);
 
     PathUtils.checkAbsolute(workdir);
@@ -489,14 +533,18 @@ public final class BuildService {
     final var content = new HashMap<Path, JarArgs.Content>();
 
     // collect compiled classes
-    final Path classesDir = workdir
-        .resolve(project.path()).resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().classesDir())
-        .resolve(sourceSetId.value());
-    try {
-      Files.walkFileTree(classesDir, new CollectJarContent(classesDir, content));
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    for (final Path classDirectory : classDirectories) {
+      if (!Files.isDirectory(classDirectory)) {
+        log.debug("[project={}][ss={}] Class output directory {} does not exist",
+            project.artifactId(), sourceSetId, classDirectory);
+        continue;
+      }
+
+      try {
+        Files.walkFileTree(classDirectory, new CollectJarContent(classDirectory, content));
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
 
     // collect resources

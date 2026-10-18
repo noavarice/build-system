@@ -1,6 +1,7 @@
 package com.github.build.test;
 
 import static java.util.stream.Collectors.joining;
+import static java.util.stream.Collectors.toUnmodifiableSet;
 
 import com.github.build.Project;
 import com.github.build.SourceSet;
@@ -21,6 +22,7 @@ import java.io.UncheckedIOException;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.net.URLClassLoader;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
@@ -30,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.ServiceLoader;
+import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -102,7 +105,7 @@ public final class TestService {
       );
       final var taskConstructor = taskType.getDeclaredConstructor();
       final var task = taskConstructor.newInstance();
-      final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDir());
+      final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDirs());
       return task.apply(taskArgs);
     } catch (final IOException e) {
       throw new UncheckedIOException(e);
@@ -144,6 +147,12 @@ public final class TestService {
     final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
 
     final Path unixSocketPath = getSocketPath();
+    final var taskArgs = new ArrayList<String>();
+    taskArgs.add(unixSocketPath.toString());
+    for (final Path classesDir : testRuntime.classesDirs()) {
+      taskArgs.add(classesDir.toString());
+    }
+
     // TODO: allow test JVM customization
     final String currentJavaCommand = ProcessHandle.current().info().command().orElseThrow();
     final var commandBuilder = JavaCommandBuilder
@@ -153,10 +162,7 @@ public final class TestService {
         .agents(agents)
         .systemProperties(systemProperties)
         .mainClass("com.github.build.junit.JUnitTestTask")
-        .args(List.of(
-            unixSocketPath.toString(),
-            testRuntime.classesDir().toString()
-        ))
+        .args(taskArgs)
         .build();
     final ProcessBuilder processBuilder = new ProcessBuilder()
         .command(commandBuilder.toCommand())
@@ -241,11 +247,12 @@ public final class TestService {
       final JUnitTestArgs args
   ) {
     final Project project = sourceSet.project();
-    final Path testClasses = workdir
+    final Path testClassesRoot = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
         .resolve("test");
+    final Set<Path> testClassesDirs = classDirectories(testClassesRoot);
     final Path testResources = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
@@ -270,7 +277,7 @@ public final class TestService {
     final var testRuntimeClasspath = new ArrayList<>(args.buildRuntimeClasspath());
 
     // adding user classes
-    testRuntimeClasspath.add(testClasses);
+    testRuntimeClasspath.addAll(testClassesDirs);
     testRuntimeClasspath.add(testResources);
     testRuntimeClasspath.addAll(runtimeClasspath.values());
 
@@ -309,13 +316,30 @@ public final class TestService {
           .collect(joining(System.lineSeparator(), "[", "]"));
       log.debug("Run tests with classpath {}", prettyPrintedClasspath);
     }
-    return new TestRuntime(testClasses, testRuntimeClasspath);
+    return new TestRuntime(testClassesDirs, testRuntimeClasspath);
   }
 
-  private record TestRuntime(Path classesDir, List<Path> classpath) {
+  /**
+   * @return Language-specific class output directories under the given source set classes root
+   */
+  private static Set<Path> classDirectories(final Path classesRoot) {
+    if (!Files.isDirectory(classesRoot)) {
+      return Set.of();
+    }
+
+    try (final var entries = Files.list(classesRoot)) {
+      return entries
+          .filter(Files::isDirectory)
+          .collect(toUnmodifiableSet());
+    } catch (final IOException e) {
+      throw new UncheckedIOException(e);
+    }
+  }
+
+  private record TestRuntime(Set<Path> classesDirs, List<Path> classpath) {
 
     private TestRuntime {
-      Objects.requireNonNull(classesDir);
+      Objects.requireNonNull(classesDirs);
       classpath = List.copyOf(classpath);
     }
   }
@@ -374,7 +398,7 @@ public final class TestService {
           classpath.add(jarPath);
         }
         case Dependency.OnSourceSet onSourceSet -> {
-          final Path classesDir = workdir
+          final Path classesRoot = workdir
               .resolve(project.path())
               .resolve(project.artifactLayout().rootDir())
               .resolve(project.artifactLayout().classesDir())
@@ -384,7 +408,7 @@ public final class TestService {
               .resolve(project.artifactLayout().rootDir())
               .resolve(project.artifactLayout().resourcesDir())
               .resolve(onSourceSet.sourceSet().id().value());
-          classpath.add(classesDir);
+          classpath.addAll(classDirectories(classesRoot));
           classpath.add(resourcesDir);
           addSourceSetRuntimeClasspath(
               workdir, project, onSourceSet.sourceSet(), classpath, remoteDependencies

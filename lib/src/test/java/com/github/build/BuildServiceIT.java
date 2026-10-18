@@ -87,7 +87,8 @@ class BuildServiceIT {
           .resolve(project.path())
           .resolve(project.artifactLayout().rootDir())
           .resolve(project.artifactLayout().classesDir())
-          .resolve("main");
+          .resolve("main")
+          .resolve("java");
       assertThat(classesDir).doesNotExist();
 
       return new DynamicTest[]{
@@ -95,7 +96,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Classes directory created but empty",
@@ -117,7 +118,7 @@ class BuildServiceIT {
               )
       );
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/main");
+      final Path classesDir = tempDir.resolve("calculator/build/classes/main/java");
       assumeThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Calculator.class");
@@ -128,7 +129,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file exists",
@@ -155,7 +156,7 @@ class BuildServiceIT {
               .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -166,7 +167,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file exists",
@@ -188,7 +189,7 @@ class BuildServiceIT {
               )
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -199,7 +200,7 @@ class BuildServiceIT {
               "Compilation fails",
               () -> assertFalse(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file is not generated",
@@ -238,7 +239,7 @@ class BuildServiceIT {
           new JarService()
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -249,7 +250,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file exists",
@@ -282,7 +283,7 @@ class BuildServiceIT {
               .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -293,7 +294,7 @@ class BuildServiceIT {
               "Compilation fails",
               () -> assertFalse(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file is not generated",
@@ -329,7 +330,7 @@ class BuildServiceIT {
               .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -340,7 +341,7 @@ class BuildServiceIT {
               "Compilation fails",
               () -> assertFalse(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file is not generated",
@@ -388,7 +389,7 @@ class BuildServiceIT {
           new JarService()
       );
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
@@ -399,7 +400,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file exists",
@@ -460,7 +461,7 @@ class BuildServiceIT {
           new JarService()
       );
 
-      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
+      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
@@ -473,7 +474,7 @@ class BuildServiceIT {
                   service.compileJava(
                       tempDir, calculatorConsumerProject.mainSourceSet(),
                       JavaCompilerOptions.EMPTY
-                  )
+                  ).successful()
               )
           ),
           dynamicTest(
@@ -530,12 +531,15 @@ class BuildServiceIT {
           new JarService()
       );
 
-      assertThat(service.compileJava(
+      final var calculatorCompiled = service.compileJava(
           tempDir, calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY
-      )).isTrue();
-      service.createJar(tempDir, calculatorProject, Map.of(), null);
+      );
+      assertThat(calculatorCompiled.successful()).isTrue();
+      service.createJar(
+          tempDir, calculatorProject, List.of(calculatorCompiled.outputDirectory()), Map.of(), null
+      );
 
-      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
+      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
@@ -548,7 +552,7 @@ class BuildServiceIT {
                   service.compileJava(
                       tempDir, calculatorConsumerProject.mainSourceSet(),
                       JavaCompilerOptions.EMPTY
-                  )
+                  ).successful()
               )
           ),
           dynamicTest(
@@ -586,7 +590,7 @@ class BuildServiceIT {
               .withSourceSets(main, test)
       );
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/test");
+      final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
@@ -597,7 +601,7 @@ class BuildServiceIT {
               "Compilation fails",
               () -> assertFalse(service.compileJava(
                   tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file does not exist",
@@ -636,10 +640,15 @@ class BuildServiceIT {
           dependencyService,
           new JarService()
       );
-      assertTrue(service.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY));
-      service.createJar(tempDir, project.mainSourceSet(), Map.of(), null);
+      final var mainCompiled = service.compileJava(
+          tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+      );
+      assertTrue(mainCompiled.successful());
+      service.createJar(
+          tempDir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
+      );
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/test");
+      final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
       assertThat(classesDir).doesNotExist();
 
       final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
@@ -650,7 +659,7 @@ class BuildServiceIT {
               "Compilation succeeds",
               () -> assertTrue(service.compileJava(
                   tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
-              ))
+              ).successful())
           ),
           dynamicTest(
               "Class file exists",
@@ -721,7 +730,9 @@ class BuildServiceIT {
           .builder()
           .release("21")
           .build();
-      service.compileJava(tempDir, project.mainSourceSet(), java21);
+      assertTrue(
+          service.compileJava(tempDir, project.mainSourceSet(), java21).successful()
+      );
 
       final Path buildOutputDir = tempDir
           .resolve(project.path())

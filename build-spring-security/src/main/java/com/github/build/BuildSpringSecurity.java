@@ -2,6 +2,7 @@ package com.github.build;
 
 import static java.util.stream.Collectors.toUnmodifiableMap;
 
+import com.github.build.compile.CompilationResult;
 import com.github.build.compile.JavaCompileArgs;
 import com.github.build.compile.JavaCompileService;
 import com.github.build.compile.JavaCompilerOptions;
@@ -172,18 +173,38 @@ public final class BuildSpringSecurity {
     // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled;
+      final List<Path> mainClassDirectories;
       if (project == aspects) {
-        mainCompiled = service.compileAspectJ(workdir, project.mainSourceSet());
+        final CompilationResult aspectJ = service.compileAspectJ(
+            workdir, project.mainSourceSet()
+        );
+        if (!aspectJ.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        mainClassDirectories = List.of(aspectJ.outputDirectory());
       } else if (project == config) {
-        mainCompiled = service.compileKotlin(workdir, project.mainSourceSet(), compilerOptions);
+        final CompilationResult kotlin = service.compileKotlin(workdir, project.mainSourceSet());
+        final CompilationResult java = service.compileJava(
+            workdir, project.mainSourceSet(), compilerOptions
+        );
+        if (!kotlin.successful() || !java.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        mainClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
       } else {
-        mainCompiled = service.compileJava(workdir, project.mainSourceSet(), compilerOptions);
-      }
-      if (!mainCompiled) {
-        log.error("Build failed");
-        System.exit(1);
-        return;
+        final CompilationResult java = service.compileJava(
+            workdir, project.mainSourceSet(), compilerOptions
+        );
+        if (!java.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        mainClassDirectories = List.of(java.outputDirectory());
       }
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
       if (project == core) {
@@ -217,7 +238,9 @@ public final class BuildSpringSecurity {
           .setImplementationTitle(project.artifactId())
           .setImplementationVersion(project.version())
           .build();
-      service.createJar(workdir, project.mainSourceSet(), additionalEntries, manifest);
+      service.createJar(
+          workdir, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest
+      );
 
       if (projectsWithoutTests.contains(project)) {
         log.info("[project={}] Skipping test source set (not supported yet)",
@@ -230,21 +253,41 @@ public final class BuildSpringSecurity {
 
       buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
 
-      final boolean testCompiled;
+      final List<Path> testClassDirectories;
       if (project == aspects) {
-        testCompiled = service.compileAspectJ(workdir, project.testSourceSet());
+        final CompilationResult aspectJ = service.compileAspectJ(
+            workdir, project.testSourceSet()
+        );
+        if (!aspectJ.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        testClassDirectories = List.of(aspectJ.outputDirectory());
       } else if (project == config) {
-        testCompiled = service.compileKotlin(workdir, project.testSourceSet(), compilerOptions);
+        final CompilationResult kotlin = service.compileKotlin(workdir, project.testSourceSet());
+        final CompilationResult java = service.compileJava(
+            workdir, project.testSourceSet(), compilerOptions
+        );
+        if (!kotlin.successful() || !java.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
       } else {
-        testCompiled = service.compileJava(workdir, project.testSourceSet(), compilerOptions);
-      }
-      if (!testCompiled) {
-        log.error("Build failed");
-        System.exit(1);
-        return;
+        final CompilationResult java = service.compileJava(
+            workdir, project.testSourceSet(), compilerOptions
+        );
+        if (!java.successful()) {
+          log.error("Build failed");
+          System.exit(1);
+          return;
+        }
+        testClassDirectories = List.of(java.outputDirectory());
       }
       service.copyResources(workdir, project, SourceSet.Id.TEST);
-      service.createJar(workdir, project.testSourceSet(), Map.of(), null);
+      service.createJar(workdir, project.testSourceSet(), testClassDirectories, Map.of(), null);
 
       final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
       final List<Path> buildRuntimePath = Stream
@@ -400,15 +443,19 @@ public final class BuildSpringSecurity {
     log.debug("[project={}] Compiling extra source set {} first", project.artifactId(),
         extraSourceSet.id());
 
-    final boolean compiled = service.compileJava(workdir, extraSourceSet, compilerOptions);
-    if (!compiled) {
+    final CompilationResult compiled = service.compileJava(
+        workdir, extraSourceSet, compilerOptions
+    );
+    if (!compiled.successful()) {
       log.error("Build failed");
       System.exit(1);
       return;
     }
 
     service.copyResources(workdir, extraSourceSet);
-    service.createJar(workdir, extraSourceSet, Map.of(), null);
+    service.createJar(
+        workdir, extraSourceSet, List.of(compiled.outputDirectory()), Map.of(), null
+    );
   }
 
   private static final String OPEN_SAML5_SOURCE_SET = "opensaml5Main";
@@ -444,22 +491,22 @@ public final class BuildSpringSecurity {
     log.info("[project={}] Compiling {} source set ({} files)",
         project.artifactId(), OPEN_SAML5_SOURCE_SET, sources.size());
 
-    final Path mainClassesDir = classesDir(workdir, project, SourceSet.Id.MAIN);
+    final Path mainClassesDir = javaClassesDir(workdir, project, SourceSet.Id.MAIN);
     final Path sourceSetClassesDir =
-        classesDir(workdir, project, new SourceSet.Id(OPEN_SAML5_SOURCE_SET));
+        javaClassesDir(workdir, project, new SourceSet.Id(OPEN_SAML5_SOURCE_SET));
     final Set<Path> classpath = new HashSet<>(
         service.compileClasspath(workdir, project.mainSourceSet())
     );
     classpath.add(mainClassesDir);
 
-    final boolean compiled = service.compileJava(new JavaCompileArgs(
+    final CompilationResult compiled = service.compileJava(new JavaCompileArgs(
         sources, sourceSetClassesDir, classpath, compilerOptions
     ));
-    if (!compiled) {
+    if (!compiled.successful()) {
       return false;
     }
 
-    mergeClasses(sourceSetClassesDir, mainClassesDir);
+    mergeClasses(compiled.outputDirectory(), mainClassesDir);
     return true;
   }
 
@@ -498,7 +545,7 @@ public final class BuildSpringSecurity {
     }
   }
 
-  private static Path classesDir(
+  private static Path javaClassesDir(
       final Path workdir,
       final Project project,
       final SourceSet.Id sourceSetId
@@ -507,7 +554,8 @@ public final class BuildSpringSecurity {
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir())
         .resolve(project.artifactLayout().classesDir())
-        .resolve(sourceSetId.toString());
+        .resolve(sourceSetId.toString())
+        .resolve(Language.JAVA.directory());
   }
 
   private static void generateSpringVersionsFile(

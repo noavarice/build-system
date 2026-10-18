@@ -1,5 +1,6 @@
 package com.github.build;
 
+import com.github.build.compile.CompilationResult;
 import com.github.build.compile.JavaCompileService;
 import com.github.build.compile.JavaCompilerOptions;
 import com.github.build.deps.DependencyConstraints;
@@ -215,25 +216,29 @@ public class BuildItself {
       final JavaCompilerOptions compilerOptions
   ) {
     log.info("Building {}", project.artifactId());
-    final boolean mainCompiled = buildService.compileJava(
+    final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
     );
-    if (!mainCompiled) {
+    if (!mainCompiled.successful()) {
       return false;
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
+    buildService.createJar(
+        workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
+    );
 
-    final boolean testCompiled = buildService.compileJava(
+    final CompilationResult testCompiled = buildService.compileJava(
         workdir, project.testSourceSet(), compilerOptions
     );
-    if (!testCompiled) {
+    if (!testCompiled.successful()) {
       return false;
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
-    buildService.createJar(workdir, project.testSourceSet(), Map.of(), null);
+    buildService.createJar(
+        workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null
+    );
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final List<Path> buildRuntimePath = Stream
@@ -252,25 +257,29 @@ public class BuildItself {
   ) {
     log.info("Building {}", project.artifactId());
     generateSourcesFromMavenXsd(workdir, project);
-    final boolean mainCompiled = buildService.compileJava(
+    final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
     );
-    if (!mainCompiled) {
+    if (!mainCompiled.successful()) {
       return false;
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
+    buildService.createJar(
+        workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
+    );
 
-    final boolean testCompiled = buildService.compileJava(
+    final CompilationResult testCompiled = buildService.compileJava(
         workdir, project.testSourceSet(), compilerOptions
     );
-    if (!testCompiled) {
+    if (!testCompiled.successful()) {
       return false;
     }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
-    buildService.createJar(workdir, project.testSourceSet(), Map.of(), null);
+    buildService.createJar(
+        workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null
+    );
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
     final List<Path> buildRuntimePath = Stream

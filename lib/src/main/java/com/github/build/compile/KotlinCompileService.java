@@ -10,7 +10,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.util.ArrayList;
-import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -21,11 +20,10 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 /**
- * Compiles source sets that mix Kotlin and Java.
+ * Compiles Kotlin sources of a source set.
  *
- * <p>Kotlin is compiled first with the Java sources exposed as source roots so Kotlin can resolve
- * Java symbols. The emitted classes are then put on javac's classpath, which makes Java able to
- * resolve the Kotlin classes it references. Both compilers write to the same classes directory.
+ * <p>Java sources are exposed to the Kotlin compiler as source roots so Kotlin code can resolve
+ * Java symbols. Java sources themselves are compiled separately by {@link JavaCompileService}.
  *
  * @author noavarice
  * @since 1.0.0
@@ -38,54 +36,43 @@ public final class KotlinCompileService {
 
   private static final String KOTLIN_LANGUAGE_VERSION = "2.2";
 
-  private final JavaCompileService compileService;
-
-  public KotlinCompileService(final JavaCompileService compileService) {
-    this.compileService = Objects.requireNonNull(compileService);
-  }
-
   /**
-   * Compiles Kotlin and Java sources of a source set.
+   * Compiles Kotlin sources of a source set.
    *
-   * @param workdir         Build working directory (absolute)
-   * @param sourceSet       Source set to compile
-   * @param classesDir      Directory to put output classes into
-   * @param classpath       Compilation classpath
-   * @param compilerOptions Java compiler options
-   * @return True if both Kotlin and Java compilation succeed, false otherwise
+   * @param workdir   Build working directory (absolute)
+   * @param sourceSet Source set to compile
+   * @param classesDir Directory to put output classes into
+   * @param classpath Compilation classpath
+   * @return True if Kotlin compilation succeeds (or there is nothing to compile), false otherwise
    */
   public boolean compile(
       final Path workdir,
       final SourceSet sourceSet,
       final Path classesDir,
-      final Set<Path> classpath,
-      final JavaCompilerOptions compilerOptions
+      final Set<Path> classpath
   ) {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
     Objects.requireNonNull(classesDir);
     Objects.requireNonNull(classpath);
-    Objects.requireNonNull(compilerOptions);
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
 
     final List<Path> kotlinSources = new ArrayList<>();
-    final List<Path> javaSources = new ArrayList<>();
-    final List<Path> javaSourceRoots = new ArrayList<>();
     collectSources(workdir, project, sourceSet.kotlinSourceRoots(), kotlinSources);
-    collectSources(workdir, project, sourceSet.javaSourceRoots(), javaSources);
+    if (kotlinSources.isEmpty()) {
+      log.info("[project={}] [ss={}] No Kotlin sources found, do nothing",
+          project.artifactId(), sourceSetId);
+      return true;
+    }
+
+    final List<Path> javaSourceRoots = new ArrayList<>();
     for (final Path relativeDir : sourceSet.javaSourceRoots().directories()) {
       final Path sourceDir = workdir.resolve(project.path()).resolve(relativeDir);
       if (Files.isDirectory(sourceDir)) {
         javaSourceRoots.add(sourceDir);
       }
-    }
-
-    if (kotlinSources.isEmpty() && javaSources.isEmpty()) {
-      log.info("[project={}] [ss={}] No sources found, do nothing",
-          project.artifactId(), sourceSetId);
-      return true;
     }
 
     try {
@@ -94,31 +81,12 @@ public final class KotlinCompileService {
       throw new UncheckedIOException(e);
     }
 
-    if (!kotlinSources.isEmpty()) {
-      log.info("[project={}] [ss={}] Compiling Kotlin ({} files)",
-          project.artifactId(), sourceSetId, kotlinSources.size());
-      if (!compileKotlin(classesDir, classpath, javaSourceRoots, kotlinSources)) {
-        return false;
-      }
-    }
-
-    if (javaSources.isEmpty()) {
-      return true;
-    }
-
-    log.info("[project={}] [ss={}] Compiling Java ({} files)",
-        project.artifactId(), sourceSetId, javaSources.size());
-    final var javaClasspath = new LinkedHashSet<>(classpath);
-    javaClasspath.add(classesDir);
-    return compileService.compile(new JavaCompileArgs(
-        new LinkedHashSet<>(javaSources),
-        classesDir,
-        javaClasspath,
-        compilerOptions
-    ));
+    log.info("[project={}] [ss={}] Compiling Kotlin ({} files)",
+        project.artifactId(), sourceSetId, kotlinSources.size());
+    return compileKotlin(classesDir, classpath, javaSourceRoots, kotlinSources);
   }
 
-  private boolean compileKotlin(
+  private static boolean compileKotlin(
       final Path classesDir,
       final Set<Path> classpath,
       final List<Path> javaSourceRoots,

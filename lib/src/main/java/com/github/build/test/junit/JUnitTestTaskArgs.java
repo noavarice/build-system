@@ -1,16 +1,23 @@
 package com.github.build.test.junit;
 
+import static java.util.stream.Collectors.toUnmodifiableSet;
+
 import java.nio.file.Path;
 import java.util.Objects;
+import java.util.Set;
 
 /**
  * @author noavarice
  * @since 1.0.0
  */
-public record JUnitTestTaskArgs(Path testClassesDir) {
+public record JUnitTestTaskArgs(Set<Path> testClassesDirs) {
 
   public JUnitTestTaskArgs {
-    Objects.requireNonNull(testClassesDir);
-    testClassesDir = testClassesDir.normalize().toAbsolutePath();
+    testClassesDirs = Objects.requireNonNull(testClassesDirs)
+        .stream()
+        .map(Objects::requireNonNull)
+        .map(Path::normalize)
+        .map(Path::toAbsolutePath)
+        .collect(toUnmodifiableSet());
   }
 }

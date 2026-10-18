@@ -1,5 +1,6 @@
 package com.github.build.junit;
 
+import static java.util.stream.Collectors.toUnmodifiableSet;
 import static org.junit.platform.engine.discovery.DiscoverySelectors.selectClasspathRoots;
 
 import com.github.build.test.TestFailure;
@@ -9,6 +10,7 @@ import com.github.build.test.junit.JUnitEventJsonCodec;
 import com.github.build.test.junit.JUnitTestTaskArgs;
 import com.github.build.util.UnixSocketClient;
 import java.nio.file.Path;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -46,8 +48,10 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
       );
       final var testExecutionListener = new UnixSocketForwardingTestExecutionListener(client);
 
-      final Path testClassesDir = Path.of(args[1]);
-      final var taskArgs = new JUnitTestTaskArgs(testClassesDir);
+      final Set<Path> testClassesDirs = Arrays.stream(args, 1, args.length)
+          .map(Path::of)
+          .collect(toUnmodifiableSet());
+      final var taskArgs = new JUnitTestTaskArgs(testClassesDirs);
       runTests(taskArgs, testExecutionListener);
     } catch (final Exception e) {
       log.error("Test task failed", e);
@@ -98,7 +102,7 @@ public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResu
   ) {
     final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder
         .request()
-        .selectors(selectClasspathRoots(Set.of(args.testClassesDir())))
+        .selectors(selectClasspathRoots(args.testClassesDirs()))
         .build();
 
     try (final LauncherSession session = LauncherFactory.openSession()) {
