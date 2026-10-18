@@ -69,6 +69,32 @@ services:
     depends_on:
       nexus-init:
         condition: service_completed_successfully
+  jdtls:
+    build:
+      context: jdtls
+      dockerfile: Dockerfile
+    image: build-system-jdtls:latest
+    container_name: build-jdtls-local
+    # Mount the workspace at its host path so the file URIs opencode sends
+    # resolve to the same files inside the container.
+    working_dir: ${PWD}
+    environment:
+      NEXUS_HOST: nexus
+    configs:
+      - source: settings.xml
+        target: /root/.m2/settings.xml
+    volumes:
+      - ${PWD}:${PWD}
+      - jdtls-data:/root/.cache/jdtls
+      - jdtls-m2:/root/.m2/repository
+    command: ["sleep", "infinity"]
+    security_opt:
+      - no-new-privileges
+    networks:
+      - default
+    depends_on:
+      nexus-init:
+        condition: service_completed_successfully
 
 configs:
   settings.xml:
@@ -87,6 +113,8 @@ configs:
 
 volumes:
   nexus-data:
+  jdtls-data:
+  jdtls-m2:
 
 networks:
   default:
