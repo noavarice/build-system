@@ -18,6 +18,7 @@ import java.nio.file.FileVisitResult;
 import java.nio.file.FileVisitor;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -176,7 +177,7 @@ public final class BuildService {
   }
 
   /**
-   * Collects files ending with ".java" in the specified source set.
+   * Collects Java source files matching the source set's Java source roots glob.
    */
   private static Set<Path> collectSources(
       final Path workdir,
@@ -187,7 +188,9 @@ public final class BuildService {
     // for some reason, newDirectoryStream with glob does not work as expected
     // TODO: consider using newDirectoryStream with glob
     final SourceSet sourceSet = project.sourceSet(sourceSetId);
-    for (final Path relativeDir : sourceSet.sourceDirectories()) {
+    final SourceRoots javaSourceRoots = sourceSet.javaSourceRoots();
+    final PathMatcher matcher = javaSourceRoots.matcher();
+    for (final Path relativeDir : javaSourceRoots.directories()) {
       final Path sourceDir = workdir
           .resolve(project.path())
           .resolve(relativeDir);
@@ -212,7 +215,7 @@ public final class BuildService {
 
       final var sourcesPart = new ArrayList<Path>();
       final var fileVisitor = new CollectingFileVisitor(
-          file -> file.getFileName().toString().endsWith(".java"),
+          file -> matcher.matches(sourceDir.relativize(file)),
           sourcesPart::add
       );
 

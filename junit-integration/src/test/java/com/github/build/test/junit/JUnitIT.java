@@ -6,6 +6,7 @@ import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.SourceSet;
+import com.github.build.SourceRoots;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.TestSourceSetDependency;
 import com.github.build.compile.CompileService;
@@ -87,7 +88,7 @@ class JUnitIT {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         List.of(),
         List.of(),
@@ -102,7 +103,7 @@ class JUnitIT {
     testRuntime.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.19"));
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,

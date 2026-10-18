@@ -17,17 +17,31 @@ import java.util.Set;
  */
 public record MainSourceSetArgs(
     String id,
-    Set<Path> sourceDirectories,
+    SourceRoots javaSourceRoots,
+    SourceRoots kotlinSourceRoots,
+    SourceRoots aspectjSourceRoots,
     Set<Path> resourceDirectories,
     List<MainSourceSetDependency> compileDependencies,
     List<MainSourceSetDependency> runtimeDependencies,
     DependencyConstraints dependencyConstraints
 ) implements TestSourceSetDependency, ExtraSourceSetDependency {
 
+  public MainSourceSetArgs(
+      final String id,
+      final SourceRoots javaSourceRoots,
+      final Set<Path> resourceDirectories,
+      final List<MainSourceSetDependency> compileDependencies,
+      final List<MainSourceSetDependency> runtimeDependencies,
+      final DependencyConstraints dependencyConstraints
+  ) {
+    this(id, javaSourceRoots, SourceRoots.EMPTY, SourceRoots.EMPTY, resourceDirectories,
+        compileDependencies, runtimeDependencies, dependencyConstraints);
+  }
+
   public static MainSourceSetArgs withMainDefaults() {
     return new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         List.of(),
         List.of(),
@@ -37,14 +51,11 @@ public record MainSourceSetArgs(
 
   public MainSourceSetArgs {
     Objects.requireNonNull(id);
-    sourceDirectories = sourceDirectories
-        .stream()
-        .peek(Objects::requireNonNull)
-        .peek(PathUtils::checkRelative)
-        .map(Path::normalize)
-        .collect(toUnmodifiableSet());
-    if (sourceDirectories.isEmpty()) {
-      throw new IllegalArgumentException("Source set must have at least one sources directory");
+    Objects.requireNonNull(javaSourceRoots);
+    Objects.requireNonNull(kotlinSourceRoots);
+    Objects.requireNonNull(aspectjSourceRoots);
+    if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
+      throw new IllegalArgumentException("Source set must have at least one source root directory");
     }
 
     resourceDirectories = resourceDirectories

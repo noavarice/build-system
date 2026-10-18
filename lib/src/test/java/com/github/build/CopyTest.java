@@ -382,7 +382,7 @@ class CopyTest {
       FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(
               Path.of("src", "main", "resources"),
               Path.of("src", "main", "other-resources")

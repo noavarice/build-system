@@ -139,7 +139,7 @@ class BuildServiceIT {
       FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(Path.of("src", "main", "resources")),
           List.of(new LocalJar(tempDir.resolve("slf4j-api.jar"))),
           List.of(),
@@ -207,7 +207,7 @@ class BuildServiceIT {
       final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(Path.of("src", "main", "resources")),
           List.of(slf4jApi),
           List.of(),
@@ -260,7 +260,7 @@ class BuildServiceIT {
       final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(Path.of("src", "main", "resources")),
           List.of(slf4jApi),
           List.of(),
@@ -305,7 +305,7 @@ class BuildServiceIT {
           .build();
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(Path.of("src", "main", "resources")),
           List.of(slf4jApi),
           List.of(),
@@ -350,7 +350,7 @@ class BuildServiceIT {
           .build();
       final var main = new MainSourceSetArgs(
           SourceSet.Id.MAIN.toString(),
-          Set.of(Path.of("src", "main", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
           Set.of(Path.of("src", "main", "resources")),
           List.of(slf4jApi),
           List.of(),
@@ -419,7 +419,7 @@ class BuildServiceIT {
       {
         final var main = new MainSourceSetArgs(
             SourceSet.Id.MAIN.toString(),
-            Set.of(Path.of("src", "main", "java")),
+            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
             Set.of(Path.of("src", "main", "resources")),
             List.of(calculatorProject),
             List.of(),
@@ -486,7 +486,7 @@ class BuildServiceIT {
       {
         final var main = new MainSourceSetArgs(
             SourceSet.Id.MAIN.toString(),
-            Set.of(Path.of("src", "main", "java")),
+            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
             Set.of(Path.of("src", "main", "resources")),
             List.of(calculatorProject),
             List.of(),
@@ -546,7 +546,7 @@ class BuildServiceIT {
       final var main = MainSourceSetArgs.withMainDefaults();
       final var test = new TestSourceSetArgs(
           SourceSet.Id.TEST.toString(),
-          Set.of(Path.of("src", "test", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
           Set.of(Path.of("src", "test", "resources")),
           List.of(
               main,
@@ -587,7 +587,7 @@ class BuildServiceIT {
       final var main = MainSourceSetArgs.withMainDefaults();
       final var test = new TestSourceSetArgs(
           SourceSet.Id.TEST.toString(),
-          Set.of(Path.of("src", "test", "java")),
+          SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
           Set.of(Path.of("src", "test", "resources")),
           List.of(
               main,

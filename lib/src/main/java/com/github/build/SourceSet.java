@@ -13,7 +13,9 @@ import java.util.Set;
 /**
  * Source set is a combination of source files and their dependencies.
  *
- * @param sourceDirectories     Directories containing source files, relative to project directory
+ * @param javaSourceRoots       Java source roots
+ * @param kotlinSourceRoots     Kotlin source roots
+ * @param aspectjSourceRoots    AspectJ source roots
  * @param resourceDirectories   Directories containing resources, relative to project directories
  * @param compileDependencies   Dependencies to compile code with. Dependencies do not include
  *                              transitive dependencies
@@ -31,7 +33,9 @@ import java.util.Set;
 public record SourceSet(
     Project project,
     Id id,
-    Set<Path> sourceDirectories,
+    SourceRoots javaSourceRoots,
+    SourceRoots kotlinSourceRoots,
+    SourceRoots aspectjSourceRoots,
     Set<Path> resourceDirectories,
     // dependency declaration order matters
     List<Dependency> compileDependencies,
@@ -43,15 +47,12 @@ public record SourceSet(
   public SourceSet {
     Objects.requireNonNull(project);
     Objects.requireNonNull(id);
+    Objects.requireNonNull(javaSourceRoots);
+    Objects.requireNonNull(kotlinSourceRoots);
+    Objects.requireNonNull(aspectjSourceRoots);
 
-    sourceDirectories = sourceDirectories
-        .stream()
-        .peek(Objects::requireNonNull)
-        .peek(PathUtils::checkRelative)
-        .map(Path::normalize)
-        .collect(toUnmodifiableSet());
-    if (sourceDirectories.isEmpty()) {
-      throw new IllegalArgumentException("Source set must have at least one sources directory");
+    if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
+      throw new IllegalArgumentException("Source set must have at least one source root directory");
     }
 
     resourceDirectories = resourceDirectories

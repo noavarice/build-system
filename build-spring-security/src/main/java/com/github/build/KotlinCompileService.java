@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.PathMatcher;
 import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -51,14 +52,16 @@ public final class KotlinCompileService {
     Objects.requireNonNull(sourceSet);
 
     final Project project = sourceSet.project();
-    for (final Path relativeDir : sourceSet.sourceDirectories()) {
+    final SourceRoots kotlinSourceRoots = sourceSet.kotlinSourceRoots();
+    final PathMatcher matcher = kotlinSourceRoots.matcher();
+    for (final Path relativeDir : kotlinSourceRoots.directories()) {
       final Path sourceDir = workdir.resolve(project.path()).resolve(relativeDir);
       if (!Files.isDirectory(sourceDir)) {
         continue;
       }
 
       try (final Stream<Path> files = Files.walk(sourceDir)) {
-        if (files.anyMatch(file -> file.getFileName().toString().endsWith(KOTLIN_EXTENSION))) {
+        if (files.anyMatch(file -> matcher.matches(sourceDir.relativize(file)))) {
           return true;
         }
       } catch (final IOException e) {
@@ -98,15 +101,13 @@ public final class KotlinCompileService {
     final List<Path> kotlinSources = new ArrayList<>();
     final List<Path> javaSources = new ArrayList<>();
     final List<Path> javaSourceRoots = new ArrayList<>();
-    for (final Path relativeDir : sourceSet.sourceDirectories()) {
+    collectSources(workdir, project, sourceSet.kotlinSourceRoots(), kotlinSources);
+    collectSources(workdir, project, sourceSet.javaSourceRoots(), javaSources);
+    for (final Path relativeDir : sourceSet.javaSourceRoots().directories()) {
       final Path sourceDir = workdir.resolve(project.path()).resolve(relativeDir);
-      if (!Files.isDirectory(sourceDir)) {
-        continue;
+      if (Files.isDirectory(sourceDir)) {
+        javaSourceRoots.add(sourceDir);
       }
-
-      javaSourceRoots.add(sourceDir);
-      collectSources(sourceDir, KOTLIN_EXTENSION, kotlinSources);
-      collectSources(sourceDir, JAVA_EXTENSION, javaSources);
     }
 
     if (kotlinSources.isEmpty() && javaSources.isEmpty()) {
@@ -194,21 +195,26 @@ public final class KotlinCompileService {
   }
 
   private static void collectSources(
-      final Path sourceDir,
-      final String extension,
+      final Path workdir,
+      final Project project,
+      final SourceRoots sourceRoots,
       final List<Path> sink
   ) {
-    try (final Stream<Path> files = Files.walk(sourceDir)) {
-      files
-          .filter(Files::isRegularFile)
-          .filter(file -> file.getFileName().toString().endsWith(extension))
-          .forEach(sink::add);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    final PathMatcher matcher = sourceRoots.matcher();
+    for (final Path relativeDir : sourceRoots.directories()) {
+      final Path sourceDir = workdir.resolve(project.path()).resolve(relativeDir);
+      if (!Files.isDirectory(sourceDir)) {
+        continue;
+      }
+
+      try (final Stream<Path> files = Files.walk(sourceDir)) {
+        files
+            .filter(Files::isRegularFile)
+            .filter(file -> matcher.matches(sourceDir.relativize(file)))
+            .forEach(sink::add);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
   }
-
-  private static final String KOTLIN_EXTENSION = ".kt";
-
-  private static final String JAVA_EXTENSION = ".java";
 }

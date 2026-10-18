@@ -543,7 +543,7 @@ public final class BuildSpringSecurity {
     addAspectJVersionArgs(args);
     args.add("-classpath");
     args.add(classpath.stream().map(Path::toString).collect(Collectors.joining(":")));
-    for (final Path sourceDir : sourceSet.sourceDirectories()) {
+    for (final Path sourceDir : sourceSet.aspectjSourceRoots().directories()) {
       final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
       args.add("-sourceroots");
       args.add(absoluteSourceDir.toString());
@@ -581,7 +581,7 @@ public final class BuildSpringSecurity {
     // main aspect output weaves test classes at compile time
     args.add("-aspectpath");
     args.add(mainClassesDir.toString());
-    for (final Path sourceDir : sourceSet.sourceDirectories()) {
+    for (final Path sourceDir : sourceSet.aspectjSourceRoots().directories()) {
       final Path absoluteSourceDir = workdir.resolve(project.path()).resolve(sourceDir);
       args.add("-sourceroots");
       args.add(absoluteSourceDir.toString());
@@ -760,7 +760,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         "main",
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         mainCommonDependencies,
@@ -804,7 +804,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         "test",
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileDependencies,
         testRuntimeDependencies,
@@ -846,7 +846,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), compileOnly.stream()).toList(),
         api,
@@ -884,7 +884,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -933,7 +933,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), compileOnly.stream()).toList(),
         api,
@@ -979,7 +979,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -1009,7 +1009,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainDependencies,
         mainDependencies,
@@ -1032,7 +1032,7 @@ public final class BuildSpringSecurity {
     // TODO: find out why JUnit cannot find tests
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileClasspath,
         testRuntimeClasspath,
@@ -1065,7 +1065,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         "main",
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainDependencies,
         mainDependencies,
@@ -1091,7 +1091,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         "test",
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileDependencies,
         testRuntimeDependencies,
@@ -1151,7 +1151,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), compileOnly.stream()).toList(),
         api,
@@ -1192,7 +1192,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileClasspath,
         testRuntimeClasspath,
@@ -1225,7 +1225,9 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.EMPTY,
+        SourceRoots.EMPTY,
+        SourceRoots.aspectjSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         api,
         api,
@@ -1248,7 +1250,9 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.EMPTY,
+        SourceRoots.EMPTY,
+        SourceRoots.aspectjSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileClasspath,
         testRuntimeClasspath,
@@ -1327,7 +1331,9 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java"), Path.of("src", "main", "kotlin")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+        SourceRoots.kotlinSources(Set.of(Path.of("src", "main", "kotlin"))),
+        SourceRoots.EMPTY,
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1338,7 +1344,9 @@ public final class BuildSpringSecurity {
     // saml2/webauthn, which are not built yet. Enable once those are available.
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java"), Path.of("src", "test", "kotlin")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+        SourceRoots.kotlinSources(Set.of(Path.of("src", "test", "kotlin"))),
+        SourceRoots.EMPTY,
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1390,7 +1398,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1401,7 +1409,7 @@ public final class BuildSpringSecurity {
     // oauth2-core/oauth2-client/oauth2-jose, which are not built yet.
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1443,7 +1451,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1452,7 +1460,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1496,7 +1504,7 @@ public final class BuildSpringSecurity {
     // main output and shares one class (Saml2Utils) with it.
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1505,7 +1513,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1544,7 +1552,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1553,7 +1561,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1605,7 +1613,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1614,7 +1622,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1661,7 +1669,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1670,7 +1678,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1719,7 +1727,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1728,7 +1736,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1765,7 +1773,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1774,7 +1782,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1821,7 +1829,7 @@ public final class BuildSpringSecurity {
 
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainCompileDependencies,
         api,
@@ -1830,7 +1838,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(main),
         List.of(main),
@@ -1858,7 +1866,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         "main",
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         mainDependencies,
         mainDependencies,
@@ -1867,7 +1875,7 @@ public final class BuildSpringSecurity {
 
     final var testFixtures = new ExtraSourceSetArgs(
         "testFixtures",
-        Set.of(Path.of("src", "testFixtures", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "testFixtures", "java"))),
         Set.of(Path.of("src", "testFixtures", "resources")),
         List.of(GroupArtifact.parse("org.assertj:assertj-core")),
         List.of(GroupArtifact.parse("org.assertj:assertj-core")),
@@ -1890,7 +1898,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         "test",
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileClasspath,
         testRuntimeClasspath,
@@ -1945,7 +1953,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), optional.stream()).toList(),
         api,
@@ -1971,7 +1979,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -2014,7 +2022,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), provided.stream()).toList(),
         api,
@@ -2042,7 +2050,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -2068,7 +2076,7 @@ public final class BuildSpringSecurity {
     final List<MainSourceSetDependency> api = List.of(core);
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         api,
         api,
@@ -2087,7 +2095,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -2115,7 +2123,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         api,
         api,
@@ -2134,7 +2142,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
@@ -2179,7 +2187,7 @@ public final class BuildSpringSecurity {
     );
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         Stream.concat(api.stream(), optional.stream()).toList(),
         api,
@@ -2221,7 +2229,7 @@ public final class BuildSpringSecurity {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,

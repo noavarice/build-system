@@ -10,6 +10,7 @@ import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.SourceSet;
+import com.github.build.SourceRoots;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
@@ -349,7 +350,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(springCore6),
                       List.of(springCore6),
@@ -365,7 +366,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(project1),
                       List.of(project1),
@@ -478,7 +479,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(springCore6),
                       List.of(springCore6),
@@ -494,7 +495,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(projectA),
                       List.of(projectA),
@@ -510,7 +511,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(projectB),
                       List.of(projectB),
@@ -778,7 +779,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(jacksonDatabind220),
                       List.of(),
@@ -795,7 +796,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(lib, jacksonDatabind221),
                       List.of(lib),
@@ -892,7 +893,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(),
                       List.of(jacksonDatabind),
@@ -909,7 +910,7 @@ class MavenArtifactResolverDependencyServiceIT {
               .withSourceSets(
                   new MainSourceSetArgs(
                       SourceSet.Id.MAIN.toString(),
-                      Set.of(Path.of("src", "main", "java")),
+                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                       Set.of(Path.of("src", "main", "resources")),
                       List.of(lib, logbackClassic),
                       List.of(lib, logbackClassic),
@@ -981,7 +982,7 @@ class MavenArtifactResolverDependencyServiceIT {
             final var main =
                 new MainSourceSetArgs(
                     SourceSet.Id.MAIN.toString(),
-                    Set.of(Path.of("src", "main", "java")),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                     Set.of(Path.of("src", "main", "resources")),
                     List.of(),
                     List.of(),
@@ -989,7 +990,7 @@ class MavenArtifactResolverDependencyServiceIT {
                 );
             final var test = new TestSourceSetArgs(
                 SourceSet.Id.TEST.toString(),
-                Set.of(Path.of("src", "test", "java")),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
                 Set.of(Path.of("src", "test", "resources")),
                 List.of(main),
                 List.of(),
@@ -1005,7 +1006,7 @@ class MavenArtifactResolverDependencyServiceIT {
           builder -> {
             final var main = new MainSourceSetArgs(
                 SourceSet.Id.MAIN.toString(),
-                Set.of(Path.of("src", "main", "java")),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
                 Set.of(Path.of("src", "main", "resources")),
                 List.of(projectQ),
                 List.of(projectQ),
@@ -1014,7 +1015,7 @@ class MavenArtifactResolverDependencyServiceIT {
             // main as a test dependency is mapped to OnSourceSet(main)
             final var test = new TestSourceSetArgs(
                 SourceSet.Id.TEST.toString(),
-                Set.of(Path.of("src", "test", "java")),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
                 Set.of(Path.of("src", "test", "resources")),
                 List.of(main),
                 List.of(main),

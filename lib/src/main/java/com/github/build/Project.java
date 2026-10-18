@@ -96,7 +96,9 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     return new SourceSet(
         this,
         new SourceSet.Id(args.id()),
-        args.sourceDirectories(),
+        args.javaSourceRoots(),
+        args.kotlinSourceRoots(),
+        args.aspectjSourceRoots(),
         args.resourceDirectories(),
         compileDependencies,
         runtimeDependencies,
@@ -178,7 +180,9 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     return new SourceSet(
         this,
         new SourceSet.Id(args.id()),
-        args.sourceDirectories(),
+        args.javaSourceRoots(),
+        args.kotlinSourceRoots(),
+        args.aspectjSourceRoots(),
         args.resourceDirectories(),
         compileDependencies,
         runtimeDependencies,
@@ -220,7 +224,9 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
     return new SourceSet(
         this,
         new SourceSet.Id(args.id()),
-        args.sourceDirectories(),
+        args.javaSourceRoots(),
+        args.kotlinSourceRoots(),
+        args.aspectjSourceRoots(),
         args.resourceDirectories(),
         compileDependencies,
         runtimeDependencies,

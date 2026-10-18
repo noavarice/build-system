@@ -105,7 +105,7 @@ public class BuildItself {
   private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(Path.of("src", "main", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
         Set.of(Path.of("src", "main", "resources")),
         List.of(
             GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
@@ -122,7 +122,7 @@ public class BuildItself {
     );
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         List.of(),
         List.of(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine")),
@@ -142,10 +142,10 @@ public class BuildItself {
   ) {
     final var main = new MainSourceSetArgs(
         SourceSet.Id.MAIN.toString(),
-        Set.of(
+        SourceRoots.javaSources(Set.of(
             Path.of("src", "main", "java"),
             Path.of("build", "generated-sources", "xjc")
-        ),
+        )),
         Set.of(Path.of("src", "main", "resources")),
         List.of(
             GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
@@ -187,7 +187,7 @@ public class BuildItself {
 
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
-        Set.of(Path.of("src", "test", "java")),
+        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
         testCompileAndRun,
         testRuntime,
