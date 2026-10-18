@@ -93,7 +93,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Classes directory created but empty",
@@ -124,7 +126,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file exists",
@@ -160,7 +164,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file exists",
@@ -191,7 +197,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertFalse(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -239,7 +247,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file exists",
@@ -281,7 +291,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertFalse(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -326,7 +338,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertFalse(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file is not generated",
@@ -383,7 +397,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file exists",
@@ -454,7 +470,10 @@ class BuildServiceIT {
           dynamicTest(
               "Compilation fails",
               () -> assertFalse(
-                  service.compileMain(tempDir, calculatorConsumerProject, JavaCompilerOptions.EMPTY)
+                  service.compileJava(
+                      tempDir, calculatorConsumerProject.mainSourceSet(),
+                      JavaCompilerOptions.EMPTY
+                  )
               )
           ),
           dynamicTest(
@@ -511,7 +530,9 @@ class BuildServiceIT {
           new JarService()
       );
 
-      assertThat(service.compileMain(tempDir, calculatorProject, JavaCompilerOptions.EMPTY)).isTrue();
+      assertThat(service.compileJava(
+          tempDir, calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY
+      )).isTrue();
       service.createJar(tempDir, calculatorProject, Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main");
@@ -524,7 +545,10 @@ class BuildServiceIT {
           dynamicTest(
               "Compilation succeeds",
               () -> assertTrue(
-                  service.compileMain(tempDir, calculatorConsumerProject, JavaCompilerOptions.EMPTY)
+                  service.compileJava(
+                      tempDir, calculatorConsumerProject.mainSourceSet(),
+                      JavaCompilerOptions.EMPTY
+                  )
               )
           ),
           dynamicTest(
@@ -571,7 +595,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation fails",
-              () -> assertFalse(service.compileTest(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertFalse(service.compileJava(
+                  tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file does not exist",
@@ -610,7 +636,7 @@ class BuildServiceIT {
           dependencyService,
           new JarService()
       );
-      assertTrue(service.compileMain(tempDir, project, JavaCompilerOptions.EMPTY));
+      assertTrue(service.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY));
       service.createJar(tempDir, project.mainSourceSet(), Map.of(), null);
 
       final Path classesDir = tempDir.resolve("calculator/build/classes/test");
@@ -622,7 +648,9 @@ class BuildServiceIT {
       return new DynamicTest[]{
           dynamicTest(
               "Compilation succeeds",
-              () -> assertTrue(service.compileTest(tempDir, project, JavaCompilerOptions.EMPTY))
+              () -> assertTrue(service.compileJava(
+                  tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
+              ))
           ),
           dynamicTest(
               "Class file exists",
@@ -693,7 +721,7 @@ class BuildServiceIT {
           .builder()
           .release("21")
           .build();
-      service.compileMain(tempDir, project, java21);
+      service.compileJava(tempDir, project.mainSourceSet(), java21);
 
       final Path buildOutputDir = tempDir
           .resolve(project.path())

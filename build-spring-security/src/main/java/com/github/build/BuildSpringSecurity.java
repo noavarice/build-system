@@ -172,7 +172,14 @@ public final class BuildSpringSecurity {
     // TODO: call dedicated ProjectService method that enforces project build order
     for (final Project project : projects) {
       log.info("[project={}] Compiling main source set", project.artifactId());
-      final boolean mainCompiled = service.compileMain(workdir, project, compilerOptions);
+      final boolean mainCompiled;
+      if (project == aspects) {
+        mainCompiled = service.compileAspectJ(workdir, project.mainSourceSet());
+      } else if (project == config) {
+        mainCompiled = service.compileKotlin(workdir, project.mainSourceSet(), compilerOptions);
+      } else {
+        mainCompiled = service.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+      }
       if (!mainCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -223,7 +230,14 @@ public final class BuildSpringSecurity {
 
       buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
 
-      final boolean testCompiled = service.compileTest(workdir, project, compilerOptions);
+      final boolean testCompiled;
+      if (project == aspects) {
+        testCompiled = service.compileAspectJ(workdir, project.testSourceSet());
+      } else if (project == config) {
+        testCompiled = service.compileKotlin(workdir, project.testSourceSet(), compilerOptions);
+      } else {
+        testCompiled = service.compileJava(workdir, project.testSourceSet(), compilerOptions);
+      }
       if (!testCompiled) {
         log.error("Build failed");
         System.exit(1);
@@ -386,7 +400,7 @@ public final class BuildSpringSecurity {
     log.debug("[project={}] Compiling extra source set {} first", project.artifactId(),
         extraSourceSet.id());
 
-    final boolean compiled = service.compile(workdir, extraSourceSet, compilerOptions);
+    final boolean compiled = service.compileJava(workdir, extraSourceSet, compilerOptions);
     if (!compiled) {
       log.error("Build failed");
       System.exit(1);

@@ -215,7 +215,9 @@ public class BuildItself {
       final JavaCompilerOptions compilerOptions
   ) {
     log.info("Building {}", project.artifactId());
-    final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
+    final boolean mainCompiled = buildService.compileJava(
+        workdir, project.mainSourceSet(), compilerOptions
+    );
     if (!mainCompiled) {
       return false;
     }
@@ -223,7 +225,9 @@ public class BuildItself {
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
     buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
 
-    final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
+    final boolean testCompiled = buildService.compileJava(
+        workdir, project.testSourceSet(), compilerOptions
+    );
     if (!testCompiled) {
       return false;
     }
@@ -248,7 +252,9 @@ public class BuildItself {
   ) {
     log.info("Building {}", project.artifactId());
     generateSourcesFromMavenXsd(workdir, project);
-    final boolean mainCompiled = buildService.compileMain(workdir, project, compilerOptions);
+    final boolean mainCompiled = buildService.compileJava(
+        workdir, project.mainSourceSet(), compilerOptions
+    );
     if (!mainCompiled) {
       return false;
     }
@@ -256,7 +262,9 @@ public class BuildItself {
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
     buildService.createJar(workdir, project.mainSourceSet(), Map.of(), null);
 
-    final boolean testCompiled = buildService.compileTest(workdir, project, compilerOptions);
+    final boolean testCompiled = buildService.compileJava(
+        workdir, project.testSourceSet(), compilerOptions
+    );
     if (!testCompiled) {
       return false;
     }

@@ -45,34 +45,6 @@ public final class KotlinCompileService {
   }
 
   /**
-   * @return True if the source set contains at least one Kotlin source file
-   */
-  public static boolean hasKotlinSources(final Path workdir, final SourceSet sourceSet) {
-    Objects.requireNonNull(workdir);
-    Objects.requireNonNull(sourceSet);
-
-    final Project project = sourceSet.project();
-    final SourceRoots kotlinSourceRoots = sourceSet.kotlinSourceRoots();
-    final PathMatcher matcher = kotlinSourceRoots.matcher();
-    for (final Path relativeDir : kotlinSourceRoots.directories()) {
-      final Path sourceDir = workdir.resolve(project.path()).resolve(relativeDir);
-      if (!Files.isDirectory(sourceDir)) {
-        continue;
-      }
-
-      try (final Stream<Path> files = Files.walk(sourceDir)) {
-        if (files.anyMatch(file -> matcher.matches(sourceDir.relativize(file)))) {
-          return true;
-        }
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      }
-    }
-
-    return false;
-  }
-
-  /**
    * Compiles Kotlin and Java sources of a source set.
    *
    * @param workdir         Build working directory (absolute)

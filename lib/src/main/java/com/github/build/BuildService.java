@@ -65,22 +65,6 @@ public final class BuildService {
     this.jarService = jarService;
   }
 
-  public boolean compileMain(
-      final Path workdir,
-      final Project project,
-      final JavaCompilerOptions compilerOptions
-  ) {
-    return compile(workdir, project.mainSourceSet(), compilerOptions);
-  }
-
-  public boolean compileTest(
-      final Path workdir,
-      final Project project,
-      final JavaCompilerOptions compilerOptions
-  ) {
-    return compile(workdir, project.testSourceSet(), compilerOptions);
-  }
-
   /**
    * Resolves the compile classpath for the specified source set. Includes locally built
    * artifacts (JARs, projects) and remotely resolved dependencies.
@@ -97,33 +81,6 @@ public final class BuildService {
     final Set<Path> classpath = new HashSet<>();
     addSourceSetCompileClasspath(sourceSet, classpath);
     return classpath;
-  }
-
-  /**
-   * Compiles a source set with the compiler matching the languages it declares. AspectJ sources
-   * take precedence over Kotlin, and Kotlin over Java.
-   *
-   * @param workdir         Build working directory
-   * @param sourceSet       Source set to compile
-   * @param compilerOptions Java compiler options
-   * @return True if compilation succeeds, false otherwise
-   */
-  public boolean compile(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final JavaCompilerOptions compilerOptions
-  ) {
-    Objects.requireNonNull(workdir);
-    Objects.requireNonNull(sourceSet);
-    Objects.requireNonNull(compilerOptions);
-
-    if (!sourceSet.aspectjSourceRoots().isEmpty()) {
-      return compileAspectJ(workdir, sourceSet);
-    }
-    if (KotlinCompileService.hasKotlinSources(workdir, sourceSet)) {
-      return compileKotlin(workdir, sourceSet, compilerOptions);
-    }
-    return compileJava(workdir, sourceSet, compilerOptions);
   }
 
   /**
@@ -189,8 +146,8 @@ public final class BuildService {
   }
 
   /**
-   * Compiles Kotlin and Java sources of a source set. Kotlin is compiled first with the Java sources
-   * exposed as source roots, then Java is compiled against the Kotlin output.
+   * Compiles Kotlin and Java sources of a source set. Kotlin is compiled first with the Java
+   * sources exposed as source roots, then Java is compiled against the Kotlin output.
    *
    * @param workdir         Build working directory
    * @param sourceSet       Source set to compile
