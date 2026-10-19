@@ -12,7 +12,7 @@ NEXUS_URL="${NEXUS_URL:-http://nexus:8081}"
 NEXUS_ADMIN_USER="${NEXUS_ADMIN_USER:-admin}"
 NEXUS_ADMIN_PASSWORD="${NEXUS_ADMIN_PASSWORD:-admin123}"
 SHIBBOLETH_REPOSITORY="${SHIBBOLETH_REPOSITORY:-shibboleth}"
-SHIBBOLETH_REMOTE_URL="${SHIBBOLETH_REMOTE_URL:-https://build.shibboleth.net/nexus/content/repositories/releases}"
+SHIBBOLETH_REMOTE_URL="${SHIBBOLETH_REMOTE_URL:-https://build.shibboleth.net/maven/releases}"
 
 log() {
   echo "[nexus-init] $*"

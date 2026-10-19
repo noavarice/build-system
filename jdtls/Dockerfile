@@ -1,5 +1,5 @@
 # The latest jdtls snapshot requires Java 25.
-FROM maven:3.9.11-eclipse-temurin-25
+FROM docker.io/library/maven:3.9.11-eclipse-temurin-25
 
 # jdtls' launcher (bin/jdtls) is a Python 3 script.
 RUN apt-get update \

@@ -1,4 +1,4 @@
-FROM eclipse-temurin:21
+FROM docker.io/library/eclipse-temurin:21
 
 RUN mkdir /opt/build-system
 
@@ -10,4 +10,8 @@ COPY ./build-itself/target/dependencies/ /opt/build-system/
 
 WORKDIR /app
 
-ENTRYPOINT ["java", "-classpath", "/opt/build-system/*", "com.github.build.BuildItself", "/app"]
+# `maven.repo.local` is the self-hosted aether local repository; the compose service mounts a
+# shared volume there so resolved artifacts persist across runs and container rebuilds
+# (see compose-local.yaml).
+ENTRYPOINT ["java", "-Dmaven.repo.local=/m2/repository", "-classpath", "/opt/build-system/*", \
+  "com.github.build.BuildItself", "/app"]

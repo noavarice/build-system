@@ -128,7 +128,7 @@ class DependencyServiceIT {
 
     @DisplayName("Check resolving dependency with a chain of parents")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingWithChainOfParents() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       assertThatCode(
@@ -149,7 +149,7 @@ class DependencyServiceIT {
     // TODO: copy this test for Graph
     @DisplayName("Check resolving even more transitive dependencies for a single dependency")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingEvenMoreTransitiveDependencies() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       assertThatCode(

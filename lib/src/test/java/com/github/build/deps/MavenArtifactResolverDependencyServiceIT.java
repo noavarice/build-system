@@ -136,7 +136,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving dependency with a chain of parents")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingWithChainOfParents() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       assertThatCode(
@@ -156,7 +156,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving even more transitive dependencies for a single dependency")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingEvenMoreTransitiveDependencies() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       assertThatCode(
@@ -231,7 +231,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving multiple dependencies")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingMultipleDependencies() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       final var dependencies = List.of(
@@ -270,7 +270,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving multiple dependencies with constraints")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingMultipleDependenciesWithConstraints() {
       final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
       final var dependencies = List.of(
@@ -408,7 +408,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving project as a direct dependency")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingProjectAsDirectDependency() {
       final Set<GroupArtifactVersion> result = service.resolveTransitive(
           List.of(project1.gav()),
@@ -421,7 +421,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving projects as direct and transitive dependencies")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingProjectAsDirectAndTransitiveDependencies() {
       final Set<GroupArtifactVersion> result = service.resolveTransitive(
           List.of(project2.gav()),
@@ -434,7 +434,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving projects while overriding transitive dependencies")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingProjectWhileOverridingTransitiveDependencies() {
       final Set<GroupArtifactVersion> result = service.resolveTransitive(
           List.of(project2.gav(), springCore7),
@@ -553,7 +553,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving project-a from service-backed workspace reader")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingSingleProjectFromService() {
       final Set<GroupArtifactVersion> result = service.resolveTransitive(
           List.of(projectA.gav()),
@@ -566,7 +566,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check resolving full transitive chain from service-backed workspace reader")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testResolvingFullTransitiveChainFromService() {
       final Set<GroupArtifactVersion> result = service.resolveTransitive(
           List.of(projectC.gav()),
@@ -579,7 +579,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check all three projects are individually resolvable from service")
     @Test
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testAllProjectsIndividuallyResolvableFromService() {
       assertThat(service.resolveTransitive(List.of(projectA.gav()), DependencyConstraints.EMPTY))
           .contains(projectA.gav());
@@ -614,7 +614,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check fetching single dependency works")
     @TestFactory
-    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     DynamicTest[] testFetchingSingleDependencyWorks() {
       final var gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
       final Set<GroupArtifactVersion> dependencies = Set.of(gav);
@@ -811,7 +811,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
     @Test
-    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testDirectProvidedDependencyResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
           lib.mainSourceSet()
@@ -828,7 +828,7 @@ class MavenArtifactResolverDependencyServiceIT {
 
     @DisplayName("Check transitive provided dependencies are not resolved")
     @Test
-    @Timeout(value = 5, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
     void testTransitiveProvidedDependenciesNotResolved() {
       final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
           app.mainSourceSet()

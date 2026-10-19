@@ -1,0 +1,8 @@
+# Build context hygiene: exclude the git internals, the large spring-security submodule, scratch
+# output, and the self-hosted `{module}/build/` dirs (Maven `target/` dirs are kept because the
+# Dockerfiles COPY the built jars and `dependencies/` folders out of them).
+.git
+.gitmodules
+spring-security/
+tmp/
+**/build/

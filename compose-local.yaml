@@ -1,11 +1,17 @@
 services:
   nexus:
-    image: sonatype/nexus3:3.82.0-alpine
+    image: docker.io/sonatype/nexus3:3.82.0-alpine
     container_name: build-nexus-local
+    # The image runs as its own `nexus` user (uid 200). Under rootless Podman that uid maps to a
+    # host subuid (100000+200) that cannot write into the bind-mounted `./tmp/nexus-data`, which
+    # the host user owns, so Nexus aborts on its first boot. Running as root maps the container
+    # to the host user instead: all Nexus data lands in `./tmp/nexus-data` owned by the developer
+    # (cleanly removable) and Nexus works from a scratch checkout.
+    user: "0:0"
     networks:
       - default
     volumes:
-      - nexus-data:/nexus-data
+      - ./tmp/nexus-data:/nexus-data
     security_opt:
       - no-new-privileges
     ports:
@@ -17,7 +23,7 @@ services:
       retries: 30
       start_period: 60s
   nexus-init:
-    image: alpine:3.20
+    image: docker.io/library/alpine:3.20
     container_name: build-nexus-init
     depends_on:
       nexus:
@@ -25,7 +31,7 @@ services:
     environment:
       NEXUS_ADMIN_PASSWORD: ${NEXUS_ADMIN_PASSWORD:-admin123}
     volumes:
-      - nexus-data:/nexus-data:ro
+      - ./tmp/nexus-data:/nexus-data:ro
       - ./scripts/nexus-init.sh:/nexus-init.sh:ro
     entrypoint:
       - sh
@@ -35,7 +41,7 @@ services:
       - default
     restart: "no"
   maven:
-    image: maven:3.9.11-eclipse-temurin-21
+    image: docker.io/library/maven:3.9.11-eclipse-temurin-21
     container_name: build-maven-local
     command: mvn clean install
     configs:
@@ -47,6 +53,7 @@ services:
       - default
     volumes:
       - ./:/usr/src/build-system
+      - maven-local-repo:/root/.m2/repository
     working_dir: /usr/src/build-system
     security_opt:
       - no-new-privileges
@@ -62,6 +69,28 @@ services:
       NEXUS_HOST: nexus
     volumes:
       - ./:/app
+      - maven-local-repo:/m2/repository
+    security_opt:
+      - no-new-privileges
+    networks:
+      - default
+    depends_on:
+      nexus-init:
+        condition: service_completed_successfully
+  build-spring-security:
+    # Rebuilds the spring-security git submodule with BuildSpringSecurity. The image embeds the
+    # module `target/` jars (Maven layout), so run `mvn clean install` (e.g. the `maven` service or
+    # `podman compose build` after a host `mvn package`) before building this image. Requires the
+    # `spring-security` submodule checkout (`git submodule update --init spring-security`).
+    build:
+      dockerfile: build-spring-security/Dockerfile
+      context: .
+    container_name: build-spring-security
+    environment:
+      NEXUS_HOST: nexus
+    volumes:
+      - ./:/app
+      - maven-local-repo:/m2/repository
     security_opt:
       - no-new-privileges
     networks:
@@ -112,9 +141,9 @@ configs:
       </settings>
 
 volumes:
-  nexus-data:
   jdtls-data:
   jdtls-m2:
+  maven-local-repo:
 
 networks:
   default:
