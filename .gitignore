@@ -37,3 +37,4 @@ build/
 
 ### Project ###
 /tmp/
+/.m2/

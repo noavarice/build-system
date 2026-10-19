@@ -163,6 +163,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             dependency.setGroupId(gav.groupId());
             dependency.setArtifactId(gav.artifactId());
             dependency.setVersion(gav.version());
+            dependency.setClassifier(gav.classifier());
 
             final GroupArtifact ga = gav.groupArtifact();
             if (runtimeClasspathArtifacts.contains(ga)) {
@@ -182,6 +183,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
             final GroupArtifact ga = withoutVersion.ga();
             dependency.setGroupId(ga.groupId());
             dependency.setArtifactId(ga.artifactId());
+            dependency.setClassifier(ga.classifier());
             // version should be complemented by dependency constraints
 
             if (runtimeClasspathArtifacts.contains(ga)) {
@@ -243,6 +245,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
               dependency.setGroupId(gav.groupId());
               dependency.setArtifactId(gav.artifactId());
               dependency.setVersion(gav.version());
+              dependency.setClassifier(gav.classifier());
               dependency.setScope("runtime");
 
               dependencies.add(dependency);
@@ -255,6 +258,7 @@ public final class ProjectWorkspaceReader implements WorkspaceReader {
               final var dependency = new Dependency();
               dependency.setGroupId(ga.groupId());
               dependency.setArtifactId(ga.artifactId());
+              dependency.setClassifier(ga.classifier());
               // version should be complemented by dependency constraints
               dependency.setScope("runtime");
 

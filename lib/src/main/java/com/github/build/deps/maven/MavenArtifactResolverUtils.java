@@ -68,7 +68,7 @@ public final class MavenArtifactResolverUtils {
     final var artifact = new DefaultArtifact(
         gav.groupId(),
         gav.artifactId(),
-        null,
+        gav.classifier(),
         "jar",
         gav.version()
     );

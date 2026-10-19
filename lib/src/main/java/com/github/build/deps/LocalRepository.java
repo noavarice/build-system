@@ -40,7 +40,8 @@ public final class LocalRepository {
         .resolve(gav.groupId().replace('.', '/'))
         .resolve(gav.artifactId())
         .resolve(gav.version());
-    final String fileName = gav.artifactId() + '-' + gav.version();
+    final String classifier = gav.classifier() == null ? "" : '-' + gav.classifier();
+    final String fileName = gav.artifactId() + '-' + gav.version() + classifier;
     final Path jarPath = dir.resolve(fileName + ".jar");
     try {
       Files.createDirectories(dir);
@@ -97,10 +98,11 @@ public final class LocalRepository {
   }
 
   private Path getPathInternal(final GroupArtifactVersion gav) {
+    final String classifier = gav.classifier() == null ? "" : '-' + gav.classifier();
     return basePath
         .resolve(gav.groupId().replace('.', '/'))
         .resolve(gav.artifactId())
         .resolve(gav.version())
-        .resolve(gav.artifactId() + '-' + gav.version() + ".jar");
+        .resolve(gav.artifactId() + '-' + gav.version() + classifier + ".jar");
   }
 }

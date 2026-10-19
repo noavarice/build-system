@@ -228,11 +228,12 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
 
   private URI buildUri(final GroupArtifactVersion gav, final String suffix) {
     // TODO: fragile - use dedicated URI builder
+    final String classifier = gav.classifier() == null ? "" : '-' + gav.classifier();
     final String result = baseUri
         + "/" + gav.groupId().replace('.', '/')
         + '/' + gav.artifactId()
         + '/' + gav.version()
-        + '/' + gav.artifactId() + '-' + gav.version() + suffix;
+        + '/' + gav.artifactId() + '-' + gav.version() + classifier + suffix;
     try {
       return new URI(result);
     } catch (final URISyntaxException e) {

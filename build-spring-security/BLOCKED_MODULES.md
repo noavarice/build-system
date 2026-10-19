@@ -6,10 +6,11 @@ have. Each entry records the module, the build features it needs, the evidence g
 while trying to build it, and what would unblock it.
 
 Currently built (for reference): `crypto`, `core`, `acl`, `data`, `web`, `messaging`,
-`access`, `aspects`, `cas`, `oauth2-core`, `taglibs`, `kerberos-core`, `kerberos-test`,
-plus `config`, `test`, `ldap`, `saml2-service-provider`, `oauth2-jose`, `oauth2-client`,
-`oauth2-resource-server`, `oauth2-authorization-server`, `rsocket` and `webauthn` with
-their **main source sets only** (their tests are deferred, see below).
+`access`, `aspects`, `cas`, `oauth2-core`, `oauth2-jose`, `oauth2-client`,
+`oauth2-resource-server`, `oauth2-authorization-server`, `rsocket`, `taglibs`,
+`kerberos-core` and `kerberos-test` with their full main and test source sets. The remaining
+modules (`config`, `test`, `ldap`, `saml2-service-provider`, `webauthn`) build their **main
+source sets only** (their tests are deferred, see below).
 
 Verification environment: run the self-hosted build with a full JDK 21. With JDK 25 the
 `web` tests fail inside Mockito's inline mock maker (`Java 25 (69) is not supported by the
@@ -23,33 +24,29 @@ that are not registered at all) are blocked.
 
 | Module | Blocking feature (test source set unless stated) |
 | --- | --- |
-| `config` | (1), (3), (5), (6), (7) |
+| `config` | (3), (5), (6), (7) |
 | `test` | (7); depends on the `config` test source set and oauth2 test classes |
-| `saml2-service-provider` | (1), (5): extra `opensaml5Test` source set |
-| `oauth2-jose` | (1) classifier-qualified runtime artifacts (reactor-netty) |
-| `oauth2-client` | (1) classifier-qualified runtime artifacts (reactor-netty) |
-| `oauth2-resource-server` | (1) classifier-qualified runtime artifacts (reactor-netty) |
-| `oauth2-authorization-server` | Depends on the `test` and `oauth2-jose` test source sets |
+| `saml2-service-provider` | (5): extra `opensaml5Test` source set |
 | `webauthn` | (2) Gradle-style highest-version conflict resolution (tools.jackson) |
 | `ldap` | (6) integration-test source set; tests depend on `test`/`config` |
-| `rsocket` | Depends on oauth2-resource-server test classes |
 | `kerberos-web` | Not registered yet; tests depend on `config` |
 | `kerberos-client` | Not registered yet; tests depend on `config` and `test` |
 | `itest/context`, `itest/web` | Not registered; integration-test projects depend on `config`/`test` |
 
-## Feature gaps to implement
+## Feature gaps
 
-### 1. Classifier-qualified dependency artifacts
+### 1. Classifier-qualified dependency artifacts (implemented)
 
-`MavenArtifactResolverDependencyService#resolveCompileClasspath` and
-`#resolveRuntimeClasspath` both collect results into a
-`Map<GroupArtifactVersion, Path>` keyed only by group/artifact/version. `GroupArtifactVersion`
-deliberately drops the classifier, so two artifacts that differ only by classifier collapse
-into one key.
+`GroupArtifact` and `GroupArtifactVersion` now carry an optional `classifier`, encoded in the
+colon-separated form `groupId:artifactId[:extension[:classifier]]:version`. The Maven resolver
+propagates the classifier through artifact construction and uses it as part of the
+`Map<GroupArtifactVersion, Path>` key, so two artifacts that differ only by classifier no
+longer collapse into one key.
 
 `reactor-netty` pulls `netty-codec-http3`, which declares runtime-scoped dependencies on
 `io.netty:netty-codec-native-quic` for several classifiers (`linux-x86_64`, `linux-aarch_64`,
-`osx-x86_64`, `osx-aarch_64`, `windows-x86_64`, ...). Resolving the test runtime then throws:
+`osx-x86_64`, `osx-aarch_64`, `windows-x86_64`, ...). Before the fix, resolving the test
+runtime threw:
 
 ```
 java.lang.IllegalStateException: Duplicate key io.netty:netty-codec-native-quic:4.2.17.Final
@@ -59,9 +56,9 @@ java.lang.IllegalStateException: Duplicate key io.netty:netty-codec-native-quic:
     at TestService.getTestRuntime(...)
 ```
 
-Unblock options: model the classifier in the artifact key, or change the classpath API to a
-collection of paths instead of a GAV-keyed map. Affects `oauth2-jose`, `oauth2-client`,
-`oauth2-resource-server` (and `config`, which also uses `reactor-netty` in tests).
+This unblocked the test source sets of `oauth2-jose`, `oauth2-client` and
+`oauth2-resource-server`. `config` also uses `reactor-netty` in tests, but stays blocked by
+the features below.
 
 ### 2. Gradle-style highest-version conflict resolution
 
@@ -139,7 +136,7 @@ source sets independently (or splitting `config`) would be required.
 - Main source set builds. All sibling modules are now referenced as projects (no remote
   `org.springframework.security` coordinates). OpenSAML 5.x (saml2's `api` dependency) is not on
   Maven Central, so the local Nexus proxies it (see `scripts/nexus-init.sh`).
-- Test source set blockers: (1), (3), (5 via opensaml5 config), (6), (7), plus test classes from the
+- Test source set blockers: (3), (5 via opensaml5 config), (6), (7), plus test classes from the
   sibling modules whose tests are not built yet.
 - Extra Gradle tasks: `rncToXsd`, `versionlessXsd`, `processResources`/`sourcesJar` wiring. The
   generated XSDs are committed, so they are currently shipped via resource copying.
@@ -153,7 +150,7 @@ source sets independently (or splitting `config`) would be required.
   platform).
 - Main builds. The generated package copies under `src/main/java` are committed, and
   `BuildSpringSecurity#compileOpenSaml5Main` compiles and merges the `opensaml5Main` source set.
-- Test source set blockers: (1), (5) via the `opensaml5Test` source set.
+- Test source set blocker: (5) via the `opensaml5Test` source set.
 
 ### oauth2-jose
 
@@ -162,8 +159,8 @@ source sets independently (or splitting `config`) would be required.
 - Optional: reactor-core, spring-webflux.
 - Test: bouncycastle bcpkix/bcprov, jakarta.servlet-api, mockwebserver, `reactor-netty`,
   tools.jackson jackson-databind, assertj, junit, mockito, spring-test.
-- Main builds.
-- Blocker (test source set): (1) via `reactor-netty`.
+- Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
+  correctly).
 
 ### oauth2-client
 
@@ -176,8 +173,8 @@ source sets independently (or splitting `config`) would be required.
   context-propagation, `reactor-netty`, reactor-test, jsonassert, `io.r2dbc:r2dbc-h2:1.0.0.RELEASE`,
   `io.r2dbc:r2dbc-spi-test:0.9.1.RELEASE`, assertj, junit, mockito, spring-test; runtime hsqldb,
   launcher.
-- Main builds.
-- Blockers (test source set): (1) via `reactor-netty` (also depends on `oauth2-jose` tests).
+- Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
+  correctly, and it uses the `oauth2-jose` test source set).
 
 ### oauth2-resource-server
 
@@ -188,8 +185,8 @@ source sets independently (or splitting `config`) would be required.
   jakarta.servlet-api.
 - Test: `core` tests, `oauth2-jose` tests, mockwebserver, tools.jackson jackson-databind,
   `reactor-netty`, reactor-test, assertj, junit, mockito, spring-test; runtime launcher.
-- Main builds.
-- Blocker (test source set): (1) via `reactor-netty` (also depends on `oauth2-jose` tests).
+- Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
+  correctly, and it uses the `oauth2-jose` test source set).
 
 ### webauthn
 
@@ -238,10 +235,9 @@ source sets independently (or splitting `config`) would be required.
 - API: `web`, `oauth2-core`, `oauth2-jose`, `oauth2-resource-server`, spring-core,
   `com.nimbusds:nimbus-jose-jwt`, tools.jackson jackson-databind.
 - Optional: jackson-databind, jackson-datatype-jsr310, spring-jdbc; provided jakarta.servlet-api.
-- Test: `spring-security-test`, `oauth2-jose` tests, spring-webmvc, bouncycastle, junit,
-  assertj, mockito, json-path, mockwebserver; runtime hsqldb, launcher.
-- Main builds.
-- Blockers (test source set): depends on `test` and `oauth2-jose` test source sets.
+- Test: `oauth2-jose` tests, spring-webmvc, bouncycastle, junit, assertj, mockito, json-path,
+  mockwebserver; runtime hsqldb, launcher.
+- Main and test build (it uses the now-built `oauth2-jose` test source set).
 
 ### rsocket
 
@@ -250,8 +246,7 @@ source sets independently (or splitting `config`) would be required.
 - Optional: `oauth2-resource-server`, spring-messaging.
 - Main imports `org.springframework.security.oauth2.server.resource.*`
   (`BearerPayloadExchangeConverter`, `AuthenticationPayloadExchangeConverter`).
-- Main builds.
-- Blocker (test source set): depends on oauth2-resource-server test classes.
+- Main and test build (the `oauth2-resource-server` main output it needs is now built).
 
 ### kerberos-web / kerberos-client
 

@@ -72,7 +72,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
     final var aetherArtifact = new DefaultArtifact(
         artifact.groupId(),
         artifact.artifactId(),
-        null,
+        artifact.classifier(),
         "jar",
         artifact.version()
     );
@@ -103,6 +103,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final var gav = new GroupArtifactVersion(
           node.getArtifact().getGroupId(),
           node.getArtifact().getArtifactId(),
+          node.getArtifact().getClassifier(),
           node.getArtifact().getVersion()
       );
       result.add(gav);
@@ -128,7 +129,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .map(artifact -> new DefaultArtifact(
             artifact.groupId(),
             artifact.artifactId(),
-            null,
+            artifact.classifier(),
             "jar",
             artifact.version()
         ))
@@ -139,7 +140,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .map(artifact -> new DefaultArtifact(
             artifact.groupId(),
             artifact.artifactId(),
-            null,
+            artifact.classifier(),
             "jar",
             artifact.version()
         ))
@@ -172,6 +173,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final var gav = new GroupArtifactVersion(
           node.getArtifact().getGroupId(),
           node.getArtifact().getArtifactId(),
+          node.getArtifact().getClassifier(),
           node.getArtifact().getVersion()
       );
       result.add(gav);
@@ -298,7 +300,9 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .stream()
         .map(ArtifactResult::getArtifact)
         .collect(toUnmodifiableMap(
-            a -> new GroupArtifactVersion(a.getGroupId(), a.getArtifactId(), a.getVersion()),
+            a -> new GroupArtifactVersion(
+                a.getGroupId(), a.getArtifactId(), a.getClassifier(), a.getVersion()
+            ),
             a -> a.getFile().toPath()
         ));
   }
@@ -419,7 +423,9 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .stream()
         .map(ArtifactResult::getArtifact)
         .collect(toUnmodifiableMap(
-            a -> new GroupArtifactVersion(a.getGroupId(), a.getArtifactId(), a.getVersion()),
+            a -> new GroupArtifactVersion(
+                a.getGroupId(), a.getArtifactId(), a.getClassifier(), a.getVersion()
+            ),
             a -> a.getFile().toPath()
         ));
   }
@@ -451,6 +457,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final var gav = new GroupArtifactVersion(
           node.getArtifact().getGroupId(),
           node.getArtifact().getArtifactId(),
+          node.getArtifact().getClassifier(),
           node.getArtifact().getVersion()
       );
       result.add(gav);
@@ -468,7 +475,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         .map(gav -> new DefaultArtifact(
             gav.groupId(),
             gav.artifactId(),
-            null,
+            gav.classifier(),
             "jar",
             gav.version()
         ))
@@ -503,6 +510,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final var gav = new GroupArtifactVersion(
           artifactResult.getArtifact().getGroupId(),
           artifactResult.getArtifact().getArtifactId(),
+          artifactResult.getArtifact().getClassifier(),
           artifactResult.getArtifact().getVersion()
       );
       result.put(gav, file.toPath().toAbsolutePath());
@@ -568,7 +576,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final var artifact = new DefaultArtifact(
           gav.groupId(),
           gav.artifactId(),
-          null,
+          gav.classifier(),
           "jar",
           gav.version()
       );
@@ -584,6 +592,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
         final var managedGav = new GroupArtifactVersion(
             managedDependency.getArtifact().getGroupId(),
             managedDependency.getArtifact().getArtifactId(),
+            managedDependency.getArtifact().getClassifier(),
             managedDependency.getArtifact().getVersion()
         );
         builder.withExactVersion(managedGav);

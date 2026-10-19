@@ -406,10 +406,15 @@ public class BuildItself {
     ));
 
     final Path localRepositoryBasePath;
-    try {
-      localRepositoryBasePath = Files.createTempDirectory("build-local");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    final String configuredLocalRepository = System.getProperty("maven.repo.local");
+    if (configuredLocalRepository != null) {
+      localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
+    } else {
+      try {
+        localRepositoryBasePath = Files.createTempDirectory("build-local");
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
 
     final var localRepo = new org.eclipse.aether.repository.LocalRepository(

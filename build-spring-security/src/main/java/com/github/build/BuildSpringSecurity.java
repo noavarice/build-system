@@ -146,10 +146,8 @@ public final class BuildSpringSecurity {
         oauth2ResourceServer, oauth2AuthorizationServer, rsocket, webauthn, config, test);
     // These modules currently build main source sets only: their test source sets need build
     // features the project does not support yet (generated sources, extra source sets,
-    // classifier-qualified runtime artifacts, Gradle-style highest-version conflict resolution).
-    // See BLOCKED_MODULES.md.
-    final Set<Project> projectsWithoutTests = Set.of(ldap, saml2, oauth2Jose, oauth2Client,
-        oauth2ResourceServer, oauth2AuthorizationServer, rsocket, webauthn, config, test);
+    // Gradle-style highest-version conflict resolution). See BLOCKED_MODULES.md.
+    final Set<Project> projectsWithoutTests = Set.of(ldap, saml2, webauthn, config, test);
 
     projects.forEach(project -> service.clean(workdir, project));
 
@@ -1481,12 +1479,36 @@ public final class BuildSpringSecurity {
         platform
     );
 
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("org.bouncycastle:bcpkix-jdk18on"),
+        GroupArtifact.parse("org.bouncycastle:bcprov-jdk18on"),
+        GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api"),
+        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
+        // reactor-netty pulls classifier-qualified native QUIC artifacts at runtime
+        GroupArtifact.parse("io.projectreactor.netty:reactor-netty"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
-        List.of(main),
-        List.of(main),
+        testCompileAndRun,
+        testRuntime,
         platform
     );
     return projectService.create(
@@ -1542,12 +1564,44 @@ public final class BuildSpringSecurity {
         platform
     );
 
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        oauth2Core.testSourceSet(),
+        oauth2Jose.testSourceSet(),
+        web.testSourceSet(),
+        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
+        GroupArtifact.parse("io.micrometer:context-propagation"),
+        // reactor-netty pulls classifier-qualified native QUIC artifacts at runtime
+        GroupArtifact.parse("io.projectreactor.netty:reactor-netty"),
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
+        GroupArtifact.parse("org.skyscreamer:jsonassert"),
+        GroupArtifactVersion.parse("io.r2dbc:r2dbc-h2:1.0.0.RELEASE"),
+        GroupArtifactVersion.parse("io.r2dbc:r2dbc-spi-test:0.9.1.RELEASE"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+    for (final MainSourceSetDependency d : provided) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
-        List.of(main),
-        List.of(main),
+        testCompileAndRun,
+        testRuntime,
         platform
     );
     return projectService.create(
@@ -1598,12 +1652,39 @@ public final class BuildSpringSecurity {
         platform
     );
 
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        core.testSourceSet(),
+        oauth2Jose.testSourceSet(),
+        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
+        GroupArtifact.parse("tools.jackson.core:jackson-databind"),
+        // reactor-netty pulls classifier-qualified native QUIC artifacts at runtime
+        GroupArtifact.parse("io.projectreactor.netty:reactor-netty"),
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+    for (final MainSourceSetDependency d : provided) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
-        List.of(main),
-        List.of(main),
+        testCompileAndRun,
+        testRuntime,
         platform
     );
     return projectService.create(
@@ -1656,12 +1737,35 @@ public final class BuildSpringSecurity {
         platform
     );
 
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        oauth2Jose.testSourceSet(),
+        GroupArtifact.parse("org.springframework:spring-webmvc"),
+        GroupArtifact.parse("org.bouncycastle:bcpkix-jdk18on"),
+        GroupArtifact.parse("org.bouncycastle:bcprov-jdk18on"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("com.jayway.jsonpath:json-path"),
+        GroupArtifact.parse("com.squareup.okhttp3:mockwebserver")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+    for (final MainSourceSetDependency d : provided) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
-        List.of(main),
-        List.of(main),
+        testCompileAndRun,
+        testRuntime,
         platform
     );
     return projectService.create(
@@ -1702,12 +1806,30 @@ public final class BuildSpringSecurity {
         platform
     );
 
+    final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+        main,
+        GroupArtifact.parse("io.projectreactor:reactor-test"),
+        GroupArtifact.parse("org.assertj:assertj-core"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+        GroupArtifact.parse("org.mockito:mockito-core"),
+        GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+        GroupArtifact.parse("org.springframework:spring-test")
+    ));
+    for (final MainSourceSetDependency d : optional) {
+      addTestDependency(testCompileAndRun, d);
+    }
+
+    final var testRuntime = new ArrayList<>(testCompileAndRun);
+    testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
     final var test = new TestSourceSetArgs(
         SourceSet.Id.TEST.toString(),
         SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
         Set.of(Path.of("src", "test", "resources")),
-        List.of(main),
-        List.of(main),
+        testCompileAndRun,
+        testRuntime,
         platform
     );
     return projectService.create(
@@ -2187,10 +2309,15 @@ public final class BuildSpringSecurity {
     ));
 
     final Path localRepositoryBasePath;
-    try {
-      localRepositoryBasePath = Files.createTempDirectory("build-local");
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    final String configuredLocalRepository = System.getProperty("maven.repo.local");
+    if (configuredLocalRepository != null) {
+      localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
+    } else {
+      try {
+        localRepositoryBasePath = Files.createTempDirectory("build-local");
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
     }
 
     final var localRepo = new org.eclipse.aether.repository.LocalRepository(
