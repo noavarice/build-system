@@ -116,16 +116,10 @@ class JUnitIT {
     );
 
     // compile main and test source sets
-    final var mainCompiled = buildService.compileJava(
-        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-    );
-    Assertions.assertTrue(mainCompiled.successful());
+    buildService.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
     buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
 
-    final var testCompiled = buildService.compileJava(
-        tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
-    );
-    Assertions.assertTrue(testCompiled.successful());
+    buildService.compileJava(tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY);
     buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
     final String buildRuntimePathStr = System.getProperty("buildRuntimePath");

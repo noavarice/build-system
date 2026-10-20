@@ -91,6 +91,8 @@ public final class BuildService {
    * @param sourceSet       Source set to compile
    * @param compilerOptions Java compiler options
    * @return Compilation result with the Java class output directory
+   * @throws CompilationException If the compilation classpath cannot be resolved or compilation
+   *     fails
    */
   public CompilationResult compileJava(
       final Path workdir,
@@ -116,20 +118,11 @@ public final class BuildService {
     if (sources.isEmpty()) {
       log.info("[project={}] [ss={}] No Java sources found, do nothing", project.artifactId(),
           sourceSetId);
-      return CompilationResult.success(outputDirectory);
+      return new CompilationResult(outputDirectory);
     }
 
     final Set<Path> classpath = new HashSet<>();
-    try {
-      addSourceSetCompileClasspath(sourceSet, classpath);
-    } catch (final IllegalStateException e) {
-      log.error("[project={}] [ss={}] Failed to gather compilation classpath",
-          project.artifactId(),
-          sourceSetId,
-          e
-      );
-      return CompilationResult.failure(outputDirectory);
-    }
+    addSourceSetCompileClasspath(sourceSet, classpath);
 
     // Kotlin is compiled before Java and its classes may be referenced from Java sources
     for (final Language sibling : Language.values()) {
@@ -143,12 +136,17 @@ public final class BuildService {
       }
     }
 
-    final boolean successful = javaCompileService.compile(
+    final boolean compiled = javaCompileService.compile(
         new JavaCompileArgs(sources, outputDirectory, classpath, compilerOptions)
     );
-    return successful
-        ? CompilationResult.success(outputDirectory)
-        : CompilationResult.failure(outputDirectory);
+    if (!compiled) {
+      throw new CompilationException(
+          "[project=%s] [ss=%s] Java compilation failed"
+              .formatted(project.artifactId(), sourceSetId)
+      );
+    }
+
+    return new CompilationResult(outputDirectory);
   }
 
   /**
@@ -157,13 +155,17 @@ public final class BuildService {
    *
    * @param args Compilation arguments
    * @return Compilation result with the directory from {@link JavaCompileArgs#classesDir()}
+   * @throws CompilationException If compilation fails
    */
   public CompilationResult compileJava(final JavaCompileArgs args) {
     Objects.requireNonNull(args);
-    final boolean successful = javaCompileService.compile(args);
-    return successful
-        ? CompilationResult.success(args.classesDir())
-        : CompilationResult.failure(args.classesDir());
+    if (!javaCompileService.compile(args)) {
+      throw new CompilationException(
+          "Java compilation failed for output directory " + args.classesDir()
+      );
+    }
+
+    return new CompilationResult(args.classesDir());
   }
 
   /**
@@ -174,6 +176,8 @@ public final class BuildService {
    * @param workdir   Build working directory
    * @param sourceSet Source set to compile
    * @return Compilation result with the Kotlin class output directory
+   * @throws CompilationException If the compilation classpath cannot be resolved or compilation
+   *     fails
    */
   public CompilationResult compileKotlin(final Path workdir, final SourceSet sourceSet) {
     Objects.requireNonNull(workdir);
@@ -182,16 +186,19 @@ public final class BuildService {
     PathUtils.checkAbsolute(workdir);
 
     final Project project = sourceSet.project();
+    final SourceSet.Id sourceSetId = sourceSet.id();
     final Path outputDirectory = classOutputDirectory(
-        workdir, project, sourceSet.id(), Language.KOTLIN
+        workdir, project, sourceSetId, Language.KOTLIN
     );
     final Set<Path> classpath = compileClasspath(workdir, sourceSet);
-    final boolean successful = kotlinCompileService.compile(
-        workdir, sourceSet, outputDirectory, classpath
-    );
-    return successful
-        ? CompilationResult.success(outputDirectory)
-        : CompilationResult.failure(outputDirectory);
+    if (!kotlinCompileService.compile(workdir, sourceSet, outputDirectory, classpath)) {
+      throw new CompilationException(
+          "[project=%s] [ss=%s] Kotlin compilation failed"
+              .formatted(project.artifactId(), sourceSetId)
+      );
+    }
+
+    return new CompilationResult(outputDirectory);
   }
 
   /**
@@ -204,6 +211,8 @@ public final class BuildService {
    * @param workdir   Build working directory
    * @param sourceSet Source set to compile
    * @return Compilation result with the AspectJ class output directory
+   * @throws CompilationException If the compilation classpath cannot be resolved or compilation
+   *     fails
    */
   public CompilationResult compileAspectJ(final Path workdir, final SourceSet sourceSet) {
     Objects.requireNonNull(workdir);
@@ -237,12 +246,16 @@ public final class BuildService {
       outXmlFile = null;
     }
 
-    final boolean successful = aspectJCompileService.compile(
+    if (!aspectJCompileService.compile(
         new AspectJCompileArgs(sourceRoots, outputDirectory, classpath, aspectPath, outXmlFile)
-    );
-    return successful
-        ? CompilationResult.success(outputDirectory)
-        : CompilationResult.failure(outputDirectory);
+    )) {
+      throw new CompilationException(
+          "[project=%s] [ss=%s] AspectJ compilation failed"
+              .formatted(project.artifactId(), sourceSetId)
+      );
+    }
+
+    return new CompilationResult(outputDirectory);
   }
 
   private static Path classOutputDirectory(
@@ -303,8 +316,10 @@ public final class BuildService {
           @Nullable
           final String version = constraints.getConstraint(withoutVersion.ga());
           if (version == null) {
-            log.error("Dependency has no version and no associated source set-wise constraint");
-            throw new IllegalStateException();
+            throw new CompilationException(
+                "Dependency " + withoutVersion.ga()
+                    + " has no version and no associated source set-wise constraint"
+            );
           }
 
           // will be resolved later

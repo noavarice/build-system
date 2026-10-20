@@ -88,14 +88,20 @@ public class BuildItself {
     buildService.clean(workdir, projectTestUtils);
     buildService.clean(workdir, projectLib);
 
-    if (!buildTestUtils(workdir, projectTestUtils, java21)) {
-      log.info("Build failed");
-      System.exit(1);
-      return;
-    }
+    try {
+      if (!buildTestUtils(workdir, projectTestUtils, java21)) {
+        log.info("Build failed");
+        System.exit(1);
+        return;
+      }
 
-    if (!buildLib(workdir, projectLib, java21)) {
-      log.info("Build failed");
+      if (!buildLib(workdir, projectLib, java21)) {
+        log.info("Build failed");
+        System.exit(1);
+        return;
+      }
+    } catch (final BuildException e) {
+      log.error("Build failed", e);
       System.exit(1);
       return;
     }
@@ -219,9 +225,6 @@ public class BuildItself {
     final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
     );
-    if (!mainCompiled.successful()) {
-      return false;
-    }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
     buildService.createJar(
@@ -231,9 +234,6 @@ public class BuildItself {
     final CompilationResult testCompiled = buildService.compileJava(
         workdir, project.testSourceSet(), compilerOptions
     );
-    if (!testCompiled.successful()) {
-      return false;
-    }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
     buildService.createJar(
@@ -260,9 +260,6 @@ public class BuildItself {
     final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
     );
-    if (!mainCompiled.successful()) {
-      return false;
-    }
 
     buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
     buildService.createJar(
@@ -272,9 +269,6 @@ public class BuildItself {
     final CompilationResult testCompiled = buildService.compileJava(
         workdir, project.testSourceSet(), compilerOptions
     );
-    if (!testCompiled.successful()) {
-      return false;
-    }
 
     buildService.copyResources(workdir, project, SourceSet.Id.TEST);
     buildService.createJar(

@@ -176,32 +176,17 @@ public final class BuildSpringSecurity {
         final CompilationResult aspectJ = service.compileAspectJ(
             workdir, project.mainSourceSet()
         );
-        if (!aspectJ.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         mainClassDirectories = List.of(aspectJ.outputDirectory());
       } else if (project == config) {
         final CompilationResult kotlin = service.compileKotlin(workdir, project.mainSourceSet());
         final CompilationResult java = service.compileJava(
             workdir, project.mainSourceSet(), compilerOptions
         );
-        if (!kotlin.successful() || !java.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         mainClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
       } else {
         final CompilationResult java = service.compileJava(
             workdir, project.mainSourceSet(), compilerOptions
         );
-        if (!java.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         mainClassDirectories = List.of(java.outputDirectory());
       }
       service.copyResources(workdir, project, SourceSet.Id.MAIN);
@@ -211,11 +196,7 @@ public final class BuildSpringSecurity {
       if (project == saml2) {
         // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
         // duplicate classes (one shared Saml2Utils class).
-        if (!compileOpenSaml5Main(workdir, project, service, compilerOptions)) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
+        compileOpenSaml5Main(workdir, project, service, compilerOptions);
       }
 
       final var additionalEntries = new HashMap<Path, JarArgs.Content>();
@@ -256,32 +237,17 @@ public final class BuildSpringSecurity {
         final CompilationResult aspectJ = service.compileAspectJ(
             workdir, project.testSourceSet()
         );
-        if (!aspectJ.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         testClassDirectories = List.of(aspectJ.outputDirectory());
       } else if (project == config) {
         final CompilationResult kotlin = service.compileKotlin(workdir, project.testSourceSet());
         final CompilationResult java = service.compileJava(
             workdir, project.testSourceSet(), compilerOptions
         );
-        if (!kotlin.successful() || !java.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
       } else {
         final CompilationResult java = service.compileJava(
             workdir, project.testSourceSet(), compilerOptions
         );
-        if (!java.successful()) {
-          log.error("Build failed");
-          System.exit(1);
-          return;
-        }
         testClassDirectories = List.of(java.outputDirectory());
       }
       service.copyResources(workdir, project, SourceSet.Id.TEST);
@@ -444,11 +410,6 @@ public final class BuildSpringSecurity {
     final CompilationResult compiled = service.compileJava(
         workdir, extraSourceSet, compilerOptions
     );
-    if (!compiled.successful()) {
-      log.error("Build failed");
-      System.exit(1);
-      return;
-    }
 
     service.copyResources(workdir, extraSourceSet);
     service.createJar(
@@ -466,7 +427,7 @@ public final class BuildSpringSecurity {
    * class with it: {@code Saml2Utils}), then adds it to the main jar with
    * {@code DuplicatesStrategy.EXCLUDE}, so the main output wins on collisions.
    */
-  private static boolean compileOpenSaml5Main(
+  private static void compileOpenSaml5Main(
       final Path workdir,
       final Project project,
       final BuildService service,
@@ -478,12 +439,12 @@ public final class BuildSpringSecurity {
         .resolve(OPEN_SAML5_SOURCE_SET)
         .resolve("java");
     if (!Files.isDirectory(sourceDir)) {
-      return true;
+      return;
     }
 
     final Set<Path> sources = collectJavaSources(sourceDir);
     if (sources.isEmpty()) {
-      return true;
+      return;
     }
 
     log.info("[project={}] Compiling {} source set ({} files)",
@@ -500,12 +461,8 @@ public final class BuildSpringSecurity {
     final CompilationResult compiled = service.compileJava(new JavaCompileArgs(
         sources, sourceSetClassesDir, classpath, compilerOptions
     ));
-    if (!compiled.successful()) {
-      return false;
-    }
 
     mergeClasses(compiled.outputDirectory(), mainClassesDir);
-    return true;
   }
 
   private static Set<Path> collectJavaSources(final Path sourceDir) {
