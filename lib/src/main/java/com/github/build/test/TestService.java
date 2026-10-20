@@ -3,6 +3,7 @@ package com.github.build.test;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
+import com.github.build.BuildReport;
 import com.github.build.Project;
 import com.github.build.SourceSet;
 import com.github.build.deps.Dependency;
@@ -10,11 +11,13 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.logging.LogContext;
 import com.github.build.test.junit.AccumulateTestResults;
 import com.github.build.test.junit.JUnitEvent;
 import com.github.build.test.junit.JUnitEventJsonCodec;
 import com.github.build.test.junit.JUnitTestArgs;
 import com.github.build.test.junit.JUnitTestTaskArgs;
+import com.github.build.util.DurationUtils;
 import com.github.build.util.JavaCommandBuilder;
 import com.github.build.util.UnixSocketServer;
 import java.io.IOException;
@@ -26,6 +29,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.security.SecureRandom;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
@@ -55,20 +59,33 @@ public final class TestService {
 
   private final DependencyService dependencyService;
 
+  private final BuildReport buildReport;
+
   public TestService(final DependencyService dependencyService) {
-    this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService);
+    this(dependencyService, new BuildReport());
+  }
+
+  public TestService(final DependencyService dependencyService, final BuildReport buildReport) {
+    this(
+        new SecureRandom(),
+        Executors.newVirtualThreadPerTaskExecutor(),
+        dependencyService,
+        buildReport
+    );
   }
 
   public TestService(
       final RandomGenerator random,
       final ExecutorService processEventListenerExecutorService,
-      final DependencyService dependencyService
+      final DependencyService dependencyService,
+      final BuildReport buildReport
   ) {
     this.random = Objects.requireNonNull(random);
     this.processEventListenerExecutorService = Objects.requireNonNull(
         processEventListenerExecutorService
     );
     this.dependencyService = Objects.requireNonNull(dependencyService);
+    this.buildReport = Objects.requireNonNull(buildReport);
   }
 
   public TestResults withJUnit(
@@ -88,31 +105,41 @@ public final class TestService {
     Objects.requireNonNull(workdir);
     Objects.requireNonNull(sourceSet);
     Objects.requireNonNull(args);
-    log.info("[project={}] Setting up tests", sourceSet.project().artifactId());
 
-    final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
+    final Project project = sourceSet.project();
+    try (final var ignored = LogContext.sourceSet(project, sourceSet.id())) {
+      log.info("Test execution started");
+      final Instant startedAt = Instant.now();
 
-    final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-    try (final var classLoader = createModifiedClassLoader(
-        args.testRuntimeParentClassLoader(),
-        testRuntime.classpath()
-    )) {
-      // setting classpath for JUnit test engine search algorithm
-      Thread.currentThread().setContextClassLoader(classLoader);
-      @SuppressWarnings("unchecked")
-      final var taskType = (Class<Function<JUnitTestTaskArgs, TestResults>>) classLoader.loadClass(
-          "com.github.build.junit.JUnitTestTask"
-      );
-      final var taskConstructor = taskType.getDeclaredConstructor();
-      final var task = taskConstructor.newInstance();
-      final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDirs());
-      return task.apply(taskArgs);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final ReflectiveOperationException e) {
-      throw new IllegalStateException(e);
-    } finally {
-      Thread.currentThread().setContextClassLoader(originalClassLoader);
+      final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
+
+      final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+      try (final var classLoader = createModifiedClassLoader(
+          args.testRuntimeParentClassLoader(),
+          testRuntime.classpath()
+      )) {
+        // setting classpath for JUnit test engine search algorithm
+        Thread.currentThread().setContextClassLoader(classLoader);
+        @SuppressWarnings("unchecked")
+        final var taskType = (Class<Function<JUnitTestTaskArgs, TestResults>>) classLoader.loadClass(
+            "com.github.build.junit.JUnitTestTask"
+        );
+        final var taskConstructor = taskType.getDeclaredConstructor();
+        final var task = taskConstructor.newInstance();
+        final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDirs());
+        final TestResults results = task.apply(taskArgs);
+
+        final Duration duration = Duration.between(startedAt, Instant.now());
+        buildReport.testsFinished(project, sourceSet.id(), duration, results);
+        log.info("Test execution finished in {}", DurationUtils.format(duration));
+        return results;
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      } catch (final ReflectiveOperationException e) {
+        throw new IllegalStateException(e);
+      } finally {
+        Thread.currentThread().setContextClassLoader(originalClassLoader);
+      }
     }
   }
 
@@ -143,93 +170,92 @@ public final class TestService {
     Objects.requireNonNull(args);
 
     final Project project = sourceSet.project();
-    log.info("[project={}] Setting up tests", sourceSet.project().artifactId());
-    final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
+    final SourceSet.Id sourceSetId = sourceSet.id();
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      log.info("Test execution started");
+      final Instant startedAt = Instant.now();
 
-    final Path unixSocketPath = getSocketPath();
-    final var taskArgs = new ArrayList<String>();
-    taskArgs.add(unixSocketPath.toString());
-    for (final Path classesDir : testRuntime.classesDirs()) {
-      taskArgs.add(classesDir.toString());
-    }
+      final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
 
-    // TODO: allow test JVM customization
-    final String currentJavaCommand = ProcessHandle.current().info().command().orElseThrow();
-    final var commandBuilder = JavaCommandBuilder
-        .builder()
-        .javaPath(currentJavaCommand)
-        .classpath(testRuntime.classpath())
-        .agents(agents)
-        .systemProperties(systemProperties)
-        .mainClass("com.github.build.junit.JUnitTestTask")
-        .args(taskArgs)
-        .build();
-    final ProcessBuilder processBuilder = new ProcessBuilder()
-        .command(commandBuilder.toCommand())
-        .directory(workdir.resolve(project.path()).toFile())
-        // TODO: handle child process logging
-        .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-        .redirectError(ProcessBuilder.Redirect.INHERIT);
-
-    final var testEventHandler = new AccumulateTestResults();
-    final Process process;
-    try (final UnixSocketServer<JUnitEvent> eventServer = UnixSocketServer.of(
-        unixSocketPath,
-        new JUnitEventJsonCodec(),
-        testEventHandler,
-        8192
-    )) {
-      // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
-      log.debug("[project={}] Receive test process events over Unix socket at {}",
-          project.artifactId(),
-          unixSocketPath
-      );
-
-      processEventListenerExecutorService.submit(eventServer::listen);
-
-      // TODO: handle child process death when parent is being killed
-      process = processBuilder.start();
-      log.debug("[project={}] Test process {} started", project.artifactId(), process.pid());
-
-      final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-      if (!exited) {
-        log.error("[project={}] Test process {} timed out, destroying",
-            project.artifactId(),
-            process.pid()
-        );
-        process.destroyForcibly();
-        throw new IllegalStateException();
+      final Path unixSocketPath = getSocketPath();
+      final var taskArgs = new ArrayList<String>();
+      taskArgs.add(unixSocketPath.toString());
+      for (final Path classesDir : testRuntime.classesDirs()) {
+        taskArgs.add(classesDir.toString());
       }
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException(e);
-    }
 
-    final TestResults results = testEventHandler.toTestResults();
+      // TODO: allow test JVM customization
+      final String currentJavaCommand = ProcessHandle.current().info().command().orElseThrow();
+      final var commandBuilder = JavaCommandBuilder
+          .builder()
+          .javaPath(currentJavaCommand)
+          .classpath(testRuntime.classpath())
+          .agents(agents)
+          .systemProperties(systemProperties)
+          .mainClass("com.github.build.junit.JUnitTestTask")
+          .args(taskArgs)
+          .build();
+      final ProcessBuilder processBuilder = new ProcessBuilder()
+          .command(commandBuilder.toCommand())
+          .directory(workdir.resolve(project.path()).toFile())
+          // TODO: handle child process logging
+          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+          .redirectError(ProcessBuilder.Redirect.INHERIT);
 
-    if (!results.failures().isEmpty()) {
-      log.error("Test failures:");
-      for (var f : results.failures()) {
-        log.error("""
-              {} ({})
-                {}: {}
-            """, f.displayName(), f.testId(), f.exceptionType(), f.message());
+      final var testEventHandler = new AccumulateTestResults(project, sourceSetId);
+      final Process process;
+      try (final UnixSocketServer<JUnitEvent> eventServer = UnixSocketServer.of(
+          unixSocketPath,
+          new JUnitEventJsonCodec(),
+          testEventHandler,
+          8192
+      )) {
+        // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
+        log.debug("Receive test process events over Unix socket at {}", unixSocketPath);
+
+        processEventListenerExecutorService.submit(eventServer::listen);
+
+        // TODO: handle child process death when parent is being killed
+        process = processBuilder.start();
+        log.debug("Test process {} started", process.pid());
+
+        final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+        if (!exited) {
+          log.error("Test process {} timed out, destroying", process.pid());
+          process.destroyForcibly();
+          throw new IllegalStateException();
+        }
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      } catch (final InterruptedException e) {
+        Thread.currentThread().interrupt();
+        throw new IllegalStateException(e);
       }
-    }
 
-    if (process.exitValue() != 0) {
-      log.error("[project={}] Test process {} exited with code {}",
-          project.artifactId(),
-          process.pid(),
-          process.exitValue()
-      );
-      throw new IllegalStateException("Test process exited with code " + process.exitValue()
-          + " (" + results.testsFailedCount() + " tests failed)");
-    }
+      final TestResults results = testEventHandler.toTestResults();
 
-    return results;
+      final Duration duration = Duration.between(startedAt, Instant.now());
+      buildReport.testsFinished(project, sourceSetId, duration, results);
+      log.info("Test execution finished in {}", DurationUtils.format(duration));
+
+      if (!results.failures().isEmpty()) {
+        log.error("Test failures:");
+        for (var f : results.failures()) {
+          log.error("""
+                {} ({})
+                  {}: {}
+              """, f.displayName(), f.testId(), f.exceptionType(), f.message());
+        }
+      }
+
+      if (process.exitValue() != 0) {
+        log.error("Test process {} exited with code {}", process.pid(), process.exitValue());
+        throw new IllegalStateException("Test process exited with code " + process.exitValue()
+            + " (" + results.testsFailedCount() + " tests failed)");
+      }
+
+      return results;
+    }
   }
 
   private Path getSocketPath() {

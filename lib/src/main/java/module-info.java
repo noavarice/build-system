@@ -15,4 +15,12 @@ module com.github.build {
   requires org.apache.maven.resolver.util;
   requires org.aspectj.tools;
   requires kotlin.compiler.embeddable;
+
+  // Logback is optional: the library only provides a default logging configuration when Logback
+  // happens to be on the classpath.
+  requires static ch.qos.logback.classic;
+  requires static ch.qos.logback.core;
+
+  provides ch.qos.logback.classic.spi.Configurator
+      with com.github.build.logging.DefaultLoggingConfigurator;
 }

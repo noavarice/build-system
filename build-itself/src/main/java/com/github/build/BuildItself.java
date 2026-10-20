@@ -9,6 +9,7 @@ import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.jar.JarService;
+import com.github.build.logging.LogContext;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import com.github.build.test.junit.JUnitTestArgs;
@@ -53,11 +54,14 @@ public class BuildItself {
 
   private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
 
+  private static final BuildReport buildReport = new BuildReport();
+
   private static final DependencyService dependencyService = mavenArtifactResolver();
 
-  private static final TestService testService = new TestService(dependencyService);
+  private static final TestService testService = new TestService(dependencyService, buildReport);
 
   private static final BuildService buildService = new BuildService(
+      buildReport,
       new JavaCompileService(),
       dependencyService,
       new JarService()
@@ -88,25 +92,19 @@ public class BuildItself {
     buildService.clean(workdir, projectTestUtils);
     buildService.clean(workdir, projectLib);
 
+    boolean success = true;
     try {
-      if (!buildTestUtils(workdir, projectTestUtils, java21)) {
-        log.info("Build failed");
-        System.exit(1);
-        return;
-      }
-
-      if (!buildLib(workdir, projectLib, java21)) {
-        log.info("Build failed");
-        System.exit(1);
-        return;
-      }
-    } catch (final BuildException e) {
+      success = buildTestUtils(workdir, projectTestUtils, java21)
+          && buildLib(workdir, projectLib, java21);
+    } catch (final RuntimeException e) {
       log.error("Build failed", e);
-      System.exit(1);
-      return;
+      success = false;
     }
 
-    log.info("Build finished successfully");
+    buildReport.logSummary(success);
+    if (!success) {
+      System.exit(1);
+    }
   }
 
   private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
@@ -159,6 +157,7 @@ public class BuildItself {
             GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12"),
             GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
             GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
+            GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"),
             GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"),
             GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"),
             GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"),
@@ -221,7 +220,6 @@ public class BuildItself {
       final Project project,
       final JavaCompilerOptions compilerOptions
   ) {
-    log.info("Building {}", project.artifactId());
     final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
     );
@@ -255,7 +253,6 @@ public class BuildItself {
       final Project project,
       final JavaCompilerOptions compilerOptions
   ) {
-    log.info("Building {}", project.artifactId());
     generateSourcesFromMavenXsd(workdir, project);
     final CompilationResult mainCompiled = buildService.compileJava(
         workdir, project.mainSourceSet(), compilerOptions
@@ -286,7 +283,16 @@ public class BuildItself {
   }
 
   private static void generateSourcesFromMavenXsd(final Path workdir, final Project project) {
-    log.info("[project={}] Generating Maven XSD sources with XJC", project.artifactId());
+    try (final var ignored = LogContext.project(project)) {
+      generateSourcesFromMavenXsdInternal(workdir, project);
+    }
+  }
+
+  private static void generateSourcesFromMavenXsdInternal(
+      final Path workdir,
+      final Project project
+  ) {
+    log.info("Generating Maven XSD sources with XJC");
 
     final var errorReceiver = new LoggingErrorReceiver();
     final var files = List.of(

@@ -16,6 +16,7 @@ import com.github.build.deps.maven.ProjectWorkspaceReader;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;
+import com.github.build.logging.LogContext;
 import com.github.build.test.TestResults;
 import com.github.build.test.TestService;
 import com.github.build.test.junit.JUnitTestArgs;
@@ -75,10 +76,11 @@ public final class BuildSpringSecurity {
 
     final var projectService = new ProjectService();
     final var dependencyService = mavenArtifactResolver(workdir, projectService);
-    final var testService = new TestService(dependencyService);
+    final var buildReport = new BuildReport();
+    final var testService = new TestService(dependencyService, buildReport);
     final var jarService = new JarService();
     final BuildService service = new BuildService(
-        new JavaCompileService(), dependencyService, jarService
+        buildReport, new JavaCompileService(), dependencyService, jarService
     );
 
     final DependencyConstraints platform = getPlatform(dependencyService);
@@ -168,128 +170,134 @@ public final class BuildSpringSecurity {
     final var mockitoPath = dependencyService.fetchToLocal(mockito, null);
     final var jacocoPath = dependencyService.fetchToLocal(jacoco, "runtime");
 
+    boolean success = true;
     // TODO: call dedicated ProjectService method that enforces project build order
-    for (final Project project : projects) {
-      log.info("[project={}] Compiling main source set", project.artifactId());
-      final List<Path> mainClassDirectories;
-      if (project == aspects) {
-        final CompilationResult aspectJ = service.compileAspectJ(
-            workdir, project.mainSourceSet()
+    try {
+      for (final Project project : projects) {
+        final List<Path> mainClassDirectories;
+        if (project == aspects) {
+          final CompilationResult aspectJ = service.compileAspectJ(
+              workdir, project.mainSourceSet()
+          );
+          mainClassDirectories = List.of(aspectJ.outputDirectory());
+        } else if (project == config) {
+          final CompilationResult kotlin =
+              service.compileKotlin(workdir, project.mainSourceSet());
+          final CompilationResult java = service.compileJava(
+              workdir, project.mainSourceSet(), compilerOptions
+          );
+          mainClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
+        } else {
+          final CompilationResult java = service.compileJava(
+              workdir, project.mainSourceSet(), compilerOptions
+          );
+          mainClassDirectories = List.of(java.outputDirectory());
+        }
+        service.copyResources(workdir, project, SourceSet.Id.MAIN);
+        if (project == core) {
+          generateSpringVersionsFile(workdir, project, springCoreVersion);
+        }
+        if (project == saml2) {
+          // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
+          // duplicate classes (one shared Saml2Utils class).
+          compileOpenSaml5Main(workdir, project, service, compilerOptions);
+        }
+
+        final var additionalEntries = new HashMap<Path, JarArgs.Content>();
+        additionalEntries.put(Path.of("META-INF/LICENSE.txt"), new JarArgs.Content.File(license));
+        if (project == web) {
+          // web depends on JS module - building it and add output to JAR
+          final Path jsDistDir = buildJsModule(workdir);
+          final Map<Path, JarArgs.Content> jsFiles = prepareJsFilesForJar(jsDistDir);
+          additionalEntries.putAll(jsFiles);
+        }
+
+        final var manifest = JarManifest
+            .builder()
+            .setVersion("1.0")
+            .setCreatedBy(
+                System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ')'
+            )
+            .setImplementationTitle(project.artifactId())
+            .setImplementationVersion(project.version())
+            .build();
+        service.createJar(
+            workdir, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest
         );
-        mainClassDirectories = List.of(aspectJ.outputDirectory());
-      } else if (project == config) {
-        final CompilationResult kotlin = service.compileKotlin(workdir, project.mainSourceSet());
-        final CompilationResult java = service.compileJava(
-            workdir, project.mainSourceSet(), compilerOptions
+
+        if (projectsWithoutTests.contains(project)) {
+          try (final var ignored = LogContext.project(project)) {
+            log.info("Skipping test source set (not supported yet)");
+          }
+          continue;
+        }
+
+        final SourceSet testSourceSet = project.testSourceSet();
+
+        buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
+
+        final List<Path> testClassDirectories;
+        if (project == aspects) {
+          final CompilationResult aspectJ = service.compileAspectJ(
+              workdir, project.testSourceSet()
+          );
+          testClassDirectories = List.of(aspectJ.outputDirectory());
+        } else if (project == config) {
+          final CompilationResult kotlin =
+              service.compileKotlin(workdir, project.testSourceSet());
+          final CompilationResult java = service.compileJava(
+              workdir, project.testSourceSet(), compilerOptions
+          );
+          testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
+        } else {
+          final CompilationResult java = service.compileJava(
+              workdir, project.testSourceSet(), compilerOptions
+          );
+          testClassDirectories = List.of(java.outputDirectory());
+        }
+        service.copyResources(workdir, project, SourceSet.Id.TEST);
+        service.createJar(workdir, project.testSourceSet(), testClassDirectories, Map.of(), null);
+
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final List<Path> buildRuntimePath = Stream
+            .of(buildRuntimePathStr.split(",", -1))
+            .map(Path::of)
+            .map(Path::toAbsolutePath)
+            .toList();
+        final var testArgs =
+            new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
+
+        final var jacocoExecReportPath = workdir
+            .resolve(project.path())
+            .resolve(project.artifactLayout().rootDir())
+            .resolve("jacoco")
+            .resolve("test.exec");
+        final List<JavaCommandBuilder.Agent> agents = List.of(
+            new JavaCommandBuilder.Agent(mockitoPath, null),
+            new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath)
         );
-        mainClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
-      } else {
-        final CompilationResult java = service.compileJava(
-            workdir, project.mainSourceSet(), compilerOptions
+        final TestResults results = testService.withJUnitAsProcess(
+            workdir,
+            project,
+            testArgs,
+            agents,
+            List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
+            Duration.ofMinutes(10)
         );
-        mainClassDirectories = List.of(java.outputDirectory());
+
+        if (results.testsFailedCount() > 0) {
+          success = false;
+          break;
+        }
       }
-      service.copyResources(workdir, project, SourceSet.Id.MAIN);
-      if (project == core) {
-        generateSpringVersionsFile(workdir, project, springCoreVersion);
-      }
-      if (project == saml2) {
-        // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
-        // duplicate classes (one shared Saml2Utils class).
-        compileOpenSaml5Main(workdir, project, service, compilerOptions);
-      }
+    } catch (final RuntimeException e) {
+      log.error("Build failed", e);
+      success = false;
+    }
 
-      final var additionalEntries = new HashMap<Path, JarArgs.Content>();
-      additionalEntries.put(Path.of("META-INF/LICENSE.txt"), new JarArgs.Content.File(license));
-      if (project == web) {
-        // web depends on JS module - building it and add output to JAR
-        final Path jsDistDir = buildJsModule(workdir);
-        final Map<Path, JarArgs.Content> jsFiles = prepareJsFilesForJar(jsDistDir);
-        additionalEntries.putAll(jsFiles);
-      }
-
-      final var manifest = JarManifest
-          .builder()
-          .setVersion("1.0")
-          .setCreatedBy(
-              System.getProperty("java.version") + " (" + System.getProperty("java.vendor") + ')'
-          )
-          .setImplementationTitle(project.artifactId())
-          .setImplementationVersion(project.version())
-          .build();
-      service.createJar(
-          workdir, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest
-      );
-
-      if (projectsWithoutTests.contains(project)) {
-        log.info("[project={}] Skipping test source set (not supported yet)",
-            project.artifactId());
-        continue;
-      }
-
-      log.info("[project={}] Compiling test source set", project.artifactId());
-      final SourceSet testSourceSet = project.testSourceSet();
-
-      buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
-
-      final List<Path> testClassDirectories;
-      if (project == aspects) {
-        final CompilationResult aspectJ = service.compileAspectJ(
-            workdir, project.testSourceSet()
-        );
-        testClassDirectories = List.of(aspectJ.outputDirectory());
-      } else if (project == config) {
-        final CompilationResult kotlin = service.compileKotlin(workdir, project.testSourceSet());
-        final CompilationResult java = service.compileJava(
-            workdir, project.testSourceSet(), compilerOptions
-        );
-        testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
-      } else {
-        final CompilationResult java = service.compileJava(
-            workdir, project.testSourceSet(), compilerOptions
-        );
-        testClassDirectories = List.of(java.outputDirectory());
-      }
-      service.copyResources(workdir, project, SourceSet.Id.TEST);
-      service.createJar(workdir, project.testSourceSet(), testClassDirectories, Map.of(), null);
-
-      final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-      final List<Path> buildRuntimePath = Stream
-          .of(buildRuntimePathStr.split(",", -1))
-          .map(Path::of)
-          .map(Path::toAbsolutePath)
-          .toList();
-      final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-      log.info("[project={}] Running tests", project.artifactId());
-
-      final var jacocoExecReportPath = workdir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve("jacoco")
-          .resolve("test.exec");
-      final List<JavaCommandBuilder.Agent> agents = List.of(
-          new JavaCommandBuilder.Agent(mockitoPath, null),
-          new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath)
-      );
-      final TestResults results = testService.withJUnitAsProcess(
-          workdir,
-          project,
-          testArgs,
-          agents,
-          List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
-          Duration.ofMinutes(10)
-      );
-
-      log.info("[project={}] {} tests succeeded, {} tests failed, {} tests skipped",
-          project.artifactId(),
-          results.testsSucceededCount(),
-          results.testsFailedCount(),
-          results.testsSkippedCount()
-      );
-      if (results.testsFailedCount() > 0) {
-        log.error("Build failed");
-        System.exit(1);
-      }
+    buildReport.logSummary(success);
+    if (!success) {
+      System.exit(1);
     }
   }
 
@@ -323,19 +331,23 @@ public final class BuildSpringSecurity {
 
     final String commandStr = String.join(" ", command);
     final long pid = process.pid();
-    log.debug("[pid={}] {} started", pid, commandStr);
+    try (final var ignored = LogContext.pid(pid)) {
+      log.debug("{} started", commandStr);
+    }
 
     Thread.ofVirtual().start(() -> {
-      try (final BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
-        reader.lines().forEach(line -> log.info("[pid={}] {}: {}", pid, commandStr, line));
+      try (final var ignored = LogContext.pid(pid);
+          final BufferedReader reader = process.inputReader(StandardCharsets.UTF_8)) {
+        reader.lines().forEach(line -> log.info("{}: {}", commandStr, line));
       } catch (final IOException e) {
         throw new UncheckedIOException(e);
       }
     });
 
     Thread.ofVirtual().start(() -> {
-      try (final BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
-        reader.lines().forEach(line -> log.error("[pid={}] {}: {}", pid, commandStr, line));
+      try (final var ignored = LogContext.pid(pid);
+          final BufferedReader reader = process.errorReader(StandardCharsets.UTF_8)) {
+        reader.lines().forEach(line -> log.error("{}: {}", commandStr, line));
       } catch (final IOException e) {
         throw new UncheckedIOException(e);
       }
@@ -350,7 +362,9 @@ public final class BuildSpringSecurity {
     }
 
     if (!exited) {
-      log.error("[pid={}] {}:  timed out, destroying", pid, commandStr);
+      try (final var ignored = LogContext.pid(pid)) {
+        log.error("{}: timed out, destroying", commandStr);
+      }
       process.destroyForcibly();
       throw new IllegalStateException();
     }
@@ -404,8 +418,9 @@ public final class BuildSpringSecurity {
   private static void buildExtraSourceSet(final SourceSet extraSourceSet, final Path workdir,
       final BuildService service, final JavaCompilerOptions compilerOptions) {
     final var project = extraSourceSet.project();
-    log.debug("[project={}] Compiling extra source set {} first", project.artifactId(),
-        extraSourceSet.id());
+    try (final var ignored = LogContext.sourceSet(project, extraSourceSet.id())) {
+      log.debug("Compiling extra source set first");
+    }
 
     final CompilationResult compiled = service.compileJava(
         workdir, extraSourceSet, compilerOptions
@@ -447,8 +462,9 @@ public final class BuildSpringSecurity {
       return;
     }
 
-    log.info("[project={}] Compiling {} source set ({} files)",
-        project.artifactId(), OPEN_SAML5_SOURCE_SET, sources.size());
+    try (final var ignored = LogContext.project(project)) {
+      log.info("Compiling {} source set ({} files)", OPEN_SAML5_SOURCE_SET, sources.size());
+    }
 
     final Path mainClassesDir = javaClassesDir(workdir, project, SourceSet.Id.MAIN);
     final Path sourceSetClassesDir =

@@ -89,7 +89,7 @@ public final class FileUtils {
    * @param path File path
    */
   public static void delete(final Path path) {
-    log.info("Deleting {}", path);
+    log.debug("Deleting {}", path);
     if (Files.notExists(path)) {
       log.debug("Path {} not found, do nothing", path);
       return;

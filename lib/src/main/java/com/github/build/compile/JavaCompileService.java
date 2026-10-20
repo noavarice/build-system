@@ -84,11 +84,7 @@ public final class JavaCompileService {
     );
     task.setLocale(Locale.US);
     final boolean result = task.call();
-    if (result) {
-      log.info("Compilation succeeded");
-    } else {
-      log.error("Compilation failed");
-    }
+    log.debug("Compilation {}", result ? "succeeded" : "failed");
 
     return result;
   }

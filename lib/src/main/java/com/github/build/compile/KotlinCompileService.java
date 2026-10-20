@@ -57,13 +57,11 @@ public final class KotlinCompileService {
     Objects.requireNonNull(classpath);
 
     final Project project = sourceSet.project();
-    final SourceSet.Id sourceSetId = sourceSet.id();
 
     final List<Path> kotlinSources = new ArrayList<>();
     collectSources(workdir, project, sourceSet.kotlinSourceRoots(), kotlinSources);
     if (kotlinSources.isEmpty()) {
-      log.info("[project={}] [ss={}] No Kotlin sources found, do nothing",
-          project.artifactId(), sourceSetId);
+      log.debug("No Kotlin sources found, do nothing");
       return true;
     }
 
@@ -81,8 +79,7 @@ public final class KotlinCompileService {
       throw new UncheckedIOException(e);
     }
 
-    log.info("[project={}] [ss={}] Compiling Kotlin ({} files)",
-        project.artifactId(), sourceSetId, kotlinSources.size());
+    log.debug("Compiling Kotlin ({} files)", kotlinSources.size());
     return compileKotlin(classesDir, classpath, javaSourceRoots, kotlinSources);
   }
 
@@ -116,7 +113,7 @@ public final class KotlinCompileService {
     log.debug("Compiling Kotlin with args: {}", args);
     final ExitCode exitCode = new K2JVMCompiler().exec(System.err, args.toArray(String[]::new));
     if (exitCode != ExitCode.OK) {
-      log.error("Kotlin compilation failed: {}", exitCode);
+      log.debug("Kotlin compiler exited with code {}", exitCode);
       return false;
     }
 

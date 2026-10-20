@@ -73,7 +73,7 @@ public final class RemoteRepositoryImpl implements RemoteRepository {
   @Override
   public Optional<ArtifactDownloadResult> download(final GroupArtifactVersion dependency) {
     final var uri = buildUri(dependency, ".jar");
-    log.info("Downloading {} JAR from {}", dependency, uri);
+    log.debug("Downloading {} JAR from {}", dependency, uri);
     final var request = HttpRequest
         .newBuilder(uri)
         .GET()

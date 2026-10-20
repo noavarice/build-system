@@ -63,7 +63,7 @@ public final class AspectJCompileService {
   }
 
   private boolean run(final List<String> args) {
-    log.info("[ajc] Compiling with AspectJ compiler: {}", String.join(" ", args));
+    log.debug("[ajc] Compiling with AspectJ compiler: {}", String.join(" ", args));
     final var command = new AjdtCommand();
     final var messageHandler = new MessageHandler();
     final boolean success;

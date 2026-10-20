@@ -9,8 +9,11 @@ import com.github.build.deps.DependencyConstraints;
 import com.github.build.deps.DependencyService;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.util.DurationUtils;
 import java.io.File;
 import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -42,6 +45,8 @@ import org.eclipse.aether.resolution.DependencyResult;
 import org.eclipse.aether.util.artifact.JavaScopes;
 import org.eclipse.aether.util.filter.ScopeDependencyFilter;
 import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 /**
  * Dependency service implementation over Maven Artifact Resolver.
@@ -49,6 +54,9 @@ import org.jspecify.annotations.Nullable;
  * @author noavarice
  */
 public final class MavenArtifactResolverDependencyService implements DependencyService {
+
+  private static final Logger log =
+      LoggerFactory.getLogger(MavenArtifactResolverDependencyService.class);
 
   private final RepositorySystem repositorySystem;
 
@@ -186,6 +194,8 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
   @Override
   public Map<GroupArtifactVersion, Path> resolveCompileClasspath(final SourceSet sourceSet) {
     Objects.requireNonNull(sourceSet);
+    log.info("Compile classpath resolution started");
+    final Instant startedAt = Instant.now();
 
     // step 1: collect dependency graph
     final CollectResult collectResult;
@@ -296,7 +306,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       }
     }
 
-    return dependencyResult.getArtifactResults()
+    final Map<GroupArtifactVersion, Path> resolved = dependencyResult.getArtifactResults()
         .stream()
         .map(ArtifactResult::getArtifact)
         .collect(toUnmodifiableMap(
@@ -305,11 +315,16 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
             ),
             a -> a.getFile().toPath()
         ));
+    log.info("Compile classpath resolution finished in {} ({} artifacts)",
+        DurationUtils.format(Duration.between(startedAt, Instant.now())), resolved.size());
+    return resolved;
   }
 
   @Override
   public Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(final SourceSet sourceSet) {
     Objects.requireNonNull(sourceSet);
+    log.info("Runtime classpath resolution started");
+    final Instant startedAt = Instant.now();
 
     // step 1: collect dependency graph
     final CollectResult collectResult;
@@ -419,7 +434,7 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       }
     }
 
-    return dependencyResult.getArtifactResults()
+    final Map<GroupArtifactVersion, Path> resolved = dependencyResult.getArtifactResults()
         .stream()
         .map(ArtifactResult::getArtifact)
         .collect(toUnmodifiableMap(
@@ -428,6 +443,9 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
             ),
             a -> a.getFile().toPath()
         ));
+    log.info("Runtime classpath resolution finished in {} ({} artifacts)",
+        DurationUtils.format(Duration.between(startedAt, Instant.now())), resolved.size());
+    return resolved;
   }
 
   @Override
@@ -562,6 +580,8 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final GroupArtifactVersion... other
   ) {
     Objects.requireNonNull(bom);
+    log.info("Dependency constraints resolution started");
+    final Instant startedAt = Instant.now();
     final var boms = new ArrayList<GroupArtifactVersion>();
     boms.add(bom);
     if (other != null) {
@@ -599,6 +619,9 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       }
     }
 
-    return builder.build();
+    final DependencyConstraints constraints = builder.build();
+    log.info("Dependency constraints resolution finished in {} ({} BOMs)",
+        DurationUtils.format(Duration.between(startedAt, Instant.now())), boms.size());
+    return constraints;
   }
 }

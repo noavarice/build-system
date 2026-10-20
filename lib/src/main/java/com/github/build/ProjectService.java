@@ -1,6 +1,7 @@
 package com.github.build;
 
 import com.github.build.deps.GroupArtifact;
+import com.github.build.logging.LogContext;
 import com.github.build.util.PathUtils;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -45,7 +46,9 @@ public final class ProjectService {
     final Project project = builder.build();
     // TODO: add checks (name uniqueness, path uniqueness, etc.)
     projects.add(project);
-    log.debug("[project={}] Created", project.gav());
+    try (final var ignored = LogContext.project(project)) {
+      log.debug("Created");
+    }
     return project;
   }
 

@@ -3,6 +3,7 @@ package com.github.build;
 import com.github.build.deps.Dependency;
 import com.github.build.deps.GroupArtifact;
 import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.logging.LogContext;
 import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.List;
@@ -138,11 +139,10 @@ public final class Project implements MainSourceSetDependency, TestSourceSetDepe
               + "instead (it is resolved as the project's main artifact)."
       );
     }
-    log.warn("[project={}] Depending on a source set {} is bad practice - the source set "
-            + "should be made a separate project with its own build cycle",
-        sourceSet.project().artifactId(),
-        sourceSet.id()
-    );
+    try (final var ignored = LogContext.sourceSet(sourceSet.project(), sourceSet.id())) {
+      log.warn("Depending on a source set is bad practice - the source set "
+          + "should be made a separate project with its own build cycle");
+    }
     return new Dependency.OnSourceSet(sourceSet);
   }
 

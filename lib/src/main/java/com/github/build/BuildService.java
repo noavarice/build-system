@@ -14,6 +14,8 @@ import com.github.build.deps.GroupArtifactVersion;
 import com.github.build.jar.JarArgs;
 import com.github.build.jar.JarManifest;
 import com.github.build.jar.JarService;
+import com.github.build.logging.LogContext;
+import com.github.build.util.DurationUtils;
 import com.github.build.util.FileUtils;
 import com.github.build.util.PathUtils;
 import java.io.IOException;
@@ -24,6 +26,8 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.PathMatcher;
 import java.nio.file.attribute.BasicFileAttributes;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -44,6 +48,8 @@ public final class BuildService {
 
   private static final Logger log = LoggerFactory.getLogger(BuildService.class);
 
+  private final BuildReport buildReport;
+
   private final JavaCompileService javaCompileService;
 
   private final KotlinCompileService kotlinCompileService;
@@ -59,6 +65,16 @@ public final class BuildService {
       final DependencyService dependencyService,
       final JarService jarService
   ) {
+    this(new BuildReport(), javaCompileService, dependencyService, jarService);
+  }
+
+  public BuildService(
+      final BuildReport buildReport,
+      final JavaCompileService javaCompileService,
+      final DependencyService dependencyService,
+      final JarService jarService
+  ) {
+    this.buildReport = Objects.requireNonNull(buildReport);
     this.javaCompileService = Objects.requireNonNull(javaCompileService);
     this.kotlinCompileService = new KotlinCompileService();
     this.aspectJCompileService = new AspectJCompileService();
@@ -79,9 +95,11 @@ public final class BuildService {
     Objects.requireNonNull(sourceSet);
     PathUtils.checkAbsolute(workdir);
 
-    final Set<Path> classpath = new HashSet<>();
-    addSourceSetCompileClasspath(sourceSet, classpath);
-    return classpath;
+    try (final var ignored = LogContext.sourceSet(sourceSet.project(), sourceSet.id())) {
+      final Set<Path> classpath = new HashSet<>();
+      addSourceSetCompileClasspath(sourceSet, classpath);
+      return classpath;
+    }
   }
 
   /**
@@ -107,46 +125,54 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    log.info("[project={}] [ss={}] Compiling Java", project.artifactId(), sourceSetId);
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      final Path outputDirectory = classOutputDirectory(
+          workdir, project, sourceSetId, Language.JAVA
+      );
+      createDirectories(outputDirectory);
 
-    final Path outputDirectory = classOutputDirectory(
-        workdir, project, sourceSetId, Language.JAVA
-    );
-    createDirectories(outputDirectory);
+      final Set<Path> sources = collectJavaSources(workdir, project, sourceSetId);
+      if (sources.isEmpty()) {
+        log.debug("No Java sources found, do nothing");
+        return new CompilationResult(outputDirectory);
+      }
 
-    final Set<Path> sources = collectJavaSources(workdir, project, sourceSetId);
-    if (sources.isEmpty()) {
-      log.info("[project={}] [ss={}] No Java sources found, do nothing", project.artifactId(),
-          sourceSetId);
+      log.info("Java compilation started");
+      final Instant startedAt = Instant.now();
+
+      final Set<Path> classpath = new HashSet<>();
+      addSourceSetCompileClasspath(sourceSet, classpath);
+
+      // Kotlin is compiled before Java and its classes may be referenced from Java sources
+      for (final Language sibling : Language.values()) {
+        if (sibling == Language.JAVA) {
+          continue;
+        }
+
+        final Path siblingDirectory =
+            classOutputDirectory(workdir, project, sourceSetId, sibling);
+        if (Files.isDirectory(siblingDirectory)) {
+          classpath.add(siblingDirectory);
+        }
+      }
+
+      final boolean compiled = javaCompileService.compile(
+          new JavaCompileArgs(sources, outputDirectory, classpath, compilerOptions)
+      );
+      if (!compiled) {
+        log.error("Java compilation failed");
+        throw new CompilationException(
+            "[project=%s] [ss=%s] Java compilation failed"
+                .formatted(project.artifactId(), sourceSetId)
+        );
+      }
+
+      final Duration duration = Duration.between(startedAt, Instant.now());
+      buildReport.compilationFinished(project, sourceSetId, Language.JAVA, duration);
+      log.info("Java compilation finished in {}", DurationUtils.format(duration));
+
       return new CompilationResult(outputDirectory);
     }
-
-    final Set<Path> classpath = new HashSet<>();
-    addSourceSetCompileClasspath(sourceSet, classpath);
-
-    // Kotlin is compiled before Java and its classes may be referenced from Java sources
-    for (final Language sibling : Language.values()) {
-      if (sibling == Language.JAVA) {
-        continue;
-      }
-
-      final Path siblingDirectory = classOutputDirectory(workdir, project, sourceSetId, sibling);
-      if (Files.isDirectory(siblingDirectory)) {
-        classpath.add(siblingDirectory);
-      }
-    }
-
-    final boolean compiled = javaCompileService.compile(
-        new JavaCompileArgs(sources, outputDirectory, classpath, compilerOptions)
-    );
-    if (!compiled) {
-      throw new CompilationException(
-          "[project=%s] [ss=%s] Java compilation failed"
-              .formatted(project.artifactId(), sourceSetId)
-      );
-    }
-
-    return new CompilationResult(outputDirectory);
   }
 
   /**
@@ -159,7 +185,9 @@ public final class BuildService {
    */
   public CompilationResult compileJava(final JavaCompileArgs args) {
     Objects.requireNonNull(args);
+    log.debug("Compiling Java into {}", args.classesDir());
     if (!javaCompileService.compile(args)) {
+      log.error("Java compilation failed for output directory {}", args.classesDir());
       throw new CompilationException(
           "Java compilation failed for output directory " + args.classesDir()
       );
@@ -187,18 +215,28 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    final Path outputDirectory = classOutputDirectory(
-        workdir, project, sourceSetId, Language.KOTLIN
-    );
-    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
-    if (!kotlinCompileService.compile(workdir, sourceSet, outputDirectory, classpath)) {
-      throw new CompilationException(
-          "[project=%s] [ss=%s] Kotlin compilation failed"
-              .formatted(project.artifactId(), sourceSetId)
-      );
-    }
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      log.info("Kotlin compilation started");
+      final Instant startedAt = Instant.now();
 
-    return new CompilationResult(outputDirectory);
+      final Path outputDirectory = classOutputDirectory(
+          workdir, project, sourceSetId, Language.KOTLIN
+      );
+      final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+      if (!kotlinCompileService.compile(workdir, sourceSet, outputDirectory, classpath)) {
+        log.error("Kotlin compilation failed");
+        throw new CompilationException(
+            "[project=%s] [ss=%s] Kotlin compilation failed"
+                .formatted(project.artifactId(), sourceSetId)
+        );
+      }
+
+      final Duration duration = Duration.between(startedAt, Instant.now());
+      buildReport.compilationFinished(project, sourceSetId, Language.KOTLIN, duration);
+      log.info("Kotlin compilation finished in {}", DurationUtils.format(duration));
+
+      return new CompilationResult(outputDirectory);
+    }
   }
 
   /**
@@ -222,40 +260,50 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    final Path outputDirectory = classOutputDirectory(
-        workdir, project, sourceSetId, Language.ASPECTJ
-    );
-    final Set<Path> classpath = compileClasspath(workdir, sourceSet);
-    final Set<Path> sourceRoots = resolveDirectories(
-        workdir, project, sourceSet.aspectjSourceRoots()
-    );
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      log.info("AspectJ compilation started");
+      final Instant startedAt = Instant.now();
 
-    final Set<Path> aspectPath = new HashSet<>();
-    final Path outXmlFile;
-    if (sourceSetId.equals(SourceSet.Id.TEST)) {
-      // main aspects weave test classes at compile time
-      final Path mainOutputDirectory = classOutputDirectory(
-          workdir, project, SourceSet.Id.MAIN, Language.ASPECTJ
+      final Path outputDirectory = classOutputDirectory(
+          workdir, project, sourceSetId, Language.ASPECTJ
       );
-      aspectPath.add(mainOutputDirectory);
-      classpath.add(mainOutputDirectory);
-      outXmlFile = null;
-    } else if (sourceSetId.equals(SourceSet.Id.MAIN)) {
-      outXmlFile = Path.of("META-INF", "aop.xml");
-    } else {
-      outXmlFile = null;
-    }
-
-    if (!aspectJCompileService.compile(
-        new AspectJCompileArgs(sourceRoots, outputDirectory, classpath, aspectPath, outXmlFile)
-    )) {
-      throw new CompilationException(
-          "[project=%s] [ss=%s] AspectJ compilation failed"
-              .formatted(project.artifactId(), sourceSetId)
+      final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+      final Set<Path> sourceRoots = resolveDirectories(
+          workdir, project, sourceSet.aspectjSourceRoots()
       );
-    }
 
-    return new CompilationResult(outputDirectory);
+      final Set<Path> aspectPath = new HashSet<>();
+      final Path outXmlFile;
+      if (sourceSetId.equals(SourceSet.Id.TEST)) {
+        // main aspects weave test classes at compile time
+        final Path mainOutputDirectory = classOutputDirectory(
+            workdir, project, SourceSet.Id.MAIN, Language.ASPECTJ
+        );
+        aspectPath.add(mainOutputDirectory);
+        classpath.add(mainOutputDirectory);
+        outXmlFile = null;
+      } else if (sourceSetId.equals(SourceSet.Id.MAIN)) {
+        outXmlFile = Path.of("META-INF", "aop.xml");
+      } else {
+        outXmlFile = null;
+      }
+
+      if (!aspectJCompileService.compile(
+          new AspectJCompileArgs(sourceRoots, outputDirectory, classpath, aspectPath, outXmlFile)
+      )) {
+        log.error("AspectJ compilation failed");
+        throw new CompilationException(
+            "[project=%s] [ss=%s] AspectJ compilation failed"
+                .formatted(project.artifactId(), sourceSetId)
+        );
+      }
+
+      final Duration duration = Duration.between(startedAt, Instant.now());
+      buildReport.compilationFinished(project, sourceSetId, Language.ASPECTJ, duration);
+      log.info("AspectJ compilation finished in {}", DurationUtils.format(duration));
+
+      return new CompilationResult(outputDirectory);
+    }
   }
 
   private static Path classOutputDirectory(
@@ -352,21 +400,12 @@ public final class BuildService {
           .resolve(project.path())
           .resolve(relativeDir);
       if (Files.notExists(sourceDir)) {
-        log.debug("[project={}][ss={}] Source directory {} does not exist",
-            project.artifactId(),
-            sourceSetId,
-            sourceDir
-        );
+        log.debug("Source directory {} does not exist", sourceDir);
         continue;
       }
 
       if (!Files.isDirectory(sourceDir)) {
-        log.warn(
-            "[project={}][ss={}] {} assumed to be source directory but it's not a directory",
-            project.artifactId(),
-            sourceSetId,
-            sourceDir
-        );
+        log.warn("{} assumed to be source directory but it's not a directory", sourceDir);
         continue;
       }
 
@@ -383,11 +422,7 @@ public final class BuildService {
       }
 
       if (sourcesPart.isEmpty()) {
-        log.debug("[project={}][ss={}] No source files found in directory {}",
-            project.artifactId(),
-            sourceSetId,
-            sourceDir
-        );
+        log.debug("No source files found in directory {}", sourceDir);
       } else {
         sources.addAll(sourcesPart);
       }
@@ -462,35 +497,33 @@ public final class BuildService {
 
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
-    log.info("[project={}][ss={}] Copying resources", project.artifactId(), sourceSetId);
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      log.debug("Copying resources");
 
-    final Path targetDir = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().resourcesDir())
-        .resolve(sourceSetId.value());
-
-    if (Files.isDirectory(targetDir)) {
-      FileUtils.delete(targetDir);
-    }
-
-    try {
-      // always creating directory, even if there's nothing to copy
-      Files.createDirectories(targetDir);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    for (final Path dir : sourceSet.resourceDirectories()) {
-      final var absolutePath = workdir
+      final Path targetDir = workdir
           .resolve(project.path())
-          .resolve(dir);
-      log.info("[project={}][ss={}] Copying resources from {}",
-          project.artifactId(),
-          sourceSetId,
-          absolutePath
-      );
-      FileUtils.copyDirectory(absolutePath, targetDir);
+          .resolve(project.artifactLayout().rootDir())
+          .resolve(project.artifactLayout().resourcesDir())
+          .resolve(sourceSetId.value());
+
+      if (Files.isDirectory(targetDir)) {
+        FileUtils.delete(targetDir);
+      }
+
+      try {
+        // always creating directory, even if there's nothing to copy
+        Files.createDirectories(targetDir);
+      } catch (final IOException e) {
+        throw new UncheckedIOException(e);
+      }
+
+      for (final Path dir : sourceSet.resourceDirectories()) {
+        final var absolutePath = workdir
+            .resolve(project.path())
+            .resolve(dir);
+        log.debug("Copying resources from {}", absolutePath);
+        FileUtils.copyDirectory(absolutePath, targetDir);
+      }
     }
   }
 
@@ -536,47 +569,54 @@ public final class BuildService {
     final Project project = sourceSet.project();
     final SourceSet.Id sourceSetId = sourceSet.id();
 
-    log.info("[project={}][ss={}] Creating JAR", project.artifactId(), sourceSetId);
-    final String jarName = sourceSetId.equals(SourceSet.Id.MAIN)
-        ? project.artifactId() + ".jar"
-        : project.artifactId() + "-" + sourceSetId + ".jar";
-    final Path jarPath = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        // TODO: customize JAR path/filename
-        .resolve(jarName);
-    final var content = new HashMap<Path, JarArgs.Content>();
+    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+      log.debug("Creating JAR");
+      final Instant startedAt = Instant.now();
 
-    // collect compiled classes
-    for (final Path classDirectory : classDirectories) {
-      if (!Files.isDirectory(classDirectory)) {
-        log.debug("[project={}][ss={}] Class output directory {} does not exist",
-            project.artifactId(), sourceSetId, classDirectory);
-        continue;
+      final String jarName = sourceSetId.equals(SourceSet.Id.MAIN)
+          ? project.artifactId() + ".jar"
+          : project.artifactId() + "-" + sourceSetId + ".jar";
+      final Path jarPath = workdir
+          .resolve(project.path())
+          .resolve(project.artifactLayout().rootDir())
+          // TODO: customize JAR path/filename
+          .resolve(jarName);
+      final var content = new HashMap<Path, JarArgs.Content>();
+
+      // collect compiled classes
+      for (final Path classDirectory : classDirectories) {
+        if (!Files.isDirectory(classDirectory)) {
+          log.debug("Class output directory {} does not exist", classDirectory);
+          continue;
+        }
+
+        try {
+          Files.walkFileTree(classDirectory, new CollectJarContent(classDirectory, content));
+        } catch (final IOException e) {
+          throw new UncheckedIOException(e);
+        }
       }
 
+      // collect resources
+      final Path resourcesDir = workdir
+          .resolve(project.path()).resolve(project.artifactLayout().rootDir())
+          .resolve(project.artifactLayout().resourcesDir())
+          .resolve(sourceSetId.value());
       try {
-        Files.walkFileTree(classDirectory, new CollectJarContent(classDirectory, content));
+        Files.walkFileTree(resourcesDir, new CollectJarContent(resourcesDir, content));
       } catch (final IOException e) {
         throw new UncheckedIOException(e);
       }
+
+      content.putAll(additionalEntries);
+
+      final var args = new JarArgs(jarPath, content, manifest);
+      jarService.create(args);
+
+      log.info("JAR created in {}", DurationUtils.format(Duration.between(
+          startedAt, Instant.now()
+      )));
     }
-
-    // collect resources
-    final Path resourcesDir = workdir
-        .resolve(project.path()).resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().resourcesDir())
-        .resolve(sourceSetId.value());
-    try {
-      Files.walkFileTree(resourcesDir, new CollectJarContent(resourcesDir, content));
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    content.putAll(additionalEntries);
-
-    final var args = new JarArgs(jarPath, content, manifest);
-    jarService.create(args);
   }
 
   /**
@@ -630,7 +670,9 @@ public final class BuildService {
     Objects.requireNonNull(project);
     PathUtils.checkAbsolute(workdir);
 
-    log.info("[project={}] Cleaning build output directory", project.artifactId());
+    try (final var ignored = LogContext.project(project)) {
+      log.debug("Cleaning build output directory");
+    }
     final Path buildOutputDir = workdir
         .resolve(project.path())
         .resolve(project.artifactLayout().rootDir());
