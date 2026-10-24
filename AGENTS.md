@@ -9,6 +9,7 @@ Maven builds this repo's own code; the real product is the `lib` API plus the `b
 - `lib` — the build system core: compile, jar, test, dependency resolution, graph. This is the code you will almost always be editing.
 - `test-utils` — internal test-only helpers (e.g. `FsUtils`). Used by `lib` tests.
 - `junit-integration` — JUnit platform launcher integration used by the build system's test runner.
+- `repository-proxy` — minimal Spring Boot (servlet) Maven repository proxy used as a development-time Nexus replacement. Speaks the Nexus `/repository/{id}` URL layout, stores proxied artifacts in a Maven local repository, and is startable as a `main` or programmatically. See "Dependency resolution".
 - `build-itself` — main `com.github.build.BuildItself` that rebuilds `test-utils` and `lib` from their source trees and runs their tests.
 - `build-spring-security` — main `com.github.build.BuildSpringSecurity` that rebuilds the Spring Security tree from the `spring-security/` git submodule (init with `git submodule update --init`). It builds the main source sets of ~23 modules (crypto, core, acl, data, web, messaging, access, aspects, cas, oauth2-*, taglibs, kerberos-*, ldap, saml2-service-provider, rsocket, webauthn, config, test); test source sets are built for some only. `KotlinCompileService` handles the mixed Kotlin/Java modules. Blocked modules and the feature gaps they need are tracked in `build-spring-security/BLOCKED_MODULES.md`.
 
@@ -23,7 +24,7 @@ Maven builds this repo's own code; the real product is the `lib` API plus the `b
 Use a full JDK 21 (Temurin 21) to run `BuildSpringSecurity` and the tests it spawns. The checked-in
 run config is `.run/build Spring Security.run.xml` (main class `com.github.build.BuildSpringSecurity`,
 program arg `spring-security`, plus `-DbuildRuntimePath=junit-integration/...jar,lib/...jar`), and it
-still needs a reachable Nexus. With JDK 25 the Spring Security `web` tests fail inside Mockito's
+still needs a reachable repository proxy. With JDK 25 the Spring Security `web` tests fail inside Mockito's
 inline mock maker (`Java 25 (69) is not supported by the current version of Byte Buddy`) and JaCoCo
 0.8.9 cannot read class file major version 69. `BuildSpringSecurity` still emits `release 17`
 bytecode for the Spring Security modules; only the JVM running it (and the test processes it spawns)
@@ -37,15 +38,15 @@ Projects built have two independent output directories; do not confuse them:
 - The self-hosted builds write to `{module}/build/` (default `ArtifactLayout` root); `BuildItself` puts its XJC output under `lib/build/generated-sources/xjc`. `build-spring-security` uses `build-system/` as its `ArtifactLayout` root instead, so its output lands in `spring-security/{module}/build-system/`.
 - `.gitignore` intentionally un-ignores `**/src/main/**/target/` and similar; do not "fix" it.
 
-## Dependency resolution needs a network/nexus
+## Dependency resolution needs a network/repository proxy
 
-- `lib` and both build mains resolve artifacts from `http://${NEXUS_HOST:-localhost}:8081/repository/maven-central` (see `mavenArtifactResolver()` in `BuildItself`/`BuildSpringSecurity`, and `RemoteRepositoryImpl`). When launched from the `.run` configs / plain `java` they fall back to a fresh temp local repo each run, so those still need a live Nexus. When run as the compose services (`build-itself`, `build-spring-security`, `maven`) they share the named `maven-local-repo` volume via `-Dmaven.repo.local=/m2/repository`, so the aether/Maven caches persist across runs and container rebuilds.
-- `scripts/nexus-init.sh` (run by the `nexus-init` compose service) also configures a proxy repository to `build.shibboleth.net/maven/releases` for OpenSAML 5.x, which `spring-security-saml2-service-provider` needs and Maven Central does not host. The old `.../nexus/content/repositories/releases` URL 302-redirects and makes the proxy return 500, so do not revert it.
-- `compose-local.yaml` spins up Nexus + a Maven container (`mvn clean install`) + `build-itself` + `build-spring-security`. Use it (under Podman or Docker) to run self-hosted builds that resolve dependencies.
+- `lib` and both build mains resolve artifacts from `http://${NEXUS_HOST:-localhost}:8081/repository/maven-central` (see `mavenArtifactResolver()` in `BuildItself`/`BuildSpringSecurity`, and `RemoteRepositoryImpl`). When launched from the `.run` configs / plain `java` they fall back to a fresh temp local repo each run, so those still need a live repository proxy. When run as the compose services (`build-itself`, `build-spring-security`, `maven`) they share the named `maven-local-repo` volume via `-Dmaven.repo.local=/m2/repository`, so the aether/Maven caches persist across runs and container rebuilds.
+- `repository-proxy` is a minimal Spring Boot (servlet) Maven repository proxy used as a development-time Nexus replacement. It serves the Nexus `/repository/{id}` URL layout, stores proxied artifacts in a Maven local repository (default `~/.m2/repository`, configured with `repository-proxy.local-repository`) and exposes upstream repositories via `repository-proxy.repositories.<id>` (default only `maven-central`; the port defaults to 8080). It is startable as a `main`, programmatically via `SpringApplication`, or with `mvn -pl repository-proxy spring-boot:run`. It needs no authentication, no EULA acceptance and no non-Maven package formats. Every local-repository hit and every outgoing upstream request (with a running counter) is logged at INFO, so upstream request counts are directly visible.
+- The `shibboleth` upstream (`build.shibboleth.net/maven/releases`) is configured in `compose-local.yaml` and provides OpenSAML 5.x, which `spring-security-saml2-service-provider` needs and Maven Central does not host. The old `.../nexus/content/repositories/releases` URL 302-redirects and makes the proxy return 500, so do not revert it.
+- `compose-local.yaml` runs the proxy on port 8081 under the `nexus` network alias (so the existing `NEXUS_HOST=nexus` references and the settings.xml mirror URL keep working) plus a Maven container (`mvn clean install`) + `build-itself` + `build-spring-security`. Use it (under Podman or Docker) to run self-hosted builds that resolve dependencies.
 - The `build-spring-security` service builds `build-spring-security/Dockerfile` (JDK 21 + Node 20), which embeds the module `target/` jars; run `mvn clean install` (e.g. the `maven` service) before bringing it up. `BuildSpringSecurity` gets `junit-integration`/`lib` on the in-process test classpath via `-DbuildRuntimePath` (see `build Spring Security.run.xml`). Verify the `spring-security` submodule is checked out (`git submodule update --init spring-security`).
-- Rootless Podman caveats: the Nexus data dir is bind-mounted to gitignored `tmp/nexus-data`. The `nexus` compose service runs as root (`user: "0:0"`) because the image's own `nexus` user (uid 200) maps to a host subuid that cannot write the host-owned bind mount; this makes Nexus work from a scratch checkout and keeps the data owned by the developer. All image references are fully qualified (`docker.io/...`) because no unqualified-search registries are configured.
-- Bring everything up under Podman: `NEXUS_ADMIN_PASSWORD=admin123 podman compose up --build`. A fresh Nexus needs `nexus-init` to configure the admin password and the Shibboleth proxy before builds can resolve OpenSAML 5.x.
-- Network-dependent ITs: `MavenArtifactResolverDependencyServiceIT`, `RemoteRepositoryIT`, `DependencyServiceIT`, `BuildServiceIT`.
+- Bring everything up under Podman: `podman compose up --build`. The proxy image is built from `repository-proxy/Dockerfile`; it is a multi-stage layered Spring Boot image (no fat jar) running as a non-root `repositoryproxy` user. All image references are fully qualified (`docker.io/...`) because no unqualified-search registries are configured.
+- Network-dependent ITs (`MavenArtifactResolverDependencyServiceIT`, `RemoteRepositoryIT`, `DependencyServiceIT`, `BuildServiceIT`) start the repository proxy in-process on an ephemeral port via `test-utils`' `RepositoryProxySupport`, so `mvn verify` needs no external proxy; they fall back to `NEXUS_HOST` when the proxy classes are absent (e.g. under `BuildItself`). `RepositoryProxyIT` is hermetic (stub upstream, temporary local repository).
 
 ## Test runtime quirk
 
@@ -53,7 +54,7 @@ Projects built have two independent output directories; do not confuse them:
 
 ## Version sync (hard-coded, no central property)
 
-`0.1.0` is duplicated across: root and every module `pom.xml`, every inter-module dependency version, the `createProject*` GAVs in `BuildItself` (e.g. tests use `build-system-test-utils`/`build-system-lib`), Dockerfile jar names, the `.run/build Spring Security.run.xml` `buildRuntimePath`, and some test fixtures. Bumping the version means touching all of these consistently.
+`0.1.0` is duplicated across: root and every module `pom.xml`, every inter-module dependency version, the `createProject*` GAVs in `BuildItself` (e.g. tests use `build-system-test-utils`/`build-system-lib`), Dockerfile jar names (including `repository-proxy/Dockerfile`), the `.run/build Spring Security.run.xml` `buildRuntimePath`, and some test fixtures. Bumping the version means touching all of these consistently.
 
 ## Conventions
 

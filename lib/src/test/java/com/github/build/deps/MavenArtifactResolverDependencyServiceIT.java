@@ -9,6 +9,7 @@ import static org.junit.jupiter.api.DynamicTest.dynamicTest;
 import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
+import com.github.build.RepositoryProxySupport;
 import com.github.build.SourceSet;
 import com.github.build.SourceRoots;
 import com.github.build.TestSourceSetArgs;
@@ -17,7 +18,6 @@ import com.github.build.deps.maven.ProjectWorkspaceReader;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
@@ -45,7 +45,6 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  * @since 1.0.0
  */
-// TODO: setup proxy repository
 @DisplayName("Tests for dependency service over Maven Artifact Resolver")
 class MavenArtifactResolverDependencyServiceIT {
 
@@ -80,13 +79,9 @@ class MavenArtifactResolverDependencyServiceIT {
     final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
     session.setLocalRepositoryManager(manager);
 
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
     final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
         new org.eclipse.aether.repository.RemoteRepository
-            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
             .build()
     );
     service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
@@ -394,13 +389,9 @@ class MavenArtifactResolverDependencyServiceIT {
       final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
       session.setLocalRepositoryManager(manager);
 
-      final String nexusHost = Objects.requireNonNullElse(
-          System.getenv("NEXUS_HOST"),
-          "localhost"
-      );
       final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
           new org.eclipse.aether.repository.RemoteRepository
-              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
               .build()
       );
       service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
@@ -539,13 +530,9 @@ class MavenArtifactResolverDependencyServiceIT {
       final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
       session.setLocalRepositoryManager(manager);
 
-      final String nexusHost = Objects.requireNonNullElse(
-          System.getenv("NEXUS_HOST"),
-          "localhost"
-      );
       final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
           new org.eclipse.aether.repository.RemoteRepository
-              .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+              .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
               .build()
       );
       service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
@@ -1076,13 +1063,9 @@ class MavenArtifactResolverDependencyServiceIT {
     final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
     session.setLocalRepositoryManager(manager);
 
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
     final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
         new org.eclipse.aether.repository.RemoteRepository
-            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
             .build()
     );
     return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);

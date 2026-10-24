@@ -1,45 +1,34 @@
 services:
-  nexus:
-    image: docker.io/sonatype/nexus3:3.82.0-alpine
-    container_name: build-nexus-local
-    # The image runs as its own `nexus` user (uid 200). Under rootless Podman that uid maps to a
-    # host subuid (100000+200) that cannot write into the bind-mounted `./tmp/nexus-data`, which
-    # the host user owns, so Nexus aborts on its first boot. Running as root maps the container
-    # to the host user instead: all Nexus data lands in `./tmp/nexus-data` owned by the developer
-    # (cleanly removable) and Nexus works from a scratch checkout.
-    user: "0:0"
+  repository-proxy:
+    build:
+      dockerfile: repository-proxy/Dockerfile
+      context: .
+    container_name: build-repository-proxy-local
+    # The `nexus` network alias keeps the existing `NEXUS_HOST=nexus` references and the
+    # settings.xml mirror URL (`http://nexus:8081/repository/maven-central`) working unchanged.
     networks:
-      - default
+      default:
+        aliases:
+          - nexus
+    # Serve on the historical Nexus port; the healthcheck (image or compose) reads SERVER_PORT.
+    environment:
+      SERVER_PORT: 8081
+    command:
+      - --repository-proxy.repositories.shibboleth=https://build.shibboleth.net/maven/releases
     volumes:
-      - ./tmp/nexus-data:/nexus-data
-    security_opt:
-      - no-new-privileges
+      - repository-proxy-local-repo:/home/repositoryproxy/.m2/repository
     ports:
       - 127.0.0.1:8081:8081
+    # Compose declares the check explicitly because podman-compose builds OCI images, which ignore
+    # the Dockerfile HEALTHCHECK (the image ships the same /usr/local/bin/healthcheck).
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://localhost:8081/service/rest/v1/status"]
-      interval: 10s
-      timeout: 5s
-      retries: 30
-      start_period: 60s
-  nexus-init:
-    image: docker.io/library/alpine:3.20
-    container_name: build-nexus-init
-    depends_on:
-      nexus:
-        condition: service_healthy
-    environment:
-      NEXUS_ADMIN_PASSWORD: ${NEXUS_ADMIN_PASSWORD:-admin123}
-    volumes:
-      - ./tmp/nexus-data:/nexus-data:ro
-      - ./scripts/nexus-init.sh:/nexus-init.sh:ro
-    entrypoint:
-      - sh
-      - -c
-      - apk add --no-cache curl jq >/dev/null && sh /nexus-init.sh
-    networks:
-      - default
-    restart: "no"
+      test: ["CMD", "/usr/local/bin/healthcheck"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    security_opt:
+      - no-new-privileges
   maven:
     image: docker.io/library/maven:3.9.11-eclipse-temurin-21
     container_name: build-maven-local
@@ -58,8 +47,8 @@ services:
     security_opt:
       - no-new-privileges
     depends_on:
-      nexus-init:
-        condition: service_completed_successfully
+      repository-proxy:
+        condition: service_healthy
   build-itself:
     build:
       dockerfile: build-itself/Dockerfile
@@ -75,8 +64,8 @@ services:
     networks:
       - default
     depends_on:
-      nexus-init:
-        condition: service_completed_successfully
+      repository-proxy:
+        condition: service_healthy
   build-spring-security:
     # Rebuilds the spring-security git submodule with BuildSpringSecurity. The image embeds the
     # module `target/` jars (Maven layout), so run `mvn clean install` (e.g. the `maven` service or
@@ -96,8 +85,8 @@ services:
     networks:
       - default
     depends_on:
-      nexus-init:
-        condition: service_completed_successfully
+      repository-proxy:
+        condition: service_healthy
   jdtls:
     build:
       context: jdtls
@@ -122,8 +111,8 @@ services:
     networks:
       - default
     depends_on:
-      nexus-init:
-        condition: service_completed_successfully
+      repository-proxy:
+        condition: service_healthy
 
 configs:
   settings.xml:
@@ -144,6 +133,7 @@ volumes:
   jdtls-data:
   jdtls-m2:
   maven-local-repo:
+  repository-proxy-local-repo:
 
 networks:
   default:

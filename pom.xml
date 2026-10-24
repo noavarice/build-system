@@ -13,6 +13,7 @@
     <module>test-utils</module>
     <module>lib</module>
     <module>junit-integration</module>
+    <module>repository-proxy</module>
     <module>build-itself</module>
     <module>build-spring-security</module>
   </modules>

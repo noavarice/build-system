@@ -2304,8 +2304,9 @@ public final class BuildSpringSecurity {
         "localhost"
     );
     // OpenSAML 5.x (a transitive dependency of spring-security-saml2-service-provider, which
-    // spring-security-config compiles against) is not published to Maven Central. The local Nexus
-    // proxies it through the 'shibboleth' repository configured by scripts/nexus-init.sh.
+    // spring-security-config compiles against) is not published to Maven Central. The local
+    // repository proxy exposes it through the 'shibboleth' repository configured in
+    // compose-local.yaml.
     final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
         new org.eclipse.aether.repository.RemoteRepository
             .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")

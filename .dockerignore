@@ -6,3 +6,5 @@
 spring-security/
 tmp/
 **/build/
+# Host Maven cache (large, machine-specific); repository-proxy image builds resolve their own.
+.m2/

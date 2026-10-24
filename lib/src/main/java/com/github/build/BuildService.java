@@ -375,9 +375,16 @@ public final class BuildService {
       }
     }
 
-    final Map<GroupArtifactVersion, Path> localArtifacts = dependencyService.resolveCompileClasspath(
-        sourceSet
-    );
+    final Map<GroupArtifactVersion, Path> localArtifacts;
+    try {
+      localArtifacts = dependencyService.resolveCompileClasspath(sourceSet);
+    } catch (final RuntimeException e) {
+      throw new CompilationException(
+          "[project=%s] [ss=%s] Failed to resolve compile classpath"
+              .formatted(sourceSet.project().artifactId(), sourceSet.id()),
+          e
+      );
+    }
     classpath.addAll(localArtifacts.values());
   }
 

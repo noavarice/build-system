@@ -135,7 +135,7 @@ source sets independently (or splitting `config`) would be required.
   webauthn).
 - Main source set builds. All sibling modules are now referenced as projects (no remote
   `org.springframework.security` coordinates). OpenSAML 5.x (saml2's `api` dependency) is not on
-  Maven Central, so the local Nexus proxies it (see `scripts/nexus-init.sh`).
+  Maven Central, so the local repository proxy exposes it (see `compose-local.yaml`).
 - Test source set blockers: (3), (5 via opensaml5 config), (6), (7), plus test classes from the
   sibling modules whose tests are not built yet.
 - Extra Gradle tasks: `rncToXsd`, `versionlessXsd`, `processResources`/`sourcesJar` wiring. The

@@ -20,7 +20,6 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import org.apache.maven.repository.internal.MavenRepositorySystemUtils;
 import org.eclipse.aether.DefaultRepositorySystemSession;
@@ -787,13 +786,9 @@ class BuildServiceIT {
       ));
     }
 
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
     final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
         new org.eclipse.aether.repository.RemoteRepository
-            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
             .build()
     );
     return new MavenArtifactResolverDependencyService(

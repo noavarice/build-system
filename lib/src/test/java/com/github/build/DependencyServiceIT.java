@@ -14,12 +14,10 @@ import com.github.build.deps.LocalRepository;
 import com.github.build.deps.Pom;
 import com.github.build.deps.RemoteRepository;
 import com.github.build.deps.RemoteRepositoryImpl;
-import java.net.URI;
 import java.net.http.HttpClient;
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.Disabled;
@@ -37,7 +35,6 @@ import org.junit.jupiter.api.io.TempDir;
  * @author noavarice
  * @since 1.0.0
  */
-// TODO: setup proxy repository
 // TODO: move to integration tests
 @DisplayName("Tests for dependency service")
 class DependencyServiceIT {
@@ -71,13 +68,8 @@ class DependencyServiceIT {
         Map.of("sha256", "SHA-256")
     );
 
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-
     final RemoteRepository mavenCentral = new RemoteRepositoryImpl(
-        URI.create("http://" + nexusHost + ":8081/repository/maven-central"),
+        RepositoryProxySupport.mavenCentralUri(),
         HttpClient.newHttpClient()
     );
     remoteRepository = new RemoteRepositoryMock(mavenCentral);
