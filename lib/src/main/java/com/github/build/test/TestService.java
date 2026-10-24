@@ -81,7 +81,7 @@ public final class TestService {
     }
 
     public TestResults withJUnit(final Path workdir, final Project project, final JUnitTestArgs args) {
-        return withJUnit(workdir, project.testSourceSet(), args);
+        return withJUnit(workdir, requireTestSourceSet(project), args);
     }
 
     // TODO: handle failed tests
@@ -131,7 +131,12 @@ public final class TestService {
             final List<JavaCommandBuilder.Agent> agents,
             final List<String> systemProperties,
             final Duration timeout) {
-        return withJUnitAsProcess(workdir, project.testSourceSet(), args, agents, systemProperties, timeout);
+        return withJUnitAsProcess(workdir, requireTestSourceSet(project), args, agents, systemProperties, timeout);
+    }
+
+    private static SourceSet requireTestSourceSet(final Project project) {
+        return Objects.requireNonNull(
+                project.testSourceSet(), () -> "Project %s has no test source set".formatted(project.artifactId()));
     }
 
     // TODO: handle failed tests
@@ -246,12 +251,12 @@ public final class TestService {
         final Path testClassesRoot = workdir.resolve(project.path())
                 .resolve(project.artifactLayout().rootDir())
                 .resolve(project.artifactLayout().classesDir())
-                .resolve("test");
+                .resolve(sourceSet.id().value());
         final Set<Path> testClassesDirs = classDirectories(testClassesRoot);
         final Path testResources = workdir.resolve(project.path())
                 .resolve(project.artifactLayout().rootDir())
                 .resolve(project.artifactLayout().resourcesDir())
-                .resolve("test");
+                .resolve(sourceSet.id().value());
 
         final Map<GroupArtifactVersion, Path> runtimeClasspath = dependencyService.resolveRuntimeClasspath(sourceSet);
 
@@ -279,7 +284,7 @@ public final class TestService {
             }
         }
 
-        final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
+        final DependencyConstraints constraints = sourceSet.dependencyConstraints();
 
         // TODO: figure out how we can configure logging when there's no SLF4J provider in the test classpath.
         // Remember that logging should be configurable and compatible

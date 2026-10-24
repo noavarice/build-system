@@ -85,28 +85,70 @@ public final class BuildSpringSecurity {
         // TODO: consider setting this default via ProjectService
         final var artifactLayout =
                 new Project.ArtifactLayout(Path.of("build-system"), Path.of("classes"), Path.of("resources"));
+        // Test source sets consumed by other modules are built as standalone projects, so their
+        // outputs must not collide with the owning module outputs.
+        final var testArtifactLayout =
+                new Project.ArtifactLayout(Path.of("build-system-tests"), Path.of("classes"), Path.of("resources"));
         final Project crypto = createProjectCrypto(projectService, platform, artifactLayout);
-        final Project core = createProjectCore(projectService, platform, artifactLayout, crypto);
+        final ProjectPair corePair =
+                createProjectCore(projectService, platform, artifactLayout, testArtifactLayout, crypto);
+        final Project core = corePair.main();
+        final Project coreTests = corePair.tests();
         final Project acl = createProjectAcl(projectService, platform, artifactLayout, core);
         final Project data = createProjectData(projectService, platform, artifactLayout, core);
-        final Project web = createProjectWeb(projectService, platform, artifactLayout, core);
-        final Project messaging = createProjectMessaging(projectService, platform, artifactLayout, core, web);
-        final Project access = createProjectAccess(projectService, platform, artifactLayout, core, web, acl, messaging);
+        final ProjectPair webPair =
+                createProjectWeb(projectService, platform, artifactLayout, testArtifactLayout, core, coreTests);
+        final Project web = webPair.main();
+        final Project webTests = webPair.tests();
+        final Project messaging =
+                createProjectMessaging(projectService, platform, artifactLayout, core, web, coreTests);
+        final Project access =
+                createProjectAccess(projectService, platform, artifactLayout, core, web, acl, messaging, webTests);
         final Project aspects = createProjectAspects(projectService, platform, artifactLayout, access);
-        final Project cas = createProjectCas(projectService, platform, artifactLayout, core, web);
-        final Project oauth2Core = createProjectOauth2Core(projectService, platform, artifactLayout, core);
+        final Project cas = createProjectCas(projectService, platform, artifactLayout, core, web, coreTests, webTests);
+        final ProjectPair oauth2CorePair =
+                createProjectOauth2Core(projectService, platform, artifactLayout, testArtifactLayout, core);
+        final Project oauth2Core = oauth2CorePair.main();
+        final Project oauth2CoreTests = oauth2CorePair.tests();
         final Project taglibs = createProjectTaglibs(projectService, platform, artifactLayout, core, web, acl, access);
         final Project kerberosCore = createProjectKerberosCore(projectService, platform, artifactLayout, core);
         final Project kerberosTest = createProjectKerberosTest(projectService, platform, artifactLayout);
         final Project ldap = createProjectLdap(projectService, platform, artifactLayout, core);
         final Project saml2 = createProjectSaml2(projectService, platform, artifactLayout, web);
-        final Project oauth2Jose = createProjectOauth2Jose(projectService, platform, artifactLayout, core, oauth2Core);
-        final Project oauth2Client =
-                createProjectOauth2Client(projectService, platform, artifactLayout, core, web, oauth2Core, oauth2Jose);
+        final ProjectPair oauth2JosePair =
+                createProjectOauth2Jose(projectService, platform, artifactLayout, testArtifactLayout, core, oauth2Core);
+        final Project oauth2Jose = oauth2JosePair.main();
+        final Project oauth2JoseTests = oauth2JosePair.tests();
+        final Project oauth2Client = createProjectOauth2Client(
+                projectService,
+                platform,
+                artifactLayout,
+                core,
+                web,
+                oauth2Core,
+                oauth2Jose,
+                oauth2CoreTests,
+                oauth2JoseTests,
+                webTests);
         final Project oauth2ResourceServer = createProjectOauth2ResourceServer(
-                projectService, platform, artifactLayout, core, web, oauth2Core, oauth2Jose);
+                projectService,
+                platform,
+                artifactLayout,
+                core,
+                web,
+                oauth2Core,
+                oauth2Jose,
+                coreTests,
+                oauth2JoseTests);
         final Project oauth2AuthorizationServer = createProjectOauth2AuthorizationServer(
-                projectService, platform, artifactLayout, web, oauth2Core, oauth2Jose, oauth2ResourceServer);
+                projectService,
+                platform,
+                artifactLayout,
+                web,
+                oauth2Core,
+                oauth2Jose,
+                oauth2ResourceServer,
+                oauth2JoseTests);
         final Project rsocket =
                 createProjectRsocket(projectService, platform, artifactLayout, core, oauth2ResourceServer);
         final Project webauthn = createProjectWebauthn(projectService, platform, artifactLayout, core, web);
@@ -140,20 +182,24 @@ public final class BuildSpringSecurity {
         final List<Project> projects = List.of(
                 crypto,
                 core,
+                coreTests,
                 acl,
                 data,
                 web,
+                webTests,
                 messaging,
                 access,
                 aspects,
                 cas,
                 oauth2Core,
+                oauth2CoreTests,
                 taglibs,
                 kerberosCore,
                 kerberosTest,
                 ldap,
                 saml2,
                 oauth2Jose,
+                oauth2JoseTests,
                 oauth2Client,
                 oauth2ResourceServer,
                 oauth2AuthorizationServer,
@@ -161,6 +207,10 @@ public final class BuildSpringSecurity {
                 webauthn,
                 config,
                 test);
+        // Source sets that used to be consumed as another project's test source set are now
+        // standalone projects. Their main source set holds the test sources, so tests are run
+        // against the main output instead of a dedicated test source set.
+        final Set<Project> testProjects = Set.of(coreTests, webTests, oauth2CoreTests, oauth2JoseTests);
         // These modules currently build main source sets only: their test source sets need build
         // features the project does not support yet (generated sources, extra source sets,
         // Gradle-style highest-version conflict resolution). See BLOCKED_MODULES.md.
@@ -228,6 +278,23 @@ public final class BuildSpringSecurity {
                         .build();
                 service.createJar(workdir, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest);
 
+                if (testProjects.contains(project)) {
+                    // The test sources of this project are its main source set
+                    final TestResults results = runTests(
+                            workdir,
+                            project,
+                            project.mainSourceSet(),
+                            testService,
+                            mockitoPath,
+                            jacocoPath,
+                            springCoreVersion);
+                    if (results.testsFailedCount() > 0) {
+                        success = false;
+                        break;
+                    }
+                    continue;
+                }
+
                 if (projectsWithoutTests.contains(project)) {
                     try (final var ignored = LogContext.project(project)) {
                         log.info("Skipping test source set (not supported yet)");
@@ -236,47 +303,30 @@ public final class BuildSpringSecurity {
                 }
 
                 final SourceSet testSourceSet = project.testSourceSet();
+                if (testSourceSet == null) {
+                    // Tests of this module live in a standalone project (e.g. core -> core-tests)
+                    continue;
+                }
 
                 buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
 
                 final List<Path> testClassDirectories;
                 if (project == aspects) {
-                    final CompilationResult aspectJ = service.compileAspectJ(workdir, project.testSourceSet());
+                    final CompilationResult aspectJ = service.compileAspectJ(workdir, testSourceSet);
                     testClassDirectories = List.of(aspectJ.outputDirectory());
                 } else if (project == config) {
-                    final CompilationResult kotlin = service.compileKotlin(workdir, project.testSourceSet());
-                    final CompilationResult java =
-                            service.compileJava(workdir, project.testSourceSet(), compilerOptions);
+                    final CompilationResult kotlin = service.compileKotlin(workdir, testSourceSet);
+                    final CompilationResult java = service.compileJava(workdir, testSourceSet, compilerOptions);
                     testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
                 } else {
-                    final CompilationResult java =
-                            service.compileJava(workdir, project.testSourceSet(), compilerOptions);
+                    final CompilationResult java = service.compileJava(workdir, testSourceSet, compilerOptions);
                     testClassDirectories = List.of(java.outputDirectory());
                 }
                 service.copyResources(workdir, project, SourceSet.Id.TEST);
-                service.createJar(workdir, project.testSourceSet(), testClassDirectories, Map.of(), null);
+                service.createJar(workdir, testSourceSet, testClassDirectories, Map.of(), null);
 
-                final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-                final List<Path> buildRuntimePath = Stream.of(buildRuntimePathStr.split(",", -1))
-                        .map(Path::of)
-                        .map(Path::toAbsolutePath)
-                        .toList();
-                final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-
-                final var jacocoExecReportPath = workdir.resolve(project.path())
-                        .resolve(project.artifactLayout().rootDir())
-                        .resolve("jacoco")
-                        .resolve("test.exec");
-                final List<JavaCommandBuilder.Agent> agents = List.of(
-                        new JavaCommandBuilder.Agent(mockitoPath, null),
-                        new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath));
-                final TestResults results = testService.withJUnitAsProcess(
-                        workdir,
-                        project,
-                        testArgs,
-                        agents,
-                        List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
-                        Duration.ofMinutes(10));
+                final TestResults results = runTests(
+                        workdir, project, testSourceSet, testService, mockitoPath, jacocoPath, springCoreVersion);
 
                 if (results.testsFailedCount() > 0) {
                     success = false;
@@ -293,6 +343,55 @@ public final class BuildSpringSecurity {
             System.exit(1);
         }
     }
+
+    /**
+     * Runs the tests declared by the specified source set, applying the Mockito and JaCoCo agents.
+     *
+     * @param workdir        Build working directory
+     * @param project        Project owning the source set
+     * @param testSourceSet  Source set containing the tests to run
+     * @param testService    Test service
+     * @param mockitoPath    Mockito agent path
+     * @param jacocoPath     JaCoCo agent path
+     * @param springCoreVersion Version of Spring Core used for the Spring Security version file
+     * @return Test results
+     */
+    private static TestResults runTests(
+            final Path workdir,
+            final Project project,
+            final SourceSet testSourceSet,
+            final TestService testService,
+            final Path mockitoPath,
+            final Path jacocoPath,
+            final String springCoreVersion) {
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final List<Path> buildRuntimePath = Stream.of(buildRuntimePathStr.split(",", -1))
+                .map(Path::of)
+                .map(Path::toAbsolutePath)
+                .toList();
+        final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
+
+        final var jacocoExecReportPath = workdir.resolve(project.path())
+                .resolve(project.artifactLayout().rootDir())
+                .resolve("jacoco")
+                .resolve("test.exec");
+        final List<JavaCommandBuilder.Agent> agents = List.of(
+                new JavaCommandBuilder.Agent(mockitoPath, null),
+                new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath));
+        return testService.withJUnitAsProcess(
+                workdir,
+                testSourceSet,
+                testArgs,
+                agents,
+                List.of("springSecurityVersion=7.0.0", "springVersion=" + springCoreVersion),
+                Duration.ofMinutes(10));
+    }
+
+    /**
+     * A module whose test source set is consumed by other modules, together with the standalone
+     * project that builds those test sources.
+     */
+    private record ProjectPair(Project main, Project tests) {}
 
     private static Path buildJsModule(final Path workdir) {
         final Path jsModuleDir = workdir.resolve("javascript");
@@ -604,7 +703,9 @@ public final class BuildSpringSecurity {
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
             final Project core,
-            final Project web) {
+            final Project web,
+            final Project coreTests,
+            final Project webTests) {
         final List<MainSourceSetDependency> mainCommonDependencies = List.of(
                 core,
                 web,
@@ -632,11 +733,11 @@ public final class BuildSpringSecurity {
         final List<TestSourceSetDependency> testCompileDependencies = Stream.of(
                         main,
 
-                        // Referencing web module test source sets, which we build ourselves.
-                        // Web tests are not only a JAR - they pull their dependencies
+                        // Referencing the standalone test projects of the web/core modules.
+                        // Those tests are not only a JAR - they pull their dependencies
                         // transitively, including core tests.
-                        core.testSourceSet(),
-                        web.testSourceSet(),
+                        coreTests,
+                        webTests,
                         GroupArtifact.parse("org.assertj:assertj-core"),
                         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
                         GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
@@ -653,7 +754,6 @@ public final class BuildSpringSecurity {
                 case Project project -> project;
                 case GroupArtifact groupArtifact -> groupArtifact;
                 case GroupArtifactVersion groupArtifactVersion -> groupArtifactVersion;
-                case SourceSet sourceSet -> sourceSet;
             };
             testCompileDependencies.add(testDependency);
         }
@@ -683,7 +783,8 @@ public final class BuildSpringSecurity {
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
             final Project core,
-            final Project web) {
+            final Project web,
+            final Project coreTests) {
         final List<MainSourceSetDependency> api = List.of(
                 core,
                 // api
@@ -718,14 +819,13 @@ public final class BuildSpringSecurity {
                 GroupArtifact.parse("org.slf4j:slf4j-api"),
                 GroupArtifact.parse("org.slf4j:log4j-over-slf4j"),
                 GroupArtifact.parse("ch.qos.logback:logback-classic"),
-                core.testSourceSet()));
+                coreTests));
         for (final MainSourceSetDependency d : compileOnly) {
             switch (d) {
                 case LocalJar localJar -> testCompileAndRun.add(localJar);
                 case Project project -> testCompileAndRun.add(project);
                 case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
                 case GroupArtifactVersion groupArtifactVersion -> testCompileAndRun.add(groupArtifactVersion);
-                case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
             }
         }
 
@@ -750,11 +850,13 @@ public final class BuildSpringSecurity {
                         .withSourceSets(main, test));
     }
 
-    private static Project createProjectWeb(
+    private static ProjectPair createProjectWeb(
             final ProjectService projectService,
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
-            final Project core) {
+            final Project.ArtifactLayout testArtifactLayout,
+            final Project core,
+            final Project coreTests) {
         final List<MainSourceSetDependency> api = List.of(
                 core,
                 // api
@@ -786,8 +888,17 @@ public final class BuildSpringSecurity {
                 api,
                 platform);
 
-        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
-                main,
+        final Project web = projectService.create(
+                "org.springframework.security",
+                "spring-security-web",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("web"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main));
+
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                web,
                 GroupArtifact.parse("io.projectreactor:reactor-test"),
                 GroupArtifact.parse("jakarta.xml.bind:jakarta.xml.bind-api"),
                 GroupArtifact.parse("jakarta.websocket:jakarta.websocket-api"),
@@ -805,37 +916,23 @@ public final class BuildSpringSecurity {
                 GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
                 GroupArtifact.parse("org.springframework:spring-test"),
                 GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
-                // web tests depend on core's tests
-                core.testSourceSet()));
-        for (final MainSourceSetDependency d : compileOnly) {
-            switch (d) {
-                case LocalJar localJar -> testCompileAndRun.add(localJar);
-                case Project project -> testCompileAndRun.add(project);
-                case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
-                case GroupArtifactVersion groupArtifactVersion -> testCompileAndRun.add(groupArtifactVersion);
-                case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
-            }
-        }
+                // web tests depend on core's test project
+                coreTests));
+        testCompileAndRun.addAll(compileOnly);
 
         final var testRuntime = new ArrayList<>(testCompileAndRun);
         testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
         testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
 
-        final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
+        final Project webTests = createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                "spring-security-web-tests",
+                Path.of("web"),
                 testCompileAndRun,
-                testRuntime,
-                platform);
-        return projectService.create(
-                "org.springframework.security",
-                "spring-security-web",
-                "7.0.0",
-                projectBuilder -> projectBuilder
-                        .withPath(Path.of("web"))
-                        .withArtifactLayout(artifactLayout)
-                        .withSourceSets(main, test));
+                testRuntime);
+        return new ProjectPair(web, webTests);
     }
 
     private static Project createProjectData(
@@ -946,7 +1043,8 @@ public final class BuildSpringSecurity {
             final Project core,
             final Project web,
             final Project acl,
-            final Project messaging) {
+            final Project messaging,
+            final Project webTests) {
         final List<MainSourceSetDependency> api = List.of(
                 core,
                 // api
@@ -987,7 +1085,7 @@ public final class BuildSpringSecurity {
 
         final List<TestSourceSetDependency> testCompileClasspath = Stream.of(
                         main,
-                        web.testSourceSet(),
+                        webTests,
                         GroupArtifact.parse("commons-collections:commons-collections"),
                         GroupArtifact.parse("io.projectreactor:reactor-test"),
                         GroupArtifact.parse("org.assertj:assertj-core"),
@@ -1006,7 +1104,6 @@ public final class BuildSpringSecurity {
                 case Project project -> testCompileClasspath.add(project);
                 case GroupArtifact groupArtifact -> testCompileClasspath.add(groupArtifact);
                 case GroupArtifactVersion groupArtifactVersion -> testCompileClasspath.add(groupArtifactVersion);
-                case SourceSet sourceSet -> testCompileClasspath.add(sourceSet);
             }
         }
 
@@ -1319,10 +1416,11 @@ public final class BuildSpringSecurity {
                         .withSourceSets(main, test));
     }
 
-    private static Project createProjectOauth2Jose(
+    private static ProjectPair createProjectOauth2Jose(
             final ProjectService projectService,
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
+            final Project.ArtifactLayout testArtifactLayout,
             final Project core,
             final Project oauth2Core) {
         final List<MainSourceSetDependency> api = List.of(
@@ -1344,8 +1442,17 @@ public final class BuildSpringSecurity {
                 api,
                 platform);
 
-        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
-                main,
+        final Project oauth2Jose = projectService.create(
+                "org.springframework.security",
+                "spring-security-oauth2-jose",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("oauth2", "oauth2-jose"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main));
+
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                oauth2Jose,
                 GroupArtifact.parse("org.bouncycastle:bcpkix-jdk18on"),
                 GroupArtifact.parse("org.bouncycastle:bcprov-jdk18on"),
                 GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api"),
@@ -1360,28 +1467,20 @@ public final class BuildSpringSecurity {
                 GroupArtifact.parse("org.mockito:mockito-core"),
                 GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
                 GroupArtifact.parse("org.springframework:spring-test")));
-        for (final MainSourceSetDependency d : optional) {
-            addTestDependency(testCompileAndRun, d);
-        }
+        testCompileAndRun.addAll(optional);
 
         final var testRuntime = new ArrayList<>(testCompileAndRun);
         testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
 
-        final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
+        final Project oauth2JoseTests = createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                "spring-security-oauth2-jose-tests",
+                Path.of("oauth2", "oauth2-jose"),
                 testCompileAndRun,
-                testRuntime,
-                platform);
-        return projectService.create(
-                "org.springframework.security",
-                "spring-security-oauth2-jose",
-                "7.0.0",
-                projectBuilder -> projectBuilder
-                        .withPath(Path.of("oauth2", "oauth2-jose"))
-                        .withArtifactLayout(artifactLayout)
-                        .withSourceSets(main, test));
+                testRuntime);
+        return new ProjectPair(oauth2Jose, oauth2JoseTests);
     }
 
     private static Project createProjectOauth2Client(
@@ -1391,7 +1490,10 @@ public final class BuildSpringSecurity {
             final Project core,
             final Project web,
             final Project oauth2Core,
-            final Project oauth2Jose) {
+            final Project oauth2Jose,
+            final Project oauth2CoreTests,
+            final Project oauth2JoseTests,
+            final Project webTests) {
         final List<MainSourceSetDependency> api = List.of(
                 core,
                 oauth2Core,
@@ -1423,9 +1525,9 @@ public final class BuildSpringSecurity {
 
         final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
                 main,
-                oauth2Core.testSourceSet(),
-                oauth2Jose.testSourceSet(),
-                web.testSourceSet(),
+                oauth2CoreTests,
+                oauth2JoseTests,
+                webTests,
                 GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
                 GroupArtifact.parse("io.micrometer:context-propagation"),
                 // reactor-netty pulls classifier-qualified native QUIC artifacts at runtime
@@ -1476,7 +1578,9 @@ public final class BuildSpringSecurity {
             final Project core,
             final Project web,
             final Project oauth2Core,
-            final Project oauth2Jose) {
+            final Project oauth2Jose,
+            final Project coreTests,
+            final Project oauth2JoseTests) {
         final List<MainSourceSetDependency> api =
                 List.of(core, oauth2Core, web, GroupArtifact.parse("org.springframework:spring-core"));
         final List<MainSourceSetDependency> optional = List.of(
@@ -1500,8 +1604,8 @@ public final class BuildSpringSecurity {
 
         final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
                 main,
-                core.testSourceSet(),
-                oauth2Jose.testSourceSet(),
+                coreTests,
+                oauth2JoseTests,
                 GroupArtifact.parse("com.squareup.okhttp3:mockwebserver"),
                 GroupArtifact.parse("tools.jackson.core:jackson-databind"),
                 // reactor-netty pulls classifier-qualified native QUIC artifacts at runtime
@@ -1548,7 +1652,8 @@ public final class BuildSpringSecurity {
             final Project web,
             final Project oauth2Core,
             final Project oauth2Jose,
-            final Project oauth2ResourceServer) {
+            final Project oauth2ResourceServer,
+            final Project oauth2JoseTests) {
         final List<MainSourceSetDependency> api = List.of(
                 web,
                 oauth2Core,
@@ -1577,7 +1682,7 @@ public final class BuildSpringSecurity {
 
         final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
                 main,
-                oauth2Jose.testSourceSet(),
+                oauth2JoseTests,
                 GroupArtifact.parse("org.springframework:spring-webmvc"),
                 GroupArtifact.parse("org.bouncycastle:bcpkix-jdk18on"),
                 GroupArtifact.parse("org.bouncycastle:bcprov-jdk18on"),
@@ -1784,15 +1889,56 @@ public final class BuildSpringSecurity {
             case Project project -> project;
             case GroupArtifact groupArtifact -> groupArtifact;
             case GroupArtifactVersion groupArtifactVersion -> groupArtifactVersion;
-            case SourceSet sourceSet -> sourceSet;
         };
         testDependencies.add(testDependency);
     }
 
-    private static Project createProjectOauth2Core(
+    /**
+     * Creates a standalone project that builds another module's test sources as its own main
+     * source set. This keeps cross-module test dependencies self-contained: instead of referencing
+     * another project's test source set, modules depend on such a test project.
+     *
+     * @param projectService      Project service
+     * @param platform            Dependency constraints platform
+     * @param testArtifactLayout  Artifact layout for the test project. Test projects share the
+     *                            owning module directory, so a distinct root avoids output
+     *                            collisions
+     * @param artifactId          Test project artifact id (e.g. {@code spring-security-core-tests})
+     * @param path                Test project directory (the owning module directory)
+     * @param compileDependencies Test compile dependencies
+     * @param runtimeDependencies Test runtime dependencies
+     * @return Test project
+     */
+    private static Project createTestProject(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout testArtifactLayout,
+            final String artifactId,
+            final Path path,
+            final List<MainSourceSetDependency> compileDependencies,
+            final List<MainSourceSetDependency> runtimeDependencies) {
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                compileDependencies,
+                runtimeDependencies,
+                platform);
+        return projectService.create(
+                "org.springframework.security",
+                artifactId,
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(path)
+                        .withArtifactLayout(testArtifactLayout)
+                        .withSourceSets(main));
+    }
+
+    private static ProjectPair createProjectOauth2Core(
             final ProjectService projectService,
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
+            final Project.ArtifactLayout testArtifactLayout,
             final Project core) {
         final List<MainSourceSetDependency> api = List.of(
                 core,
@@ -1810,8 +1956,17 @@ public final class BuildSpringSecurity {
                 api,
                 platform);
 
-        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
-                main,
+        final Project oauth2Core = projectService.create(
+                "org.springframework.security",
+                "spring-security-oauth2-core",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("oauth2", "oauth2-core"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main));
+
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                oauth2Core,
                 GroupArtifact.parse("org.assertj:assertj-core"),
                 GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
                 GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
@@ -1819,28 +1974,20 @@ public final class BuildSpringSecurity {
                 GroupArtifact.parse("org.mockito:mockito-core"),
                 GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
                 GroupArtifact.parse("org.springframework:spring-test")));
-        for (final MainSourceSetDependency d : optional) {
-            addTestDependency(testCompileAndRun, d);
-        }
+        testCompileAndRun.addAll(optional);
 
         final var testRuntime = new ArrayList<>(testCompileAndRun);
         testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
 
-        final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
+        final Project oauth2CoreTests = createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                "spring-security-oauth2-core-tests",
+                Path.of("oauth2", "oauth2-core"),
                 testCompileAndRun,
-                testRuntime,
-                platform);
-        return projectService.create(
-                "org.springframework.security",
-                "spring-security-oauth2-core",
-                "7.0.0",
-                projectBuilder -> projectBuilder
-                        .withPath(Path.of("oauth2", "oauth2-core"))
-                        .withArtifactLayout(artifactLayout)
-                        .withSourceSets(main, test));
+                testRuntime);
+        return new ProjectPair(oauth2Core, oauth2CoreTests);
     }
 
     private static Project createProjectTaglibs(
@@ -1988,10 +2135,11 @@ public final class BuildSpringSecurity {
                         .withSourceSets(main, test));
     }
 
-    private static Project createProjectCore(
+    private static ProjectPair createProjectCore(
             final ProjectService projectService,
             final DependencyConstraints platform,
             final Project.ArtifactLayout artifactLayout,
+            final Project.ArtifactLayout testArtifactLayout,
             final Project crypto) {
         final List<MainSourceSetDependency> api = List.of(
                 crypto,
@@ -2019,8 +2167,18 @@ public final class BuildSpringSecurity {
                 Stream.concat(api.stream(), optional.stream()).toList(),
                 api,
                 platform);
-        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
-                main,
+
+        final Project core = projectService.create(
+                "org.springframework.security",
+                "spring-security-core",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("core"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main));
+
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                core,
                 GroupArtifact.parse("commons-collections:commons-collections"),
                 GroupArtifact.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310"),
                 GroupArtifact.parse("io.projectreactor:reactor-test"),
@@ -2037,35 +2195,21 @@ public final class BuildSpringSecurity {
                 GroupArtifact.parse("org.jetbrains.kotlin:kotlin-reflect"),
                 GroupArtifact.parse("org.jetbrains.kotlin:kotlin-stdlib-jdk8"),
                 GroupArtifact.parse("io.mockk:mockk")));
-        for (final MainSourceSetDependency d : optional) {
-            switch (d) {
-                case LocalJar localJar -> testCompileAndRun.add(localJar);
-                case Project project -> testCompileAndRun.add(project);
-                case GroupArtifact groupArtifact -> testCompileAndRun.add(groupArtifact);
-                case GroupArtifactVersion groupArtifactVersion -> testCompileAndRun.add(groupArtifactVersion);
-                case SourceSet sourceSet -> testCompileAndRun.add(sourceSet);
-            }
-        }
+        testCompileAndRun.addAll(optional);
 
         final var testRuntime = new ArrayList<>(testCompileAndRun);
         testRuntime.add(GroupArtifact.parse("org.hsqldb:hsqldb"));
         testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
 
-        final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
+        final Project coreTests = createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                "spring-security-core-tests",
+                Path.of("core"),
                 testCompileAndRun,
-                testRuntime,
-                platform);
-        return projectService.create(
-                "org.springframework.security",
-                "spring-security-core",
-                "7.0.0",
-                projectBuilder -> projectBuilder
-                        .withPath(Path.of("core"))
-                        .withArtifactLayout(artifactLayout)
-                        .withSourceSets(main, test));
+                testRuntime);
+        return new ProjectPair(core, coreTests);
     }
 
     private static DependencyService mavenArtifactResolver(final Path workdir, final ProjectService projectService) {

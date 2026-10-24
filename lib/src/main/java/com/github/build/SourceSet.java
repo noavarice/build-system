@@ -41,8 +41,7 @@ public record SourceSet(
         List<Dependency> compileDependencies,
         List<Dependency> runtimeDependencies,
         List<Dependency> exposedClasspath,
-        DependencyConstraints dependencyConstraints)
-        implements MainSourceSetDependency, TestSourceSetDependency, ExtraSourceSetDependency {
+        DependencyConstraints dependencyConstraints) {
 
     public SourceSet {
         Objects.requireNonNull(project);

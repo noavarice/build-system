@@ -7,5 +7,4 @@ import com.github.build.deps.GroupArtifactVersion;
  * @author noavarice
  * @since 1.0.0
  */
-public sealed interface MainSourceSetDependency
-        permits Project, GroupArtifact, GroupArtifactVersion, LocalJar, SourceSet {}
+public sealed interface MainSourceSetDependency permits Project, GroupArtifact, GroupArtifactVersion, LocalJar {}

@@ -8,4 +8,4 @@ import com.github.build.deps.GroupArtifactVersion;
  * @since 1.0.0
  */
 public sealed interface ExtraSourceSetDependency
-        permits Project, GroupArtifact, GroupArtifactVersion, MainSourceSetArgs, LocalJar, SourceSet {}
+        permits Project, GroupArtifact, GroupArtifactVersion, MainSourceSetArgs, LocalJar {}

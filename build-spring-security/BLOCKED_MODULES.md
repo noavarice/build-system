@@ -8,9 +8,12 @@ while trying to build it, and what would unblock it.
 Currently built (for reference): `crypto`, `core`, `acl`, `data`, `web`, `messaging`,
 `access`, `aspects`, `cas`, `oauth2-core`, `oauth2-jose`, `oauth2-client`,
 `oauth2-resource-server`, `oauth2-authorization-server`, `rsocket`, `taglibs`,
-`kerberos-core` and `kerberos-test` with their full main and test source sets. The remaining
-modules (`config`, `test`, `ldap`, `saml2-service-provider`, `webauthn`) build their **main
-source sets only** (their tests are deferred, see below).
+`kerberos-core` and `kerberos-test` with their full main and test source sets. The test source
+sets that other modules depend on (`core`, `web`, `oauth2-core`, `oauth2-jose`) are built as
+standalone `spring-security-<module>-tests` projects (their `src/test` sources are the project's
+main source set; see below). The remaining modules (`config`, `test`, `ldap`,
+`saml2-service-provider`, `webauthn`) build their **main source sets only** (their tests are
+deferred, see below).
 
 Verification environment: run the self-hosted build with a full JDK 21. With JDK 25 the
 `web` tests fail inside Mockito's inline mock maker (`Java 25 (69) is not supported by the
@@ -24,14 +27,14 @@ that are not registered at all) are blocked.
 
 | Module | Blocking feature (test source set unless stated) |
 | --- | --- |
-| `config` | (3), (5), (6), (7) |
-| `test` | (7); depends on the `config` test source set and oauth2 test classes |
+| `config` | (3), (5), (6) |
+| `test` | Depends on the `config` test source set and oauth2 test classes |
 | `saml2-service-provider` | (5): extra `opensaml5Test` source set |
 | `webauthn` | (2) Gradle-style highest-version conflict resolution (tools.jackson) |
-| `ldap` | (6) integration-test source set; tests depend on `test`/`config` |
-| `kerberos-web` | Not registered yet; tests depend on `config` |
-| `kerberos-client` | Not registered yet; tests depend on `config` and `test` |
-| `itest/context`, `itest/web` | Not registered; integration-test projects depend on `config`/`test` |
+| `ldap` | (6) integration-test source set |
+| `kerberos-web` | Not registered yet; tests use the already-built `config` main |
+| `kerberos-client` | Not registered yet; tests use the already-built `config`/`test` main |
+| `itest/context`, `itest/web`, `itest/ldap/*` | Not registered; integration-test projects depend on `config`/`test`/`ldap` |
 
 ## Feature gaps
 
@@ -83,11 +86,16 @@ least for non-hard requirements), or raise the platform's tools.jackson BOM.
   copies `src/main/java/org/springframework/security/saml2/internal` into several
   `.../saml2/provider/service/...` package directories, applying a package-rename filter
   (`.saml2.internal` -> `.saml2.provider.service.*`). Main sources import those generated types,
-  e.g. `OpenSamlOperations` from `saml2.provider.service.authentication.logout`.
+  e.g. `OpenSamlOperations` from `saml2.provider.service.authentication.logout`. Those package
+  copies are committed to the source tree, so the main source set builds without the task.
 - `config`: runs `rncToXsd` (trang) over `src/main/resources/.../spring-security/config/*.rnc`
-  and a `versionlessXsd` task, feeding the generated XSD into resources.
+  and a `versionlessXsd` task, feeding the generated XSD into resources. `rncToXsd` regenerates
+  the versioned XSDs in place (they are committed); `versionlessXsd` writes a versionless
+  `spring-security.xsd` under the build directory, which is not committed and is added to
+  resources by `processResources`/`sourcesJar`.
 
-None of the built modules generate sources, so this capability does not exist.
+None of the built modules generate sources, so this capability does not exist; the committed
+outputs currently stand in for it.
 
 ### 4. Kotlin compilation (implemented)
 
@@ -111,11 +119,27 @@ separate test task. This is beyond the current extra-source-set support.
 `integration-test` source set with its own dependencies and an `integrationTest` task. The build
 only knows `main` + `test`.
 
-### 7. Source-set level project cycles
+## Cross-project test source sets (implemented)
 
-`test` main depends on `config` main (`org.springframework.security.config.BeanIds`), while
-`config` tests depend on `test` main. A single linear project order cannot express this; building
-source sets independently (or splitting `config`) would be required.
+Depending on another project's `SourceSet` is no longer part of the public API (a `SourceSet`
+may only be referenced by the project that declares it; see
+`adr/resolve-source-set-as-artifact.md`). The test source sets that Spring Security modules
+consume from each other (`core`, `web`, `oauth2-core`, `oauth2-jose`) are therefore built as
+standalone projects. Because each such source set becomes its own project, a module can depend
+on another module's test output without a project-level cycle (e.g. `test` main -> `config` main
+while `config` tests -> `test` main), so the former source-set cycle blocker no longer applies:
+
+| Test project | Owning module directory | Consumed by |
+| --- | --- | --- |
+| `spring-security-core-tests` | `core` | `web` tests, `oauth2-resource-server` tests, `messaging` tests, `cas` tests |
+| `spring-security-web-tests` | `web` | `access` tests, `oauth2-client` tests, `cas` tests |
+| `spring-security-oauth2-core-tests` | `oauth2/oauth2-core` | `oauth2-client` tests |
+| `spring-security-oauth2-jose-tests` | `oauth2/oauth2-jose` | `oauth2-client` tests, `oauth2-resource-server` tests, `oauth2-authorization-server` tests |
+
+Each test project uses `src/test/java` + `src/test/resources` as its **main** source set, runs
+the tests against that main output, and shares the owning module's directory with a distinct
+`ArtifactLayout` root (`build-system-tests`) so their artifacts do not collide with the owning
+module's `build-system` output. The owning module keeps its main source set only.
 
 ## Per-module detail
 
@@ -130,16 +154,17 @@ source sets independently (or splitting `config`) would be required.
   `rsocket`, `web`, `webauthn`; optional libraries: reactor-core, aspectjweaver, spring-jdbc,
   spring-messaging, spring-tx, spring-webmvc, spring-web, spring-webflux, spring-websocket,
   kotlin-reflect, kotlin-stdlib-jdk8, jakarta.annotation-api; provided jakarta.servlet-api.
-- Tests reference almost the whole tree (aspects, cas, test, plus `tests` configurations of
-  access/core/ldap/oauth2-client/oauth2-resource-server/oauth2-authorization-server/saml2/web/
-  webauthn).
+- Tests reference almost the whole tree (aspects, cas, test, plus the standalone test projects of
+  core/web/oauth2-core/oauth2-jose and the `tests` configurations of
+  access/ldap/oauth2-client/oauth2-resource-server/oauth2-authorization-server/saml2/webauthn).
 - Main source set builds. All sibling modules are now referenced as projects (no remote
   `org.springframework.security` coordinates). OpenSAML 5.x (saml2's `api` dependency) is not on
   Maven Central, so the local repository proxy exposes it (see `compose-local.yaml`).
-- Test source set blockers: (3), (5 via opensaml5 config), (6), (7), plus test classes from the
+- Test source set blockers: (3), (5 via opensaml5 config), (6), plus test classes from the
   sibling modules whose tests are not built yet.
 - Extra Gradle tasks: `rncToXsd`, `versionlessXsd`, `processResources`/`sourcesJar` wiring. The
-  generated XSDs are committed, so they are currently shipped via resource copying.
+  versioned `rncToXsd` XSDs are committed; the versionless `spring-security.xsd` is generated
+  into the build directory and added to resources by `processResources`/`sourcesJar`.
 
 ### saml2-service-provider
 
@@ -160,7 +185,8 @@ source sets independently (or splitting `config`) would be required.
 - Test: bouncycastle bcpkix/bcprov, jakarta.servlet-api, mockwebserver, `reactor-netty`,
   tools.jackson jackson-databind, assertj, junit, mockito, spring-test.
 - Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
-  correctly).
+  correctly). The `src/test` sources are built as the standalone `spring-security-oauth2-jose-tests`
+  project, whose main source set is those test sources.
 
 ### oauth2-client
 
@@ -169,12 +195,12 @@ source sets independently (or splitting `config`) would be required.
 - Optional: `oauth2-jose`, reactor-core, spring-webflux, jackson-databind,
   jackson-datatype-jsr310, spring-jdbc, spring-r2dbc, tools.jackson jackson-databind.
 - Provided: jakarta.servlet-api.
-- Test: `oauth2-core` tests, `oauth2-jose` tests, `web` tests, mockwebserver,
-  context-propagation, `reactor-netty`, reactor-test, jsonassert, `io.r2dbc:r2dbc-h2:1.0.0.RELEASE`,
-  `io.r2dbc:r2dbc-spi-test:0.9.1.RELEASE`, assertj, junit, mockito, spring-test; runtime hsqldb,
-  launcher.
+- Test: `spring-security-oauth2-core-tests`, `spring-security-oauth2-jose-tests`,
+  `spring-security-web-tests`, mockwebserver, context-propagation, `reactor-netty`, reactor-test,
+  jsonassert, `io.r2dbc:r2dbc-h2:1.0.0.RELEASE`, `io.r2dbc:r2dbc-spi-test:0.9.1.RELEASE`,
+  assertj, junit, mockito, spring-test; runtime hsqldb, launcher.
 - Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
-  correctly, and it uses the `oauth2-jose` test source set).
+  correctly, and it uses the standalone `core`/`web`/`oauth2-core`/`oauth2-jose` test projects).
 
 ### oauth2-resource-server
 
@@ -183,10 +209,11 @@ source sets independently (or splitting `config`) would be required.
 - API: `core`, `oauth2-core`, `web`, spring-core.
 - Optional: `oauth2-jose`, oauth2-oidc-sdk, reactor-core, spring-webflux; provided
   jakarta.servlet-api.
-- Test: `core` tests, `oauth2-jose` tests, mockwebserver, tools.jackson jackson-databind,
-  `reactor-netty`, reactor-test, assertj, junit, mockito, spring-test; runtime launcher.
+- Test: `spring-security-core-tests`, `spring-security-oauth2-jose-tests`, mockwebserver,
+  tools.jackson jackson-databind, `reactor-netty`, reactor-test, assertj, junit, mockito,
+  spring-test; runtime launcher.
 - Main and test build (the classifier-qualified `reactor-netty` runtime artifacts are resolved
-  correctly, and it uses the `oauth2-jose` test source set).
+  correctly, and it uses the standalone `core`/`oauth2-jose` test projects).
 
 ### webauthn
 
@@ -194,10 +221,10 @@ source sets independently (or splitting `config`) would be required.
 - API: `core`, `web`, spring-core/beans/web, `com.webauthn4j:webauthn4j-core:0.31.6.RELEASE`.
 - Optional: spring-jdbc, spring-tx, tools.jackson jackson-databind, jackson-databind.
 - Provided: jakarta.servlet-api.
-- Test: `core` tests, `com.fasterxml.jackson.dataformat:jackson-dataformat-cbor`, reactor-test,
-  jakarta.xml.bind-api, jakarta.websocket-api/client-api, hamcrest, mockito, jsonassert,
-  spring-webflux, nio-multipart-parser, assertj, junit, mockito-junit, spring-test, spring-webmvc,
-  mockwebserver; runtime hsqldb, launcher.
+- Test: `spring-security-core-tests`, `com.fasterxml.jackson.dataformat:jackson-dataformat-cbor`,
+  reactor-test, jakarta.xml.bind-api, jakarta.websocket-api/client-api, hamcrest, mockito,
+  jsonassert, spring-webflux, nio-multipart-parser, assertj, junit, mockito-junit, spring-test,
+  spring-webmvc, mockwebserver; runtime hsqldb, launcher.
 - Main builds.
 - Blocker (test source set): (2).
 
@@ -208,11 +235,12 @@ source sets independently (or splitting `config`) would be required.
   (with excludes).
 - Optional: jackson-databind, `ldapsdk:ldapsdk`, `com.unboundid:unboundid-ldapsdk`,
   tools.jackson jackson-databind.
-- Test: `core` tests, `spring-security-test`, slf4j-api, assertj, junit, mockito, spring-test,
-  jsonassert.
+- Test: `spring-security-core-tests`, `spring-security-test`, slf4j-api, assertj, junit, mockito,
+  spring-test, jsonassert.
 - Source sets: `main`, `test`, `integration-test`.
 - Main builds.
-- Blockers (test source set): (6); plus needs `test` (7).
+- Blocker (test source set): (6). Its tests depend on `spring-security-test` main and the
+  `spring-security-core-tests` project, both of which build.
 
 ### test
 
@@ -225,8 +253,8 @@ source sets independently (or splitting `config`) would be required.
 - Test: `config` tests configuration, jackson-databind, jackson-datatype-jsr310, reactor-test,
   jakarta.xml.bind-api, spring-webmvc, spring-tx, assertj, junit, mockito, jsonassert.
 - Main source set builds and depends on `config` main.
-- Test source set blockers: depends on the `config` test source set and on test classes from
-  `oauth2-core`/`oauth2-client`/`oauth2-jose`. See (7).
+- Test source set blockers: depends on the `config` test source set and on the `oauth2-client`
+  test source set / `oauth2-core`/`oauth2-jose` test projects.
 
 ### oauth2-authorization-server
 
@@ -235,9 +263,9 @@ source sets independently (or splitting `config`) would be required.
 - API: `web`, `oauth2-core`, `oauth2-jose`, `oauth2-resource-server`, spring-core,
   `com.nimbusds:nimbus-jose-jwt`, tools.jackson jackson-databind.
 - Optional: jackson-databind, jackson-datatype-jsr310, spring-jdbc; provided jakarta.servlet-api.
-- Test: `oauth2-jose` tests, spring-webmvc, bouncycastle, junit, assertj, mockito, json-path,
-  mockwebserver; runtime hsqldb, launcher.
-- Main and test build (it uses the now-built `oauth2-jose` test source set).
+- Test: `spring-security-oauth2-jose-tests`, spring-webmvc, bouncycastle, junit, assertj, mockito,
+  json-path, mockwebserver; runtime hsqldb, launcher.
+- Main and test build (it uses the standalone `oauth2-jose` test project).
 
 ### rsocket
 
@@ -256,14 +284,18 @@ source sets independently (or splitting `config`) would be required.
   `kerberos-web`, spring-web,
   `httpclient5`; optional `ldap`; test depends on `kerberos-test`, spring-test, `config`,
   mockwebserver.
-- Blockers: `config` (4/7); client also on `test`.
+- Blockers: not registered yet; their tests use the already-built `config` main, and
+  `kerberos-client` also the `test` main.
 
-### itest/context, itest/web
+### itest/context, itest/web, itest/ldap/*
 
-- Paths: `spring-security/itest/context`, `spring-security/itest/web`.
-- Apply `io.spring.convention.spring-test` and use `integrationTest` tasks. Depend on
-  `config`, `ldap`, `test` test source sets, `web` tests; `itest/context` also uses
-  `org.python:jython`.
+- Paths: `spring-security/itest/context`, `spring-security/itest/web` and
+  `spring-security/itest/ldap/embedded-ldap-{none,unboundid-default,mode-unboundid}`
+  (`itest/ldap` itself is not a project; `itest/misc` has sources but no build file).
+- Apply `io.spring.convention.spring-test` and use `integrationTest` tasks. `itest/context` and
+  `itest/web` depend on `config`/`test`/`ldap` main and the `web` test project; `itest/context`
+  also uses `org.python:jython`. The embedded-ldap projects depend on `config`/`ldap` main and,
+  except `embedded-ldap-none`, `com.unboundid:unboundid-ldapsdk`.
 - Blockers: (6); plus dependencies on `config`/`test`/`ldap`.
 
 ## Not applicable
