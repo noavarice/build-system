@@ -89,6 +89,10 @@ public final class BuildSpringSecurity {
         // outputs must not collide with the owning module outputs.
         final var testArtifactLayout =
                 new Project.ArtifactLayout(Path.of("build-system-tests"), Path.of("classes"), Path.of("resources"));
+        // Integration-test source sets are also built as standalone projects, but their own output
+        // root keeps them from colliding with the module's main output and the test project output.
+        final var integrationTestArtifactLayout = new Project.ArtifactLayout(
+                Path.of("build-system-integration-tests"), Path.of("classes"), Path.of("resources"));
         final Project crypto = createProjectCrypto(projectService, platform, artifactLayout);
         final ProjectPair corePair =
                 createProjectCore(projectService, platform, artifactLayout, testArtifactLayout, crypto);
@@ -185,6 +189,8 @@ public final class BuildSpringSecurity {
                 projectService, platform, artifactLayout, web, ldap, kerberosCore, kerberosWeb, kerberosTest, config);
         final Project ldapTests =
                 createProjectLdapTests(projectService, platform, testArtifactLayout, ldap, coreTests, test);
+        final Project ldapIntegrationTests = createProjectLdapIntegrationTests(
+                projectService, platform, integrationTestArtifactLayout, ldap, ldapTests, test);
         final List<Project> projects = List.of(
                 crypto,
                 core,
@@ -215,11 +221,14 @@ public final class BuildSpringSecurity {
                 test,
                 kerberosWeb,
                 kerberosClient,
-                ldapTests);
-        // Source sets that used to be consumed as another project's test source set are now
-        // standalone projects. Their main source set holds the test sources, so tests are run
-        // against the main output instead of a dedicated test source set.
-        final Set<Project> testProjects = Set.of(coreTests, webTests, oauth2CoreTests, oauth2JoseTests, ldapTests);
+                ldapTests,
+                ldapIntegrationTests);
+        // Source sets that used to be consumed as another project's test source set (or that have
+        // no module project to live on, like ldap's integration tests) are standalone projects.
+        // Their main source set holds the test sources, so tests are run against the main output
+        // instead of a dedicated test source set.
+        final Set<Project> testProjects =
+                Set.of(coreTests, webTests, oauth2CoreTests, oauth2JoseTests, ldapTests, ldapIntegrationTests);
         // These modules currently build main source sets only: their test source sets need build
         // features the project does not support yet (generated sources, extra source sets,
         // Gradle-style highest-version conflict resolution). See BLOCKED_MODULES.md.
@@ -1417,6 +1426,55 @@ public final class BuildSpringSecurity {
                 testRuntime);
     }
 
+    /**
+     * Builds the {@code ldap} module's {@code src/integration-test} sources (Gradle's
+     * {@code integrationTest} source set) as a standalone project. Its compile/runtime classpath is
+     * the integration-test classpath from {@code spring-security-ldap.gradle}: the module main
+     * output, the module test output ({@code ldapTests}, which also brings
+     * {@code spring-security-test} main for {@code WithMockUser}) and the test libraries, with the
+     * module's optional {@code provided}/{@code optional} dependencies repeated because they are not
+     * transitive. See {@link #createTestProject} for the rationale behind the standalone project.
+     */
+    private static Project createProjectLdapIntegrationTests(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout integrationTestArtifactLayout,
+            final Project ldap,
+            final Project ldapTests,
+            final Project test) {
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                ldap,
+                // integrationTest extends testImplementation, so the module's own test output
+                // (e.g. MockUserSearch) is part of the integration-test classpath.
+                ldapTests,
+                test,
+                GroupArtifact.parse("org.slf4j:slf4j-api"),
+                GroupArtifact.parse("org.assertj:assertj-core"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+                GroupArtifact.parse("org.mockito:mockito-core"),
+                GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+                GroupArtifact.parse("org.springframework:spring-test"),
+                // ldap's optional dependencies are not transitive, so the embedded LDAP server
+                // implementation has to be repeated here.
+                GroupArtifact.parse("com.unboundid:unboundid-ldapsdk")));
+
+        final var testRuntime = new ArrayList<>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+        return createTestProject(
+                projectService,
+                platform,
+                integrationTestArtifactLayout,
+                "spring-security-ldap-integration-tests",
+                Path.of("ldap"),
+                SourceRoots.javaSources(Set.of(Path.of("src", "integration-test", "java"))),
+                Set.of(Path.of("src", "integration-test", "resources")),
+                testCompileAndRun,
+                testRuntime);
+    }
+
     private static Project createProjectSaml2(
             final ProjectService projectService,
             final DependencyConstraints platform,
@@ -1964,10 +2022,41 @@ public final class BuildSpringSecurity {
             final Path path,
             final List<MainSourceSetDependency> compileDependencies,
             final List<MainSourceSetDependency> runtimeDependencies) {
-        final var main = new MainSourceSetArgs(
-                SourceSet.Id.MAIN.toString(),
+        return createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                artifactId,
+                path,
                 SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
                 Set.of(Path.of("src", "test", "resources")),
+                compileDependencies,
+                runtimeDependencies);
+    }
+
+    /**
+     * Creates a standalone project from an arbitrary set of test-like sources (e.g. {@code
+     * src/test} or {@code src/integration-test}) that become the project's main source set.
+     *
+     * @param javaSourceRoots   Java source roots, relative to the owning module directory
+     * @param resourceDirectories Resource directories, relative to the owning module directory
+     * @see #createTestProject(ProjectService, DependencyConstraints, Project.ArtifactLayout, String,
+     *     Path, List, List)
+     */
+    private static Project createTestProject(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout testArtifactLayout,
+            final String artifactId,
+            final Path path,
+            final SourceRoots javaSourceRoots,
+            final Set<Path> resourceDirectories,
+            final List<MainSourceSetDependency> compileDependencies,
+            final List<MainSourceSetDependency> runtimeDependencies) {
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                javaSourceRoots,
+                resourceDirectories,
                 compileDependencies,
                 runtimeDependencies,
                 platform);

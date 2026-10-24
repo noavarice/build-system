@@ -9,13 +9,16 @@ Currently built (for reference): `crypto`, `core`, `acl`, `data`, `web`, `messag
 `access`, `aspects`, `cas`, `oauth2-core`, `oauth2-jose`, `oauth2-client`,
 `oauth2-resource-server`, `oauth2-authorization-server`, `rsocket`, `taglibs`,
 `kerberos-core`, `kerberos-test`, `kerberos-web` and `kerberos-client` with their full main and
-test source sets; `ldap` builds its main and test source sets. Test source sets that other
-modules depend on (`core`, `web`, `oauth2-core`, `oauth2-jose`) are built as standalone
-`spring-security-<module>-tests` projects (their `src/test` sources are the project's main
-source set; see below); `ldap`'s test sources are built the same way to break a project cycle.
+test source sets; `ldap` builds its main, test and `integration-test` source sets. Test source
+sets that other modules depend on (`core`, `web`, `oauth2-core`, `oauth2-jose`) are built as
+standalone `spring-security-<module>-tests` projects (their `src/test` sources are the project's
+main source set; see below); `ldap`'s test sources are built the same way to break a project
+cycle, and its `src/integration-test` sources as the standalone
+`spring-security-ldap-integration-tests` project (distinct `build-system-integration-tests`
+output root).
 The remaining modules (`config`, `test`, `saml2-service-provider`, `webauthn`) build their
-**main source sets only** (their tests are deferred, see below). `ldap` and `config` still
-defer their `integration-test` source sets.
+**main source sets only** (their tests are deferred, see below). `config` still
+defers its `integration-test` source set.
 
 Verification environment: run the self-hosted build with a full JDK 21. With JDK 25 the
 `web` tests fail inside Mockito's inline mock maker (`Java 25 (69) is not supported by the
@@ -33,7 +36,7 @@ modules that are not registered at all) are blocked.
 | `test` | Depends on the `config` test source set and oauth2 test classes |
 | `saml2-service-provider` | (5): extra `opensaml5Test` source set |
 | `webauthn` | (2) Gradle-style highest-version conflict resolution (tools.jackson) |
-| `ldap` | (6) `integration-test` source set only; main and test build |
+| `ldap` | None: main, test and `integration-test` source sets build |
 | `itest/context`, `itest/web`, `itest/ldap/*` | Not registered; integration-test projects depend on `config`/`test`/`ldap` |
 
 ## Feature gaps
@@ -113,11 +116,22 @@ plain and only pulls `assertj-core`. `saml2-service-provider` needs `opensaml5Ma
 configurations, and adds `opensaml5Main.output` to the main jar and `opensaml5Test.output` to a
 separate test task. This is beyond the current extra-source-set support.
 
-### 6. Integration-test source sets
+### 6. Integration-test source sets (implemented for ldap)
 
 `ldap` (`src/integration-test/java`) and `config` (`src/integration-test/java`) use a separate
 `integration-test` source set with its own dependencies and an `integrationTest` task. The build
-only knows `main` + `test`.
+only knows `main` + `test`, so such sources are built as standalone projects whose main source
+set holds the integration-test sources (the same approach as the cross-module test projects
+above). `ldap`'s integration tests are built as `spring-security-ldap-integration-tests` with the
+`build-system-integration-tests` artifact-layout root, and their classpath mirrors Gradle's
+`integrationTest` classpath: the module main output, `spring-security-test` main (`WithMockUser`)
+and the test libraries, repeating `ldap`'s non-transitive optional `unboundid-ldapsdk`.
+
+`config`'s integration-test sources stay blocked: they import `config`'s own test classes
+(`SpringTestContext`, `SpringTestContextExtension`, `InMemoryXmlApplicationContext`,
+`NamespaceLdapAuthenticationProviderTestsConfigs`, ...) and the `oauth2-jose`/`ldap` test sources,
+which are not built yet, so the integration-test source set cannot compile until the `config` test
+source set is unblocked.
 
 ## Cross-project test source sets (implemented)
 
@@ -140,11 +154,15 @@ while `config` tests -> `test` main), so the former source-set cycle blocker no 
 break a project cycle. `ldap`'s tests need `spring-security-test` main, which needs `config`
 main, which needs `ldap` main, so the tests cannot be built as `ldap`'s own test source set.
 Building them as a standalone project that sits after `spring-security-test` resolves the cycle.
+`spring-security-ldap-integration-tests` follows the same pattern for `ldap`'s
+`src/integration-test` sources, using a distinct `build-system-integration-tests` root.
 
-Each test project uses `src/test/java` + `src/test/resources` as its **main** source set, runs
-the tests against that main output, and shares the owning module's directory with a distinct
-`ArtifactLayout` root (`build-system-tests`) so their artifacts do not collide with the owning
-module's `build-system` output. The owning module keeps its main source set only.
+Each test project uses `src/test/java` + `src/test/resources` as its **main** source set
+(`spring-security-ldap-integration-tests` uses `src/integration-test/java` + resources instead),
+runs the tests against that main output, and shares the owning module's directory with a distinct
+`ArtifactLayout` root (`build-system-tests`, or `build-system-integration-tests` for integration
+tests) so their artifacts do not collide with the owning module's `build-system` output. The
+owning module keeps its main source set only.
 
 ## Per-module detail
 
@@ -166,7 +184,8 @@ module's `build-system` output. The owning module keeps its main source set only
   `org.springframework.security` coordinates). OpenSAML 5.x (saml2's `api` dependency) is not on
   Maven Central, so the local repository proxy exposes it (see `compose-local.yaml`).
 - Test source set blockers: (3), (5 via opensaml5 config), (6), plus test classes from the
-  sibling modules whose tests are not built yet.
+  sibling modules whose tests are not built yet. The `integration-test` source set is blocked by
+  (6) as well: it imports `config` test classes and the `ldap`/`oauth2-jose` test sources.
 - Extra Gradle tasks: `rncToXsd`, `versionlessXsd`, `processResources`/`sourcesJar` wiring. The
   versioned `rncToXsd` XSDs are committed; the versionless `spring-security.xsd` is generated
   into the build directory and added to resources by `processResources`/`sourcesJar`.
@@ -246,7 +265,9 @@ module's `build-system` output. The owning module keeps its main source set only
 - Main and test build; the test sources are the standalone `spring-security-ldap-tests` project
   (see "Cross-project test source sets"). It has to be standalone because `ldap` tests ->
   `spring-security-test` main -> `config` main -> `ldap` main is a project cycle.
-- Blocker: (6) `integration-test` source set only. 106 tests pass.
+- The `integration-test` sources build as the standalone `spring-security-ldap-integration-tests`
+  project, depending on `ldap` main, `spring-security-test` main and `unboundid-ldapsdk`. 106
+  test-source-set tests pass. See "Integration-test source sets".
 
 ### test
 
