@@ -23,34 +23,17 @@
       <groupId>org.slf4j</groupId>
       <artifactId>slf4j-api</artifactId>
     </dependency>
+    <!-- Used only for ComparableVersion in the dependency version API. -->
     <dependency>
       <groupId>org.apache.maven</groupId>
-      <artifactId>maven-model</artifactId>
+      <artifactId>maven-artifact</artifactId>
       <version>3.9.12</version>
     </dependency>
+    <!-- Needed to compile the generated Maven repository metadata model. -->
     <dependency>
       <groupId>jakarta.xml.bind</groupId>
       <artifactId>jakarta.xml.bind-api</artifactId>
       <version>4.0.2</version>
-    </dependency>
-    <!--TODO: remove (used only for ComparableVersion)-->
-    <dependency>
-      <groupId>org.apache.maven</groupId>
-      <artifactId>maven-resolver-provider</artifactId>
-      <version>3.9.9</version>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven.resolver</groupId>
-      <artifactId>maven-resolver-supplier</artifactId>
-      <version>1.9.22</version>
-      <optional>true</optional>
-    </dependency>
-    <dependency>
-      <groupId>org.apache.maven.resolver</groupId>
-      <artifactId>maven-resolver-util</artifactId>
-      <version>1.9.22</version>
-      <optional>true</optional>
     </dependency>
     <dependency>
       <groupId>org.aspectj</groupId>
@@ -96,29 +79,9 @@
       <scope>provided</scope>
     </dependency>
     <dependency>
-      <groupId>com.sun.xml.bind</groupId>
-      <artifactId>jaxb-impl</artifactId>
-      <version>4.0.5</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
       <groupId>com.github.build-system</groupId>
       <artifactId>test-utils</artifactId>
       <version>0.1.0</version>
-      <scope>test</scope>
-    </dependency>
-    <dependency>
-      <groupId>com.github.build-system</groupId>
-      <artifactId>repository-proxy</artifactId>
-      <version>0.1.0</version>
-      <scope>test</scope>
-    </dependency>
-    <!-- The embedded repository proxy runs on Spring Boot 4 (Jackson 3), which needs the
-         Jackson 2 annotations API at 2.21; test-utils' jackson-dataformat-yaml pulls 2.20. -->
-    <dependency>
-      <groupId>com.fasterxml.jackson.core</groupId>
-      <artifactId>jackson-annotations</artifactId>
-      <version>2.21</version>
       <scope>test</scope>
     </dependency>
   </dependencies>

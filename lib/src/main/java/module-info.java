@@ -8,11 +8,6 @@ module com.github.build {
     requires java.compiler;
     requires maven.artifact;
     requires jakarta.xml.bind;
-    requires java.net.http;
-    requires maven.model;
-    requires plexus.utils;
-    requires org.apache.maven.resolver;
-    requires org.apache.maven.resolver.util;
     requires org.aspectj.tools;
     requires kotlin.compiler.embeddable;
 
@@ -20,6 +15,11 @@ module com.github.build {
     // happens to be on the classpath.
     requires static ch.qos.logback.classic;
     requires static ch.qos.logback.core;
+
+    exports com.github.build;
+    exports com.github.build.deps;
+    exports com.github.build.util;
+    exports org.apache.maven.metadata._1_1;
 
     provides ch.qos.logback.classic.spi.Configurator with
             com.github.build.logging.DefaultLoggingConfigurator;

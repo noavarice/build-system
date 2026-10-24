@@ -6,8 +6,10 @@ Maven builds this repo's own code; the real product is the `lib` API plus the `b
 
 ## Modules
 
-- `lib` — the build system core: compile, jar, test, dependency resolution, graph. This is the code you will almost always be editing.
-- `test-utils` — internal test-only helpers (e.g. `FsUtils`). Used by `lib` tests.
+- `lib` — the build system core API: project/source-set model, compile, jar, and test services, plus the dependency-resolution API (`DependencyService`, `Dependency`, `DependencyConstraints`, `GroupArtifact(V|Version)`, `Pom`, `RemoteRepository`, ...). This is the code you will almost always be editing. Implementation classes live in the two resolver modules below.
+- `dependency-resolver-aether` — `DependencyService` (and workspace reader) implementation over Maven Artifact Resolver (Aether), package `com.github.build.deps.aether`. The default resolver used by the build mains.
+- `dependency-resolver-native` — hand-rolled `DependencyService`/`RemoteRepository` implementation, package `com.github.build.deps.nativeimpl` (`native` is a Java keyword, hence `nativeimpl`). Far from ready; not used by the consumers yet.
+- `test-utils` — internal test-only helpers (e.g. `FsUtils`). Used by `lib` and the resolver tests.
 - `junit-integration` — JUnit platform launcher integration used by the build system's test runner.
 - `repository-proxy` — minimal Spring Boot (servlet) Maven repository proxy used as a development-time Nexus replacement. Speaks the Nexus `/repository/{id}` URL layout, stores proxied artifacts in a Maven local repository, and is startable as a `main` or programmatically. See "Dependency resolution".
 - `build-itself` — main `com.github.build.BuildItself` that rebuilds `test-utils` and `lib` from their source trees and runs their tests.
@@ -17,7 +19,7 @@ Maven builds this repo's own code; the real product is the `lib` API plus the `b
 
 - No `mvnw` wrapper; use the system Maven (here 3.9.12). Build with a full JDK 21 (here Temurin 21); the repo's own code targets `release 21`.
 - Full build including integration tests: `mvn clean install` (root `pom.xml` aggregates all modules). Equivalent short build: `mvn clean package`. This matches the checked-in `.run` configs (`build`, `package`).
-- Unit tests (`*Test`) run via surefire, integration tests (`*IT`) via failsafe. ITs only run on `verify`/`install`, not `test`/`package`. Run one: `mvn -pl lib -am test` or `mvn -pl lib -am verify -Dit.test=RemoteRepositoryIT`.
+- Unit tests (`*Test`) run via surefire, integration tests (`*IT`) via failsafe. ITs only run on `verify`/`install`, not `test`/`package`. Run one: `mvn -pl lib -am test` or `mvn -pl dependency-resolver-native -am verify -Dit.test=RemoteRepositoryIT`.
 
 ## JDK 21 for `build-spring-security`
 
@@ -40,7 +42,7 @@ Projects built have two independent output directories; do not confuse them:
 
 ## Dependency resolution needs a network/repository proxy
 
-- `lib` and both build mains resolve artifacts from `http://${NEXUS_HOST:-localhost}:8081/repository/maven-central` (see `mavenArtifactResolver()` in `BuildItself`/`BuildSpringSecurity`, and `RemoteRepositoryImpl`). When launched from the `.run` configs / plain `java` they fall back to a fresh temp local repo each run, so those still need a live repository proxy. When run as the compose services (`build-itself`, `build-spring-security`, `maven`) they share the named `maven-local-repo` volume via `-Dmaven.repo.local=/m2/repository`, so the aether/Maven caches persist across runs and container rebuilds.
+- `dependency-resolver-aether` (used by the resolver tests and both build mains) resolves artifacts from `http://${NEXUS_HOST:-localhost}:8081/repository/maven-central` (see `mavenArtifactResolver()` in `BuildItself`/`BuildSpringSecurity`); the native `RemoteRepositoryImpl` (`dependency-resolver-native`) uses the same layout. When launched from the `.run` configs / plain `java` they fall back to a fresh temp local repo each run, so those still need a live repository proxy. When run as the compose services (`build-itself`, `build-spring-security`, `maven`) they share the named `maven-local-repo` volume via `-Dmaven.repo.local=/m2/repository`, so the aether/Maven caches persist across runs and container rebuilds.
 - `repository-proxy` is a minimal Spring Boot (servlet) Maven repository proxy used as a development-time Nexus replacement. It serves the Nexus `/repository/{id}` URL layout, stores proxied artifacts in a Maven local repository (default `~/.m2/repository`, configured with `repository-proxy.local-repository`) and exposes upstream repositories via `repository-proxy.repositories.<id>` (default only `maven-central`; the port defaults to 8080). It is startable as a `main`, programmatically via `SpringApplication`, or with `mvn -pl repository-proxy spring-boot:run`. It needs no authentication, no EULA acceptance and no non-Maven package formats. Every local-repository hit and every outgoing upstream request (with a running counter) is logged at INFO, so upstream request counts are directly visible.
 - The `shibboleth` upstream (`build.shibboleth.net/maven/releases`) is configured in `compose-local.yaml` and provides OpenSAML 5.x, which `spring-security-saml2-service-provider` needs and Maven Central does not host. The old `.../nexus/content/repositories/releases` URL 302-redirects and makes the proxy return 500, so do not revert it.
 - `compose-local.yaml` runs the proxy on port 8081 under the `nexus` network alias (so the existing `NEXUS_HOST=nexus` references and the settings.xml mirror URL keep working) plus a Maven container (`mvn clean install`) + `build-itself` + `build-spring-security`. Use it (under Podman or Docker) to run self-hosted builds that resolve dependencies.

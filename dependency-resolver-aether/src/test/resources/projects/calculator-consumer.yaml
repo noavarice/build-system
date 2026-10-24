@@ -1,0 +1,13 @@
+files:
+  - type: plaintext
+    path: calculator-consumer/src/main/java/org/example/CalculatorConsumer.java
+    #language=Java
+    text: |
+      package org.example;
+
+      public class CalculatorConsumer {
+
+        public static void main(final String[] args) {
+          System.out.println(Calculator.square(2));
+        }
+      }

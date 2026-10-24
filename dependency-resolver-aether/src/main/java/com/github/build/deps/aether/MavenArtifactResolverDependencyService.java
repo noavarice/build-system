@@ -1,0 +1,561 @@
+package com.github.build.deps.aether;
+
+import static java.util.stream.Collectors.toUnmodifiableMap;
+import static java.util.stream.Collectors.toUnmodifiableSet;
+
+import com.github.build.Project;
+import com.github.build.SourceSet;
+import com.github.build.deps.DependencyConstraints;
+import com.github.build.deps.DependencyService;
+import com.github.build.deps.GroupArtifact;
+import com.github.build.deps.GroupArtifactVersion;
+import com.github.build.util.DurationUtils;
+import java.io.File;
+import java.nio.file.Path;
+import java.time.Duration;
+import java.time.Instant;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+import java.util.SequencedCollection;
+import java.util.Set;
+import org.eclipse.aether.ConfigurationProperties;
+import org.eclipse.aether.DefaultRepositorySystemSession;
+import org.eclipse.aether.RepositorySystem;
+import org.eclipse.aether.RepositorySystemSession;
+import org.eclipse.aether.artifact.Artifact;
+import org.eclipse.aether.artifact.DefaultArtifact;
+import org.eclipse.aether.collection.CollectRequest;
+import org.eclipse.aether.collection.CollectResult;
+import org.eclipse.aether.collection.DependencyCollectionException;
+import org.eclipse.aether.graph.Dependency;
+import org.eclipse.aether.graph.DependencyNode;
+import org.eclipse.aether.repository.LocalArtifactRequest;
+import org.eclipse.aether.repository.RemoteRepository;
+import org.eclipse.aether.resolution.ArtifactDescriptorException;
+import org.eclipse.aether.resolution.ArtifactDescriptorRequest;
+import org.eclipse.aether.resolution.ArtifactDescriptorResult;
+import org.eclipse.aether.resolution.ArtifactRequest;
+import org.eclipse.aether.resolution.ArtifactResolutionException;
+import org.eclipse.aether.resolution.ArtifactResult;
+import org.eclipse.aether.resolution.DependencyRequest;
+import org.eclipse.aether.resolution.DependencyResolutionException;
+import org.eclipse.aether.resolution.DependencyResult;
+import org.eclipse.aether.util.artifact.JavaScopes;
+import org.eclipse.aether.util.filter.ScopeDependencyFilter;
+import org.jspecify.annotations.Nullable;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+/**
+ * Dependency service implementation over Maven Artifact Resolver.
+ *
+ * @author noavarice
+ */
+public final class MavenArtifactResolverDependencyService implements DependencyService {
+
+    private static final Logger log = LoggerFactory.getLogger(MavenArtifactResolverDependencyService.class);
+
+    /**
+     * Timeout for opening a connection to a remote repository, in milliseconds.
+     */
+    private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
+
+    /**
+     * Timeout for reading a response from a remote repository, in milliseconds. Overrides the Aether
+     * default of 30 minutes, which lets a stalled download hang a build for far too long.
+     */
+    private static final int REQUEST_TIMEOUT_MILLIS = 60_000;
+
+    private final RepositorySystem repositorySystem;
+
+    private final RepositorySystemSession repositorySystemSession;
+
+    private final List<RemoteRepository> repositories;
+
+    public MavenArtifactResolverDependencyService(
+            final RepositorySystem repositorySystem,
+            final RepositorySystemSession repositorySystemSession,
+            final List<RemoteRepository> repositories) {
+        this.repositorySystem = Objects.requireNonNull(repositorySystem);
+        // copy the session so client timeouts are applied without mutating the caller's session
+        final var session = new DefaultRepositorySystemSession(Objects.requireNonNull(repositorySystemSession));
+        session.setConfigProperty(ConfigurationProperties.CONNECT_TIMEOUT, CONNECT_TIMEOUT_MILLIS);
+        session.setConfigProperty(ConfigurationProperties.REQUEST_TIMEOUT, REQUEST_TIMEOUT_MILLIS);
+        this.repositorySystemSession = session;
+        this.repositories = List.copyOf(repositories);
+    }
+
+    @Override
+    public Set<GroupArtifactVersion> resolveTransitive(final GroupArtifactVersion artifact) {
+        Objects.requireNonNull(artifact);
+        final var aetherArtifact = new DefaultArtifact(
+                artifact.groupId(), artifact.artifactId(), artifact.classifier(), "jar", artifact.version());
+        final var request = new CollectRequest(
+                List.of(new org.eclipse.aether.graph.Dependency(aetherArtifact, null)), null, repositories);
+        // Cannot set root dependency - this way Aether will incorrectly
+        // resolve optional dependencies (see OptionalDependencySelector).
+        // So we set root artifact (not root dependency) which works
+        // pretty much as a pseudo-dependency for entering resolved dependency
+        // graph. Without root artifact we cannot start iterating over results.
+        // Yet we don't have even a root artifact, so we're emulating its value.
+        request.setRootArtifact(new DefaultArtifact(null, null, null, null));
+        final CollectResult collectResult;
+        try {
+            collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+        } catch (DependencyCollectionException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final var result = new HashSet<GroupArtifactVersion>();
+        final SequencedCollection<DependencyNode> queue = new ArrayList<>();
+        collectResult.getRoot().getChildren().forEach(queue::addLast);
+        while (!queue.isEmpty()) {
+            final DependencyNode node = queue.removeFirst();
+            final var gav = new GroupArtifactVersion(
+                    node.getArtifact().getGroupId(),
+                    node.getArtifact().getArtifactId(),
+                    node.getArtifact().getClassifier(),
+                    node.getArtifact().getVersion());
+            result.add(gav);
+            node.getChildren().forEach(queue::addLast);
+        }
+
+        return result;
+    }
+
+    @Override
+    public Set<GroupArtifactVersion> resolveTransitive(
+            final List<GroupArtifactVersion> artifacts, final DependencyConstraints constraints) {
+        Objects.requireNonNull(artifacts);
+        Objects.requireNonNull(constraints);
+        if (artifacts.isEmpty()) {
+            return Set.of();
+        }
+
+        final List<Dependency> dependencies = artifacts.stream()
+                .map(artifact -> new DefaultArtifact(
+                        artifact.groupId(), artifact.artifactId(), artifact.classifier(), "jar", artifact.version()))
+                .map(artifact -> new org.eclipse.aether.graph.Dependency(artifact, null))
+                .toList();
+        final List<Dependency> managedDependencies = constraints.stream()
+                .map(artifact -> new DefaultArtifact(
+                        artifact.groupId(), artifact.artifactId(), artifact.classifier(), "jar", artifact.version()))
+                .map(artifact -> new org.eclipse.aether.graph.Dependency(artifact, null))
+                .toList();
+        final var request = new CollectRequest(dependencies, managedDependencies, repositories);
+        // Cannot set root dependency - this way Aether will incorrectly
+        // resolve optional dependencies (see OptionalDependencySelector).
+        // So we set root artifact (not root dependency) which works
+        // pretty much as a pseudo-dependency for entering resolved dependency
+        // graph. Without root artifact we cannot start iterating over results.
+        // Yet we don't have even a root artifact, so we're emulating its value.
+        request.setRootArtifact(new DefaultArtifact(null, null, null, null));
+        final CollectResult collectResult;
+        try {
+            collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+        } catch (DependencyCollectionException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final var result = new HashSet<GroupArtifactVersion>();
+        final SequencedCollection<DependencyNode> queue = new ArrayList<>();
+        collectResult.getRoot().getChildren().forEach(queue::addLast);
+        while (!queue.isEmpty()) {
+            final DependencyNode node = queue.removeFirst();
+            final var gav = new GroupArtifactVersion(
+                    node.getArtifact().getGroupId(),
+                    node.getArtifact().getArtifactId(),
+                    node.getArtifact().getClassifier(),
+                    node.getArtifact().getVersion());
+            result.add(gav);
+            node.getChildren().forEach(queue::addLast);
+        }
+
+        return result;
+    }
+
+    @Override
+    public Map<GroupArtifactVersion, Path> resolveCompileClasspath(final SourceSet sourceSet) {
+        Objects.requireNonNull(sourceSet);
+        log.info("Compile classpath resolution started");
+        final Instant startedAt = Instant.now();
+
+        // step 1: collect dependency graph
+        final CollectResult collectResult;
+        {
+            final List<Dependency> managedDependencies = sourceSet.dependencyConstraints().stream()
+                    .map(gav -> MavenArtifactResolverUtils.toDependency(gav, null))
+                    .toList();
+
+            final var dependencies = new ArrayList<Dependency>();
+            final Set<GroupArtifact> runtimeClasspathArtifacts = sourceSet.runtimeDependencies().stream()
+                    .map(MavenArtifactResolverUtils::mapDependencyToGa)
+                    .filter(Objects::nonNull)
+                    .collect(toUnmodifiableSet());
+            for (final var d : sourceSet.compileDependencies()) {
+                switch (d) {
+                    case com.github.build.deps.Dependency.Remote.WithVersion withVersion -> {
+                        final GroupArtifactVersion gav = withVersion.gav();
+                        final GroupArtifact ga = gav.groupArtifact();
+                        final String scope =
+                                runtimeClasspathArtifacts.contains(ga) ? JavaScopes.COMPILE : JavaScopes.PROVIDED;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+
+                    case com.github.build.deps.Dependency.Remote.WithoutVersion withoutVersion -> {
+                        final GroupArtifact ga = withoutVersion.ga();
+                        final String scope =
+                                runtimeClasspathArtifacts.contains(ga) ? JavaScopes.COMPILE : JavaScopes.PROVIDED;
+
+                        // there seems to be a bug in Maven Resolver v1 - ClassicDependencyManager
+                        // does not apply dependency management for direct dependencies,
+                        // so setting version manually
+                        final String version = sourceSet.dependencyConstraints().getConstraint(ga);
+                        if (version == null) {
+                            final String message = "Source set %s (project %s) has no managed version for %s"
+                                    .formatted(
+                                            sourceSet.id(), sourceSet.project().gav(), ga);
+                            throw new IllegalStateException(message);
+                        }
+
+                        final GroupArtifactVersion gav = ga.withVersion(version);
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+
+                    case com.github.build.deps.Dependency.OnProject onProject -> {
+                        final GroupArtifactVersion gav = onProject.project().gav();
+                        final String scope = runtimeClasspathArtifacts.contains(gav.groupArtifact())
+                                ? JavaScopes.COMPILE
+                                : JavaScopes.PROVIDED;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+                    case com.github.build.deps.Dependency.OnSourceSet onSourceSet -> {
+                        final SourceSet ss = onSourceSet.sourceSet();
+                        final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+                        final String scope = runtimeClasspathArtifacts.contains(gav.groupArtifact())
+                                ? JavaScopes.COMPILE
+                                : JavaScopes.PROVIDED;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+                    case com.github.build.deps.Dependency.Jar ignored -> {
+                        // do nothing
+                    }
+                }
+            }
+
+            final var request = new CollectRequest();
+
+            final Project project = sourceSet.project();
+            final Artifact rootArtifact = MavenArtifactResolverUtils.toArtifact(project);
+            request.setRootArtifact(rootArtifact);
+
+            request.setManagedDependencies(managedDependencies);
+
+            request.setDependencies(dependencies);
+            request.setRepositories(repositories);
+
+            try {
+                collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+            } catch (DependencyCollectionException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        // step 2: resolve graph to actual JARs on disk
+        final DependencyResult dependencyResult;
+        {
+            final var scopeFilter = new ScopeDependencyFilter(List.of(JavaScopes.COMPILE, JavaScopes.PROVIDED), null);
+
+            final var dependencyRequest = new DependencyRequest(collectResult.getRoot(), scopeFilter);
+
+            try {
+                dependencyResult = repositorySystem.resolveDependencies(repositorySystemSession, dependencyRequest);
+            } catch (final DependencyResolutionException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        final Map<GroupArtifactVersion, Path> resolved = dependencyResult.getArtifactResults().stream()
+                .map(ArtifactResult::getArtifact)
+                .collect(toUnmodifiableMap(
+                        a -> new GroupArtifactVersion(
+                                a.getGroupId(), a.getArtifactId(), a.getClassifier(), a.getVersion()),
+                        a -> a.getFile().toPath()));
+        log.info(
+                "Compile classpath resolution finished in {} ({} artifacts)",
+                DurationUtils.format(Duration.between(startedAt, Instant.now())),
+                resolved.size());
+        return resolved;
+    }
+
+    @Override
+    public Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(final SourceSet sourceSet) {
+        Objects.requireNonNull(sourceSet);
+        log.info("Runtime classpath resolution started");
+        final Instant startedAt = Instant.now();
+
+        // step 1: collect dependency graph
+        final CollectResult collectResult;
+        {
+            final List<Dependency> managedDependencies = sourceSet.dependencyConstraints().stream()
+                    .map(gav -> MavenArtifactResolverUtils.toDependency(gav, null))
+                    .toList();
+
+            final var dependencies = new ArrayList<Dependency>();
+            final Set<GroupArtifact> compileClasspathArtifacts = sourceSet.compileDependencies().stream()
+                    .map(MavenArtifactResolverUtils::mapDependencyToGa)
+                    .filter(Objects::nonNull)
+                    .collect(toUnmodifiableSet());
+            for (final var d : sourceSet.runtimeDependencies()) {
+                switch (d) {
+                    case com.github.build.deps.Dependency.Remote.WithVersion withVersion -> {
+                        final GroupArtifactVersion gav = withVersion.gav();
+                        final GroupArtifact ga = gav.groupArtifact();
+                        final String scope =
+                                compileClasspathArtifacts.contains(ga) ? JavaScopes.COMPILE : JavaScopes.RUNTIME;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+
+                    case com.github.build.deps.Dependency.Remote.WithoutVersion withoutVersion -> {
+                        final GroupArtifact ga = withoutVersion.ga();
+                        final String scope =
+                                compileClasspathArtifacts.contains(ga) ? JavaScopes.COMPILE : JavaScopes.RUNTIME;
+
+                        // there seems to be a bug in Maven Resolver v1 - ClassicDependencyManager
+                        // does not apply dependency management for direct dependencies,
+                        // so setting version manually
+                        final String version = sourceSet.dependencyConstraints().getConstraint(ga);
+                        if (version == null) {
+                            final String message = "Source set %s (project %s) has no managed version for %s"
+                                    .formatted(
+                                            sourceSet.id(), sourceSet.project().gav(), ga);
+                            throw new IllegalStateException(message);
+                        }
+
+                        final GroupArtifactVersion gav = ga.withVersion(version);
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+
+                    case com.github.build.deps.Dependency.OnProject onProject -> {
+                        final GroupArtifactVersion gav = onProject.project().gav();
+                        final String scope = compileClasspathArtifacts.contains(gav.groupArtifact())
+                                ? JavaScopes.COMPILE
+                                : JavaScopes.RUNTIME;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+                    case com.github.build.deps.Dependency.OnSourceSet onSourceSet -> {
+                        final SourceSet ss = onSourceSet.sourceSet();
+                        final GroupArtifactVersion gav = MavenArtifactResolverUtils.makeSourceSetGav(ss);
+                        final String scope = compileClasspathArtifacts.contains(gav.groupArtifact())
+                                ? JavaScopes.COMPILE
+                                : JavaScopes.RUNTIME;
+                        final var dependency = MavenArtifactResolverUtils.toDependency(gav, scope);
+                        dependencies.add(dependency);
+                    }
+                    case com.github.build.deps.Dependency.Jar ignored -> {
+                        // do nothing
+                    }
+                }
+            }
+
+            final var request = new CollectRequest();
+
+            final Project project = sourceSet.project();
+            final Artifact rootArtifact = MavenArtifactResolverUtils.toArtifact(project);
+            request.setRootArtifact(rootArtifact);
+
+            request.setManagedDependencies(managedDependencies);
+
+            request.setDependencies(dependencies);
+            request.setRepositories(repositories);
+
+            try {
+                collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+            } catch (DependencyCollectionException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        // step 2: resolve graph to actual JARs on disk
+        final DependencyResult dependencyResult;
+        {
+            final var scopeFilter = new ScopeDependencyFilter(List.of(JavaScopes.COMPILE, JavaScopes.RUNTIME), null);
+
+            final var dependencyRequest = new DependencyRequest(collectResult.getRoot(), scopeFilter);
+
+            try {
+                dependencyResult = repositorySystem.resolveDependencies(repositorySystemSession, dependencyRequest);
+            } catch (final DependencyResolutionException e) {
+                throw new IllegalStateException(e);
+            }
+        }
+
+        final Map<GroupArtifactVersion, Path> resolved = dependencyResult.getArtifactResults().stream()
+                .map(ArtifactResult::getArtifact)
+                .collect(toUnmodifiableMap(
+                        a -> new GroupArtifactVersion(
+                                a.getGroupId(), a.getArtifactId(), a.getClassifier(), a.getVersion()),
+                        a -> a.getFile().toPath()));
+        log.info(
+                "Runtime classpath resolution finished in {} ({} artifacts)",
+                DurationUtils.format(Duration.between(startedAt, Instant.now())),
+                resolved.size());
+        return resolved;
+    }
+
+    @Override
+    public Set<GroupArtifactVersion> resolve(final Project project) {
+        Objects.requireNonNull(project);
+        final var artifact =
+                new DefaultArtifact(project.groupId(), project.artifactId(), null, null, project.version());
+        final var rootDependency = new Dependency(artifact, null);
+        final var request = new CollectRequest(rootDependency, repositories);
+        final CollectResult collectResult;
+        try {
+            collectResult = repositorySystem.collectDependencies(repositorySystemSession, request);
+        } catch (DependencyCollectionException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final var result = new HashSet<GroupArtifactVersion>();
+        final SequencedCollection<DependencyNode> queue = new ArrayList<>();
+        collectResult.getRoot().getChildren().forEach(queue::addLast);
+        while (!queue.isEmpty()) {
+            final DependencyNode node = queue.removeFirst();
+            final var gav = new GroupArtifactVersion(
+                    node.getArtifact().getGroupId(),
+                    node.getArtifact().getArtifactId(),
+                    node.getArtifact().getClassifier(),
+                    node.getArtifact().getVersion());
+            result.add(gav);
+            node.getChildren().forEach(queue::addLast);
+        }
+
+        return result;
+    }
+
+    @Override
+    public Map<GroupArtifactVersion, Path> fetchToLocal(final Set<GroupArtifactVersion> artifacts) {
+        Objects.requireNonNull(artifacts);
+        final var artifactRequests = artifacts.stream()
+                .map(gav ->
+                        new DefaultArtifact(gav.groupId(), gav.artifactId(), gav.classifier(), "jar", gav.version()))
+                .map(artifact -> new ArtifactRequest(artifact, repositories, null))
+                .toList();
+
+        // Cannot set root dependency - this way Aether will incorrectly
+        // resolve optional dependencies (see OptionalDependencySelector).
+        // So we set root artifact (not root dependency) which works
+        // pretty much as a pseudo-dependency for entering resolved dependency
+        // graph. Without root artifact we cannot start iterating over results.
+        // Yet we don't have even a root artifact, so we're emulating its value.
+        final List<ArtifactResult> resolveResult;
+        try {
+            resolveResult = repositorySystem.resolveArtifacts(repositorySystemSession, artifactRequests);
+        } catch (ArtifactResolutionException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final var result = new HashMap<GroupArtifactVersion, Path>();
+        for (final ArtifactResult artifactResult : resolveResult) {
+            final Artifact artifact = artifactResult.getArtifact();
+            final var localArtifactRequest = new LocalArtifactRequest(artifact, repositories, null);
+            final File file = repositorySystemSession
+                    .getLocalRepositoryManager()
+                    .find(repositorySystemSession, localArtifactRequest)
+                    .getFile();
+            Objects.requireNonNull(file);
+            final var gav = new GroupArtifactVersion(
+                    artifactResult.getArtifact().getGroupId(),
+                    artifactResult.getArtifact().getArtifactId(),
+                    artifactResult.getArtifact().getClassifier(),
+                    artifactResult.getArtifact().getVersion());
+            result.put(gav, file.toPath().toAbsolutePath());
+        }
+
+        return result;
+    }
+
+    @Override
+    public Path fetchToLocal(final GroupArtifactVersion gav, @Nullable final String classifier) {
+        Objects.requireNonNull(gav);
+        final var artifact = new DefaultArtifact(gav.groupId(), gav.artifactId(), classifier, "jar", gav.version());
+        final var artifactRequest = new ArtifactRequest(artifact, repositories, null);
+
+        // Cannot set root dependency - this way Aether will incorrectly
+        // resolve optional dependencies (see OptionalDependencySelector).
+        // So we set root artifact (not root dependency) which works
+        // pretty much as a pseudo-dependency for entering resolved dependency
+        // graph. Without root artifact we cannot start iterating over results.
+        // Yet we don't have even a root artifact, so we're emulating its value.
+        final ArtifactResult resolveResult;
+        try {
+            resolveResult = repositorySystem.resolveArtifact(repositorySystemSession, artifactRequest);
+        } catch (ArtifactResolutionException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final Artifact a = resolveResult.getArtifact();
+        final var localArtifactRequest = new LocalArtifactRequest(a, repositories, null);
+        return repositorySystemSession
+                .getLocalRepositoryManager()
+                .find(repositorySystemSession, localArtifactRequest)
+                .getFile()
+                .toPath();
+    }
+
+    @Override
+    public DependencyConstraints getConstraints(final GroupArtifactVersion bom, final GroupArtifactVersion... other) {
+        Objects.requireNonNull(bom);
+        log.info("Dependency constraints resolution started");
+        final Instant startedAt = Instant.now();
+        final var boms = new ArrayList<GroupArtifactVersion>();
+        boms.add(bom);
+        if (other != null) {
+            for (final GroupArtifactVersion gav : other) {
+                Objects.requireNonNull(gav);
+                boms.add(gav);
+            }
+        }
+
+        final var builder = DependencyConstraints.builder();
+        for (final GroupArtifactVersion gav : boms) {
+            final var artifact =
+                    new DefaultArtifact(gav.groupId(), gav.artifactId(), gav.classifier(), "jar", gav.version());
+            final var request = new ArtifactDescriptorRequest(artifact, repositories, null);
+            final ArtifactDescriptorResult result;
+            try {
+                result = repositorySystem.readArtifactDescriptor(repositorySystemSession, request);
+            } catch (final ArtifactDescriptorException e) {
+                throw new IllegalStateException(e);
+            }
+
+            for (final Dependency managedDependency : result.getManagedDependencies()) {
+                final var managedGav = new GroupArtifactVersion(
+                        managedDependency.getArtifact().getGroupId(),
+                        managedDependency.getArtifact().getArtifactId(),
+                        managedDependency.getArtifact().getClassifier(),
+                        managedDependency.getArtifact().getVersion());
+                builder.withExactVersion(managedGav);
+            }
+        }
+
+        final DependencyConstraints constraints = builder.build();
+        log.info(
+                "Dependency constraints resolution finished in {} ({} BOMs)",
+                DurationUtils.format(Duration.between(startedAt, Instant.now())),
+                boms.size());
+        return constraints;
+    }
+}

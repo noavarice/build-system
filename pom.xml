@@ -12,6 +12,8 @@
   <modules>
     <module>test-utils</module>
     <module>lib</module>
+    <module>dependency-resolver-native</module>
+    <module>dependency-resolver-aether</module>
     <module>junit-integration</module>
     <module>repository-proxy</module>
     <module>build-itself</module>
