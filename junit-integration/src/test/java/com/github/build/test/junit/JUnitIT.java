@@ -1,5 +1,6 @@
 package com.github.build.test.junit;
 
+import com.github.build.BuildContext;
 import com.github.build.BuildService;
 import com.github.build.FsUtils;
 import com.github.build.MainSourceSetArgs;
@@ -101,16 +102,16 @@ class JUnitIT {
                 builder -> builder.withPath(Path.of("calculator")).withSourceSets(main, test));
 
         // compile main and test source sets
-        buildService.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
-        buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
+        buildService.compileJava(new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY);
+        buildService.copyResources(new BuildContext(tempDir), project, SourceSet.Id.MAIN);
 
-        buildService.compileJava(tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY);
-        buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
+        buildService.compileJava(new BuildContext(tempDir), project.testSourceSet(), JavaCompilerOptions.EMPTY);
+        buildService.copyResources(new BuildContext(tempDir), project, SourceSet.Id.TEST);
 
         final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
         final Path buildRuntimePath = Path.of(buildRuntimePathStr);
         final var testArgs = new JUnitTestArgs(List.of(buildRuntimePath), ClassLoader.getPlatformClassLoader());
-        final TestResults result = testService.withJUnit(tempDir, project, testArgs);
+        final TestResults result = testService.withJUnit(new BuildContext(tempDir), project, testArgs);
         return new DynamicTest[] {
             DynamicTest.dynamicTest(
                     "Check succeeded count", () -> Assertions.assertEquals(3, result.testsSucceededCount())),

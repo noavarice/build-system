@@ -88,7 +88,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest(
                         "Classes directory created but empty",
@@ -118,7 +118,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -152,7 +152,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -180,7 +180,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation fails",
                         () -> assertThatThrownBy(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .isInstanceOf(CompilationException.class)),
                 dynamicTest(
                         "Class file is not generated",
@@ -221,7 +221,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -259,7 +259,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation fails",
                         () -> assertThatThrownBy(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .isInstanceOf(CompilationException.class)),
                 dynamicTest(
                         "Class file is not generated",
@@ -303,7 +303,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation fails",
                         () -> assertThatThrownBy(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .isInstanceOf(CompilationException.class)),
                 dynamicTest(
                         "Class file is not generated",
@@ -353,7 +353,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -412,7 +412,9 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation fails",
                         () -> assertThatThrownBy(() -> service.compileJava(
-                                        tempDir, calculatorConsumerProject.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir),
+                                        calculatorConsumerProject.mainSourceSet(),
+                                        JavaCompilerOptions.EMPTY))
                                 .isInstanceOf(CompilationException.class)),
                 dynamicTest(
                         "Class file does not exist", () -> assertThat(classFile).doesNotExist()),
@@ -457,10 +459,14 @@ class BuildServiceIT {
                     createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
             final var service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
 
-            final var calculatorCompiled =
-                    service.compileJava(tempDir, calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY);
+            final var calculatorCompiled = service.compileJava(
+                    new BuildContext(tempDir), calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY);
             service.createJar(
-                    tempDir, calculatorProject, List.of(calculatorCompiled.outputDirectory()), Map.of(), null);
+                    new BuildContext(tempDir),
+                    calculatorProject,
+                    List.of(calculatorCompiled.outputDirectory()),
+                    Map.of(),
+                    null);
 
             final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
             assertThat(classesDir).doesNotExist();
@@ -472,7 +478,9 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, calculatorConsumerProject.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir),
+                                        calculatorConsumerProject.mainSourceSet(),
+                                        JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -514,7 +522,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation fails",
                         () -> assertThatThrownBy(() -> service.compileJava(
-                                        tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.testSourceSet(), JavaCompilerOptions.EMPTY))
                                 .isInstanceOf(CompilationException.class)),
                 dynamicTest(
                         "Class file does not exist", () -> assertThat(classFile).doesNotExist()),
@@ -546,9 +554,14 @@ class BuildServiceIT {
                     createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
             final BuildService service =
                     new BuildService(new JavaCompileService(), dependencyService, new JarService());
-            final var mainCompiled = service.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
+            final var mainCompiled =
+                    service.compileJava(new BuildContext(tempDir), project.mainSourceSet(), JavaCompilerOptions.EMPTY);
             service.createJar(
-                    tempDir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
+                    new BuildContext(tempDir),
+                    project.mainSourceSet(),
+                    List.of(mainCompiled.outputDirectory()),
+                    Map.of(),
+                    null);
 
             final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
             assertThat(classesDir).doesNotExist();
@@ -560,7 +573,7 @@ class BuildServiceIT {
                 dynamicTest(
                         "Compilation succeeds",
                         () -> assertThatCode(() -> service.compileJava(
-                                        tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY))
+                                        new BuildContext(tempDir), project.testSourceSet(), JavaCompilerOptions.EMPTY))
                                 .doesNotThrowAnyException()),
                 dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
             };
@@ -585,7 +598,8 @@ class BuildServiceIT {
             final Path buildOutputDir = tempDir.resolve(project.path())
                     .resolve(project.artifactLayout().rootDir());
             assertThat(buildOutputDir).doesNotExist();
-            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+            assertThatCode(() -> service.clean(new BuildContext(tempDir), project))
+                    .doesNotThrowAnyException();
         }
 
         @DisplayName("Check cleaning empty directory works")
@@ -605,7 +619,8 @@ class BuildServiceIT {
             Files.createDirectories(buildOutputDir);
             assertThat(buildOutputDir).isEmptyDirectory();
 
-            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+            assertThatCode(() -> service.clean(new BuildContext(tempDir), project))
+                    .doesNotThrowAnyException();
         }
 
         @DisplayName("Check cleaning non-empty directory works")
@@ -620,13 +635,14 @@ class BuildServiceIT {
                             .withSourceSets(
                                     MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
             final var java21 = JavaCompilerOptions.builder().release("21").build();
-            service.compileJava(tempDir, project.mainSourceSet(), java21);
+            service.compileJava(new BuildContext(tempDir), project.mainSourceSet(), java21);
 
             final Path buildOutputDir = tempDir.resolve(project.path())
                     .resolve(project.artifactLayout().rootDir());
             assertThat(buildOutputDir).isNotEmptyDirectory();
 
-            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+            assertThatCode(() -> service.clean(new BuildContext(tempDir), project))
+                    .doesNotThrowAnyException();
         }
 
         @DisplayName("Check cleaning build output which is regular file works silently")
@@ -646,7 +662,8 @@ class BuildServiceIT {
             Files.writeString(buildOutputDir, "This should not be a file");
             assertThat(buildOutputDir).isNotEmptyFile();
 
-            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+            assertThatCode(() -> service.clean(new BuildContext(tempDir), project))
+                    .doesNotThrowAnyException();
         }
     }
 

@@ -270,7 +270,8 @@ class CopyTest {
             return new DynamicTest[] {
                 dynamicTest(
                         "Check method works without exception",
-                        () -> assertThatCode(() -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN))
+                        () -> assertThatCode(() -> buildService.copyResources(
+                                        new BuildContext(tempDir), project, SourceSet.Id.MAIN))
                                 .doesNotThrowAnyException()),
                 dynamicTest(
                         "Check target directory exist",
@@ -294,7 +295,8 @@ class CopyTest {
             return new DynamicTest[] {
                 dynamicTest(
                         "Check method works without exception",
-                        () -> assertThatCode(() -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN))
+                        () -> assertThatCode(() -> buildService.copyResources(
+                                        new BuildContext(tempDir), project, SourceSet.Id.MAIN))
                                 .doesNotThrowAnyException()),
                 dynamicTest(
                         "Check target directory exist",
@@ -327,7 +329,8 @@ class CopyTest {
             return new DynamicTest[] {
                 dynamicTest(
                         "Check method works without exception",
-                        () -> assertThatCode(() -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN))
+                        () -> assertThatCode(() -> buildService.copyResources(
+                                        new BuildContext(tempDir), project, SourceSet.Id.MAIN))
                                 .doesNotThrowAnyException()),
                 dynamicTest(
                         "Check resource copied",
@@ -374,7 +377,8 @@ class CopyTest {
             return new DynamicTest[] {
                 dynamicTest(
                         "Check method works without exception",
-                        () -> assertThatCode(() -> buildService.copyResources(tempDir, project, SourceSet.Id.MAIN))
+                        () -> assertThatCode(() -> buildService.copyResources(
+                                        new BuildContext(tempDir), project, SourceSet.Id.MAIN))
                                 .doesNotThrowAnyException()),
                 dynamicTest(
                         "Check resource copied",

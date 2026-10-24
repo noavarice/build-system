@@ -54,14 +54,7 @@ public class BuildItself {
 
     private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
 
-    private static final BuildReport buildReport = new BuildReport();
-
     private static final DependencyService dependencyService = mavenArtifactResolver();
-
-    private static final TestService testService = new TestService(dependencyService, buildReport);
-
-    private static final BuildService buildService =
-            new BuildService(buildReport, new JavaCompileService(), dependencyService, new JarService());
 
     private static final ProjectService projectService = new ProjectService();
 
@@ -73,6 +66,13 @@ public class BuildItself {
             workdir = Path.of(args[0]);
         }
 
+        // The build context is scoped to this concrete build (and its working directory), unlike
+        // the longer-lived services that are shared across builds. It accumulates per-project
+        // statistics and, at the end, prints the build summary.
+        final var buildContext = new BuildContext(workdir);
+        final var testService = new TestService(dependencyService);
+        final var buildService = new BuildService(new JavaCompileService(), dependencyService, new JarService());
+
         final DependencyConstraints junitBom =
                 dependencyService.getConstraints(GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1"));
 
@@ -82,18 +82,31 @@ public class BuildItself {
         final Project projectTestUtils = createProjectTestUtils(junitBom);
         final Project projectLib = createProjectLib(junitBom, projectTestUtils);
 
-        buildService.clean(workdir, projectTestUtils);
-        buildService.clean(workdir, projectLib);
+        buildContext.expectProjects(List.of(projectTestUtils, projectLib));
+        buildService.clean(buildContext, projectTestUtils);
+        buildService.clean(buildContext, projectLib);
 
         boolean success = true;
         try {
-            success = buildTestUtils(workdir, projectTestUtils, java21) && buildLib(workdir, projectLib, java21);
+            final boolean testUtilsOk =
+                    buildTestUtils(buildContext, projectTestUtils, java21, buildService, testService);
+            if (testUtilsOk) {
+                buildContext.projectBuilt(projectTestUtils);
+                success = buildLib(buildContext, projectLib, java21, buildService, testService);
+                if (success) {
+                    buildContext.projectBuilt(projectLib);
+                } else {
+                    buildContext.projectFailed(projectLib);
+                }
+            } else {
+                buildContext.projectFailed(projectTestUtils);
+            }
         } catch (final RuntimeException e) {
             log.error("Build failed", e);
             success = false;
         }
 
-        buildReport.logSummary(success);
+        buildContext.logSummary();
         if (!success) {
             System.exit(1);
         }
@@ -179,51 +192,60 @@ public class BuildItself {
     }
 
     private static boolean buildTestUtils(
-            final Path workdir, final Project project, final JavaCompilerOptions compilerOptions) {
+            final BuildContext buildContext,
+            final Project project,
+            final JavaCompilerOptions compilerOptions,
+            final BuildService buildService,
+            final TestService testService) {
         final CompilationResult mainCompiled =
-                buildService.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+                buildService.compileJava(buildContext, project.mainSourceSet(), compilerOptions);
 
-        buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+        buildService.copyResources(buildContext, project, SourceSet.Id.MAIN);
         buildService.createJar(
-                workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
+                buildContext, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
 
         final CompilationResult testCompiled =
-                buildService.compileJava(workdir, project.testSourceSet(), compilerOptions);
+                buildService.compileJava(buildContext, project.testSourceSet(), compilerOptions);
 
-        buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+        buildService.copyResources(buildContext, project, SourceSet.Id.TEST);
         buildService.createJar(
-                workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
+                buildContext, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
 
         final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
         final List<Path> buildRuntimePath =
                 Stream.of(buildRuntimePathStr.split(",", -1)).map(Path::of).toList();
         final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-        final TestResults results = testService.withJUnit(workdir, project, testArgs);
+        final TestResults results = testService.withJUnit(buildContext, project, testArgs);
         return results.testsFailedCount() <= 0;
     }
 
     private static boolean buildLib(
-            final Path workdir, final Project project, final JavaCompilerOptions compilerOptions) {
+            final BuildContext buildContext,
+            final Project project,
+            final JavaCompilerOptions compilerOptions,
+            final BuildService buildService,
+            final TestService testService) {
+        final Path workdir = buildContext.workdir();
         generateSourcesFromMavenXsd(workdir, project);
         final CompilationResult mainCompiled =
-                buildService.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+                buildService.compileJava(buildContext, project.mainSourceSet(), compilerOptions);
 
-        buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+        buildService.copyResources(buildContext, project, SourceSet.Id.MAIN);
         buildService.createJar(
-                workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
+                buildContext, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
 
         final CompilationResult testCompiled =
-                buildService.compileJava(workdir, project.testSourceSet(), compilerOptions);
+                buildService.compileJava(buildContext, project.testSourceSet(), compilerOptions);
 
-        buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+        buildService.copyResources(buildContext, project, SourceSet.Id.TEST);
         buildService.createJar(
-                workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
+                buildContext, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
 
         final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
         final List<Path> buildRuntimePath =
                 Stream.of(buildRuntimePathStr.split(",", -1)).map(Path::of).toList();
         final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-        final TestResults results = testService.withJUnit(workdir, project, testArgs);
+        final TestResults results = testService.withJUnit(buildContext, project, testArgs);
         return results.testsFailedCount() <= 0;
     }
 
@@ -346,11 +368,11 @@ public class BuildItself {
         if (configuredLocalRepository != null) {
             localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
         } else {
-            try {
-                localRepositoryBasePath = Files.createTempDirectory("build-local");
-            } catch (final IOException e) {
-                throw new UncheckedIOException(e);
-            }
+            // Default to the shared ~/.m2/repository so resolved artifacts persist across runs and
+            // are inspectable, matching RepositoryProxySupport. Compose services override this via
+            // -Dmaven.repo.local=/m2/repository.
+            localRepositoryBasePath = Path.of(System.getProperty("user.home"), ".m2", "repository")
+                    .toAbsolutePath();
         }
 
         final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());

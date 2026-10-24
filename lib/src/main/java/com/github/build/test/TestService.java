@@ -3,7 +3,7 @@ package com.github.build.test;
 import static java.util.stream.Collectors.joining;
 import static java.util.stream.Collectors.toUnmodifiableSet;
 
-import com.github.build.BuildReport;
+import com.github.build.BuildContext;
 import com.github.build.Project;
 import com.github.build.SourceSet;
 import com.github.build.deps.Dependency;
@@ -59,37 +59,30 @@ public final class TestService {
 
     private final DependencyService dependencyService;
 
-    private final BuildReport buildReport;
-
     public TestService(final DependencyService dependencyService) {
-        this(dependencyService, new BuildReport());
-    }
-
-    public TestService(final DependencyService dependencyService, final BuildReport buildReport) {
-        this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService, buildReport);
+        this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService);
     }
 
     public TestService(
             final RandomGenerator random,
             final ExecutorService processEventListenerExecutorService,
-            final DependencyService dependencyService,
-            final BuildReport buildReport) {
+            final DependencyService dependencyService) {
         this.random = Objects.requireNonNull(random);
         this.processEventListenerExecutorService = Objects.requireNonNull(processEventListenerExecutorService);
         this.dependencyService = Objects.requireNonNull(dependencyService);
-        this.buildReport = Objects.requireNonNull(buildReport);
     }
 
-    public TestResults withJUnit(final Path workdir, final Project project, final JUnitTestArgs args) {
-        return withJUnit(workdir, requireTestSourceSet(project), args);
+    public TestResults withJUnit(final BuildContext buildContext, final Project project, final JUnitTestArgs args) {
+        return withJUnit(buildContext, requireTestSourceSet(project), args);
     }
 
     // TODO: handle failed tests
-    public TestResults withJUnit(final Path workdir, final SourceSet sourceSet, final JUnitTestArgs args) {
-        Objects.requireNonNull(workdir);
+    public TestResults withJUnit(final BuildContext buildContext, final SourceSet sourceSet, final JUnitTestArgs args) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
         Objects.requireNonNull(args);
 
+        final Path workdir = buildContext.workdir();
         final Project project = sourceSet.project();
         try (final var ignored = LogContext.sourceSet(project, sourceSet.id())) {
             log.info("Test execution started");
@@ -111,7 +104,7 @@ public final class TestService {
                 final TestResults results = task.apply(taskArgs);
 
                 final Duration duration = Duration.between(startedAt, Instant.now());
-                buildReport.testsFinished(project, sourceSet.id(), duration, results);
+                buildContext.testsFinished(project, sourceSet.id(), duration, results);
                 log.info("Test execution finished in {}", DurationUtils.format(duration));
                 return results;
             } catch (final IOException e) {
@@ -125,13 +118,13 @@ public final class TestService {
     }
 
     public TestResults withJUnitAsProcess(
-            final Path workdir,
+            final BuildContext buildContext,
             final Project project,
             final JUnitTestArgs args,
             final List<JavaCommandBuilder.Agent> agents,
             final List<String> systemProperties,
             final Duration timeout) {
-        return withJUnitAsProcess(workdir, requireTestSourceSet(project), args, agents, systemProperties, timeout);
+        return withJUnitAsProcess(buildContext, requireTestSourceSet(project), args, agents, systemProperties, timeout);
     }
 
     private static SourceSet requireTestSourceSet(final Project project) {
@@ -142,16 +135,17 @@ public final class TestService {
     // TODO: handle failed tests
     // TODO: pass environment and other JVM properties
     public TestResults withJUnitAsProcess(
-            final Path workdir,
+            final BuildContext buildContext,
             final SourceSet sourceSet,
             final JUnitTestArgs args,
             final List<JavaCommandBuilder.Agent> agents,
             final List<String> systemProperties,
             final Duration timeout) {
-        Objects.requireNonNull(workdir);
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
         Objects.requireNonNull(args);
 
+        final Path workdir = buildContext.workdir();
         final Project project = sourceSet.project();
         final SourceSet.Id sourceSetId = sourceSet.id();
         try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
@@ -214,7 +208,7 @@ public final class TestService {
             final TestResults results = testEventHandler.toTestResults();
 
             final Duration duration = Duration.between(startedAt, Instant.now());
-            buildReport.testsFinished(project, sourceSetId, duration, results);
+            buildContext.testsFinished(project, sourceSetId, duration, results);
             log.info("Test execution finished in {}", DurationUtils.format(duration));
 
             if (!results.failures().isEmpty()) {

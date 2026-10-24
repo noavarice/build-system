@@ -75,11 +75,13 @@ public final class BuildSpringSecurity {
 
         final var projectService = new ProjectService();
         final var dependencyService = mavenArtifactResolver(workdir, projectService);
-        final var buildReport = new BuildReport();
-        final var testService = new TestService(dependencyService, buildReport);
+        // The build context is scoped to this concrete build (and its working directory), unlike
+        // the longer-lived services. It accumulates per-project statistics and, at the end, prints
+        // the build summary. All reactor projects are registered once they are created below.
+        final var buildContext = new BuildContext(workdir);
+        final var testService = new TestService(dependencyService);
         final var jarService = new JarService();
-        final BuildService service =
-                new BuildService(buildReport, new JavaCompileService(), dependencyService, jarService);
+        final BuildService service = new BuildService(new JavaCompileService(), dependencyService, jarService);
 
         final DependencyConstraints platform = getPlatform(dependencyService);
         // TODO: consider setting this default via ProjectService
@@ -234,7 +236,8 @@ public final class BuildSpringSecurity {
         // Gradle-style highest-version conflict resolution). See BLOCKED_MODULES.md.
         final Set<Project> projectsWithoutTests = Set.of(saml2, webauthn, config, test);
 
-        projects.forEach(project -> service.clean(workdir, project));
+        buildContext.expectProjects(projects);
+        projects.forEach(project -> service.clean(buildContext, project));
 
         final Path license = workdir.resolve("LICENSE.txt");
         final var compilerOptions =
@@ -256,26 +259,26 @@ public final class BuildSpringSecurity {
             for (final Project project : projects) {
                 final List<Path> mainClassDirectories;
                 if (project == aspects) {
-                    final CompilationResult aspectJ = service.compileAspectJ(workdir, project.mainSourceSet());
+                    final CompilationResult aspectJ = service.compileAspectJ(buildContext, project.mainSourceSet());
                     mainClassDirectories = List.of(aspectJ.outputDirectory());
                 } else if (project == config) {
-                    final CompilationResult kotlin = service.compileKotlin(workdir, project.mainSourceSet());
+                    final CompilationResult kotlin = service.compileKotlin(buildContext, project.mainSourceSet());
                     final CompilationResult java =
-                            service.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+                            service.compileJava(buildContext, project.mainSourceSet(), compilerOptions);
                     mainClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
                 } else {
                     final CompilationResult java =
-                            service.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+                            service.compileJava(buildContext, project.mainSourceSet(), compilerOptions);
                     mainClassDirectories = List.of(java.outputDirectory());
                 }
-                service.copyResources(workdir, project, SourceSet.Id.MAIN);
+                service.copyResources(buildContext, project, SourceSet.Id.MAIN);
                 if (project == core) {
                     generateSpringVersionsFile(workdir, project, springCoreVersion);
                 }
                 if (project == saml2) {
                     // saml2 adds the opensaml5Main source set output to its main jar; main output wins on
                     // duplicate classes (one shared Saml2Utils class).
-                    compileOpenSaml5Main(workdir, project, service, compilerOptions);
+                    compileOpenSaml5Main(buildContext, project, service, compilerOptions);
                 }
 
                 final var additionalEntries = new HashMap<Path, JarArgs.Content>();
@@ -294,12 +297,13 @@ public final class BuildSpringSecurity {
                         .setImplementationTitle(project.artifactId())
                         .setImplementationVersion(project.version())
                         .build();
-                service.createJar(workdir, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest);
+                service.createJar(
+                        buildContext, project.mainSourceSet(), mainClassDirectories, additionalEntries, manifest);
 
                 if (testProjects.contains(project)) {
                     // The test sources of this project are its main source set
                     final TestResults results = runTests(
-                            workdir,
+                            buildContext,
                             project,
                             project.mainSourceSet(),
                             testService,
@@ -308,8 +312,10 @@ public final class BuildSpringSecurity {
                             springCoreVersion);
                     if (results.testsFailedCount() > 0) {
                         success = false;
+                        buildContext.projectFailed(project);
                         break;
                     }
+                    buildContext.projectBuilt(project);
                     continue;
                 }
 
@@ -317,46 +323,51 @@ public final class BuildSpringSecurity {
                     try (final var ignored = LogContext.project(project)) {
                         log.info("Skipping test source set (not supported yet)");
                     }
+                    buildContext.projectBuilt(project);
                     continue;
                 }
 
                 final SourceSet testSourceSet = project.testSourceSet();
                 if (testSourceSet == null) {
                     // Tests of this module live in a standalone project (e.g. core -> core-tests)
+                    buildContext.projectBuilt(project);
                     continue;
                 }
 
-                buildExtraSourceSets(testSourceSet, compilerOptions, workdir, service);
+                buildExtraSourceSets(testSourceSet, compilerOptions, buildContext, service);
 
                 final List<Path> testClassDirectories;
                 if (project == aspects) {
-                    final CompilationResult aspectJ = service.compileAspectJ(workdir, testSourceSet);
+                    final CompilationResult aspectJ = service.compileAspectJ(buildContext, testSourceSet);
                     testClassDirectories = List.of(aspectJ.outputDirectory());
                 } else if (project == config) {
-                    final CompilationResult kotlin = service.compileKotlin(workdir, testSourceSet);
-                    final CompilationResult java = service.compileJava(workdir, testSourceSet, compilerOptions);
+                    final CompilationResult kotlin = service.compileKotlin(buildContext, testSourceSet);
+                    final CompilationResult java = service.compileJava(buildContext, testSourceSet, compilerOptions);
                     testClassDirectories = List.of(kotlin.outputDirectory(), java.outputDirectory());
                 } else {
-                    final CompilationResult java = service.compileJava(workdir, testSourceSet, compilerOptions);
+                    final CompilationResult java = service.compileJava(buildContext, testSourceSet, compilerOptions);
                     testClassDirectories = List.of(java.outputDirectory());
                 }
-                service.copyResources(workdir, project, SourceSet.Id.TEST);
-                service.createJar(workdir, testSourceSet, testClassDirectories, Map.of(), null);
+                service.copyResources(buildContext, project, SourceSet.Id.TEST);
+                service.createJar(buildContext, testSourceSet, testClassDirectories, Map.of(), null);
 
                 final TestResults results = runTests(
-                        workdir, project, testSourceSet, testService, mockitoPath, jacocoPath, springCoreVersion);
+                        buildContext, project, testSourceSet, testService, mockitoPath, jacocoPath, springCoreVersion);
 
                 if (results.testsFailedCount() > 0) {
                     success = false;
+                    buildContext.projectFailed(project);
                     break;
                 }
+
+                buildContext.projectBuilt(project);
             }
         } catch (final RuntimeException e) {
             log.error("Build failed", e);
             success = false;
         }
 
-        buildReport.logSummary(success);
+        buildContext.logSummary();
         if (!success) {
             System.exit(1);
         }
@@ -365,7 +376,7 @@ public final class BuildSpringSecurity {
     /**
      * Runs the tests declared by the specified source set, applying the Mockito and JaCoCo agents.
      *
-     * @param workdir        Build working directory
+     * @param buildContext  Build context of the concrete build
      * @param project        Project owning the source set
      * @param testSourceSet  Source set containing the tests to run
      * @param testService    Test service
@@ -375,7 +386,7 @@ public final class BuildSpringSecurity {
      * @return Test results
      */
     private static TestResults runTests(
-            final Path workdir,
+            final BuildContext buildContext,
             final Project project,
             final SourceSet testSourceSet,
             final TestService testService,
@@ -389,6 +400,7 @@ public final class BuildSpringSecurity {
                 .toList();
         final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
 
+        final Path workdir = buildContext.workdir();
         final var jacocoExecReportPath = workdir.resolve(project.path())
                 .resolve(project.artifactLayout().rootDir())
                 .resolve("jacoco")
@@ -397,7 +409,7 @@ public final class BuildSpringSecurity {
                 new JavaCommandBuilder.Agent(mockitoPath, null),
                 new JavaCommandBuilder.Agent(jacocoPath, "destfile=" + jacocoExecReportPath));
         return testService.withJUnitAsProcess(
-                workdir,
+                buildContext,
                 testSourceSet,
                 testArgs,
                 agents,
@@ -505,7 +517,7 @@ public final class BuildSpringSecurity {
     private static void buildExtraSourceSets(
             final SourceSet testSourceSet,
             final JavaCompilerOptions compilerOptions,
-            final Path workdir,
+            final BuildContext buildContext,
             final BuildService service) {
         final var processedExtraSourceSets = new HashSet<SourceSet>();
         for (final Dependency dependency : testSourceSet.compileDependencies()) {
@@ -519,7 +531,7 @@ public final class BuildSpringSecurity {
                     continue;
                 }
 
-                buildExtraSourceSet(extraSourceSet, workdir, service, compilerOptions);
+                buildExtraSourceSet(extraSourceSet, buildContext, service, compilerOptions);
                 processedExtraSourceSets.add(extraSourceSet);
             }
         }
@@ -527,7 +539,7 @@ public final class BuildSpringSecurity {
 
     private static void buildExtraSourceSet(
             final SourceSet extraSourceSet,
-            final Path workdir,
+            final BuildContext buildContext,
             final BuildService service,
             final JavaCompilerOptions compilerOptions) {
         final var project = extraSourceSet.project();
@@ -535,10 +547,10 @@ public final class BuildSpringSecurity {
             log.debug("Compiling extra source set first");
         }
 
-        final CompilationResult compiled = service.compileJava(workdir, extraSourceSet, compilerOptions);
+        final CompilationResult compiled = service.compileJava(buildContext, extraSourceSet, compilerOptions);
 
-        service.copyResources(workdir, extraSourceSet);
-        service.createJar(workdir, extraSourceSet, List.of(compiled.outputDirectory()), Map.of(), null);
+        service.copyResources(buildContext, extraSourceSet);
+        service.createJar(buildContext, extraSourceSet, List.of(compiled.outputDirectory()), Map.of(), null);
     }
 
     private static final String OPEN_SAML5_SOURCE_SET = "opensaml5Main";
@@ -552,10 +564,11 @@ public final class BuildSpringSecurity {
      * {@code DuplicatesStrategy.EXCLUDE}, so the main output wins on collisions.
      */
     private static void compileOpenSaml5Main(
-            final Path workdir,
+            final BuildContext buildContext,
             final Project project,
             final BuildService service,
             final JavaCompilerOptions compilerOptions) {
+        final Path workdir = buildContext.workdir();
         final Path sourceDir = workdir.resolve(project.path())
                 .resolve("src")
                 .resolve(OPEN_SAML5_SOURCE_SET)
@@ -575,7 +588,7 @@ public final class BuildSpringSecurity {
 
         final Path mainClassesDir = javaClassesDir(workdir, project, SourceSet.Id.MAIN);
         final Path sourceSetClassesDir = javaClassesDir(workdir, project, new SourceSet.Id(OPEN_SAML5_SOURCE_SET));
-        final Set<Path> classpath = new HashSet<>(service.compileClasspath(workdir, project.mainSourceSet()));
+        final Set<Path> classpath = new HashSet<>(service.compileClasspath(buildContext, project.mainSourceSet()));
         classpath.add(mainClassesDir);
 
         final CompilationResult compiled =
@@ -2473,11 +2486,11 @@ public final class BuildSpringSecurity {
         if (configuredLocalRepository != null) {
             localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
         } else {
-            try {
-                localRepositoryBasePath = Files.createTempDirectory("build-local");
-            } catch (final IOException e) {
-                throw new UncheckedIOException(e);
-            }
+            // Default to the shared ~/.m2/repository so resolved artifacts persist across runs and
+            // are inspectable, matching RepositoryProxySupport. Compose services override this via
+            // -Dmaven.repo.local=/m2/repository.
+            localRepositoryBasePath = Path.of(System.getProperty("user.home"), ".m2", "repository")
+                    .toAbsolutePath();
         }
 
         final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());

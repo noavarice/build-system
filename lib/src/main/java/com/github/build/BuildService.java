@@ -48,8 +48,6 @@ public final class BuildService {
 
     private static final Logger log = LoggerFactory.getLogger(BuildService.class);
 
-    private final BuildReport buildReport;
-
     private final JavaCompileService javaCompileService;
 
     private final KotlinCompileService kotlinCompileService;
@@ -64,15 +62,6 @@ public final class BuildService {
             final JavaCompileService javaCompileService,
             final DependencyService dependencyService,
             final JarService jarService) {
-        this(new BuildReport(), javaCompileService, dependencyService, jarService);
-    }
-
-    public BuildService(
-            final BuildReport buildReport,
-            final JavaCompileService javaCompileService,
-            final DependencyService dependencyService,
-            final JarService jarService) {
-        this.buildReport = Objects.requireNonNull(buildReport);
         this.javaCompileService = Objects.requireNonNull(javaCompileService);
         this.kotlinCompileService = new KotlinCompileService();
         this.aspectJCompileService = new AspectJCompileService();
@@ -81,17 +70,16 @@ public final class BuildService {
     }
 
     /**
-     * Resolves the compile classpath for the specified source set. Includes locally built
-     * artifacts (JARs, projects) and remotely resolved dependencies.
+     * Resolves the compile classpath for the specified source set. Includes locally built artifacts
+     * (JARs, projects) and remotely resolved dependencies.
      *
-     * @param workdir   Build working directory
-     * @param sourceSet Source set to resolve compile classpath for
+     * @param buildContext Build context of the concrete build
+     * @param sourceSet   Source set to resolve compile classpath for
      * @return Compile classpath
      */
-    public Set<Path> compileClasspath(final Path workdir, final SourceSet sourceSet) {
-        Objects.requireNonNull(workdir);
+    public Set<Path> compileClasspath(final BuildContext buildContext, final SourceSet sourceSet) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
-        PathUtils.checkAbsolute(workdir);
 
         try (final var ignored = LogContext.sourceSet(sourceSet.project(), sourceSet.id())) {
             final Set<Path> classpath = new HashSet<>();
@@ -103,7 +91,7 @@ public final class BuildService {
     /**
      * Compiles Java sources of a source set with javac into a dedicated Java output directory.
      *
-     * @param workdir         Build working directory
+     * @param buildContext    Build context of the concrete build
      * @param sourceSet       Source set to compile
      * @param compilerOptions Java compiler options
      * @return Compilation result with the Java class output directory
@@ -111,12 +99,12 @@ public final class BuildService {
      *     fails
      */
     public CompilationResult compileJava(
-            final Path workdir, final SourceSet sourceSet, final JavaCompilerOptions compilerOptions) {
-        Objects.requireNonNull(workdir);
+            final BuildContext buildContext, final SourceSet sourceSet, final JavaCompilerOptions compilerOptions) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
         Objects.requireNonNull(compilerOptions);
 
-        PathUtils.checkAbsolute(workdir);
+        final Path workdir = buildContext.workdir();
 
         final Project project = sourceSet.project();
         final SourceSet.Id sourceSetId = sourceSet.id();
@@ -152,12 +140,13 @@ public final class BuildService {
                     new JavaCompileArgs(sources, outputDirectory, classpath, compilerOptions));
             if (!compiled) {
                 log.error("Java compilation failed");
+                buildContext.compilationFailed(project, sourceSetId);
                 throw new CompilationException(
                         "[project=%s] [ss=%s] Java compilation failed".formatted(project.artifactId(), sourceSetId));
             }
 
             final Duration duration = Duration.between(startedAt, Instant.now());
-            buildReport.compilationFinished(project, sourceSetId, Language.JAVA, duration);
+            buildContext.compilationFinished(project, sourceSetId, Language.JAVA, duration);
             log.info("Java compilation finished in {}", DurationUtils.format(duration));
 
             return new CompilationResult(outputDirectory);
@@ -186,19 +175,19 @@ public final class BuildService {
     /**
      * Compiles Kotlin sources of a source set into a dedicated Kotlin output directory. Java sources
      * are passed to the Kotlin compiler as source roots for resolution and must be compiled
-     * separately with {@link #compileJava(Path, SourceSet, JavaCompilerOptions)}.
+     * separately with {@link #compileJava(BuildContext, SourceSet, JavaCompilerOptions)}.
      *
-     * @param workdir   Build working directory
-     * @param sourceSet Source set to compile
+     * @param buildContext Build context of the concrete build
+     * @param sourceSet   Source set to compile
      * @return Compilation result with the Kotlin class output directory
      * @throws CompilationException If the compilation classpath cannot be resolved or compilation
      *     fails
      */
-    public CompilationResult compileKotlin(final Path workdir, final SourceSet sourceSet) {
-        Objects.requireNonNull(workdir);
+    public CompilationResult compileKotlin(final BuildContext buildContext, final SourceSet sourceSet) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
 
-        PathUtils.checkAbsolute(workdir);
+        final Path workdir = buildContext.workdir();
 
         final Project project = sourceSet.project();
         final SourceSet.Id sourceSetId = sourceSet.id();
@@ -207,15 +196,16 @@ public final class BuildService {
             final Instant startedAt = Instant.now();
 
             final Path outputDirectory = classOutputDirectory(workdir, project, sourceSetId, Language.KOTLIN);
-            final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+            final Set<Path> classpath = compileClasspath(buildContext, sourceSet);
             if (!kotlinCompileService.compile(workdir, sourceSet, outputDirectory, classpath)) {
                 log.error("Kotlin compilation failed");
+                buildContext.compilationFailed(project, sourceSetId);
                 throw new CompilationException(
                         "[project=%s] [ss=%s] Kotlin compilation failed".formatted(project.artifactId(), sourceSetId));
             }
 
             final Duration duration = Duration.between(startedAt, Instant.now());
-            buildReport.compilationFinished(project, sourceSetId, Language.KOTLIN, duration);
+            buildContext.compilationFinished(project, sourceSetId, Language.KOTLIN, duration);
             log.info("Kotlin compilation finished in {}", DurationUtils.format(duration));
 
             return new CompilationResult(outputDirectory);
@@ -229,17 +219,17 @@ public final class BuildService {
      * <p>When compiling a test source set, the main source set AspectJ output is added to the aspect
      * path so test classes are woven against the main aspects at compile time.
      *
-     * @param workdir   Build working directory
-     * @param sourceSet Source set to compile
+     * @param buildContext Build context of the concrete build
+     * @param sourceSet   Source set to compile
      * @return Compilation result with the AspectJ class output directory
      * @throws CompilationException If the compilation classpath cannot be resolved or compilation
      *     fails
      */
-    public CompilationResult compileAspectJ(final Path workdir, final SourceSet sourceSet) {
-        Objects.requireNonNull(workdir);
+    public CompilationResult compileAspectJ(final BuildContext buildContext, final SourceSet sourceSet) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
 
-        PathUtils.checkAbsolute(workdir);
+        final Path workdir = buildContext.workdir();
 
         final Project project = sourceSet.project();
         final SourceSet.Id sourceSetId = sourceSet.id();
@@ -248,7 +238,7 @@ public final class BuildService {
             final Instant startedAt = Instant.now();
 
             final Path outputDirectory = classOutputDirectory(workdir, project, sourceSetId, Language.ASPECTJ);
-            final Set<Path> classpath = compileClasspath(workdir, sourceSet);
+            final Set<Path> classpath = compileClasspath(buildContext, sourceSet);
             final Set<Path> sourceRoots = resolveDirectories(workdir, project, sourceSet.aspectjSourceRoots());
 
             final Set<Path> aspectPath = new HashSet<>();
@@ -269,12 +259,13 @@ public final class BuildService {
             if (!aspectJCompileService.compile(
                     new AspectJCompileArgs(sourceRoots, outputDirectory, classpath, aspectPath, outXmlFile))) {
                 log.error("AspectJ compilation failed");
+                buildContext.compilationFailed(project, sourceSetId);
                 throw new CompilationException(
                         "[project=%s] [ss=%s] AspectJ compilation failed".formatted(project.artifactId(), sourceSetId));
             }
 
             final Duration duration = Duration.between(startedAt, Instant.now());
-            buildReport.compilationFinished(project, sourceSetId, Language.ASPECTJ, duration);
+            buildContext.compilationFinished(project, sourceSetId, Language.ASPECTJ, duration);
             log.info("AspectJ compilation finished in {}", DurationUtils.format(duration));
 
             return new CompilationResult(outputDirectory);
@@ -428,24 +419,24 @@ public final class BuildService {
     /**
      * Copies resources from project's main source set to a project's resource directory.
      *
-     * @param workdir     Working directory
+     * @param buildContext Build context of the concrete build
      * @param project     Project
      * @param sourceSetId Source set ID
      * @see Project.ArtifactLayout#resourcesDir()
      */
-    public void copyResources(final Path workdir, final Project project, final SourceSet.Id sourceSetId) {
-        Objects.requireNonNull(workdir);
+    public void copyResources(final BuildContext buildContext, final Project project, final SourceSet.Id sourceSetId) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(project);
         Objects.requireNonNull(sourceSetId);
 
-        copyResources(workdir, project.sourceSet(sourceSetId));
+        copyResources(buildContext, project.sourceSet(sourceSetId));
     }
 
-    public void copyResources(final Path workdir, final SourceSet sourceSet) {
-        Objects.requireNonNull(workdir);
+    public void copyResources(final BuildContext buildContext, final SourceSet sourceSet) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
 
-        PathUtils.checkAbsolute(workdir);
+        final Path workdir = buildContext.workdir();
         PathUtils.checkDirectory(workdir);
 
         final Project project = sourceSet.project();
@@ -478,40 +469,39 @@ public final class BuildService {
     }
 
     /**
-     * @deprecated Use generic
-     *     {@link #createJar(Path, SourceSet, Collection, Map, JarManifest)}
+     * @deprecated Use generic {@link #createJar(BuildContext, SourceSet, Collection, Map, JarManifest)}
      */
     @Deprecated(forRemoval = true)
     public void createJar(
-            final Path workdir,
+            final BuildContext buildContext,
             final Project project,
             final Collection<Path> classDirectories,
             final Map<Path, JarArgs.Content> additionalEntries,
             @Nullable final JarManifest manifest) {
-        createJar(workdir, project.mainSourceSet(), classDirectories, additionalEntries, manifest);
+        createJar(buildContext, project.mainSourceSet(), classDirectories, additionalEntries, manifest);
     }
 
     /**
      * Creates a JAR from the given compiled class directories and the source set resources.
      *
-     * @param workdir           Working directory
+     * @param buildContext      Build context of the concrete build
      * @param sourceSet         Source set the JAR is created for
      * @param classDirectories  Directories containing compiled classes to put in the JAR
      * @param additionalEntries Additional JAR entries
      * @param manifest          JAR manifest
      */
     public void createJar(
-            final Path workdir,
+            final BuildContext buildContext,
             final SourceSet sourceSet,
             final Collection<Path> classDirectories,
             final Map<Path, JarArgs.Content> additionalEntries,
             @Nullable final JarManifest manifest) {
-        Objects.requireNonNull(workdir);
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(sourceSet);
         Objects.requireNonNull(classDirectories);
         Objects.requireNonNull(additionalEntries);
 
-        PathUtils.checkAbsolute(workdir);
+        final Path workdir = buildContext.workdir();
         PathUtils.checkDirectory(workdir);
 
         final Project project = sourceSet.project();
@@ -604,13 +594,14 @@ public final class BuildService {
     /**
      * Cleans build output for the specified project.
      *
-     * @param workdir Build working directory
-     * @param project Project to clean
+     * @param buildContext Build context of the concrete build
+     * @param project     Project to clean
      */
-    public void clean(final Path workdir, final Project project) {
-        Objects.requireNonNull(workdir);
+    public void clean(final BuildContext buildContext, final Project project) {
+        Objects.requireNonNull(buildContext);
         Objects.requireNonNull(project);
-        PathUtils.checkAbsolute(workdir);
+
+        final Path workdir = buildContext.workdir();
 
         try (final var ignored = LogContext.project(project)) {
             log.debug("Cleaning build output directory");
