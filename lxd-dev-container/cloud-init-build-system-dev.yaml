@@ -1,0 +1,162 @@
+#cloud-config
+# Provisioning for the LXD dev container that hosts this build-system project.
+#
+# Image: ubuntu:26.04 (resolute), x86_64 container.
+# Hostname: build-system-dev
+#
+# Toolchain (all from Ubuntu 26.04 apt, plus NodeSource for Node 20 and the
+# official opencode installer):
+#   - openjdk-21-jdk and openjdk-25-jdk (apt). JDK 21 is the project default
+#     for self-hosted builds; JDK 25 is kept for experiments.
+#   - maven (apt; resolves to 3.9.12 on 26.04, matching the project's pinned
+#     version - the repo has no Maven wrapper).
+#   - Node.js 20 via NodeSource (required by spring-security/javascript).
+#   - zsh + oh-my-zsh as the default shell.
+#   - opencode installed under the primary user.
+#
+# The project tree is mounted at /workspace/build-system via a host-to-container
+# LXD disk device (see setup.sh) so .git and the spring-security submodule are
+# shared with the host.
+#
+# Persistence: the user's ~/.m2 and ~/.config/opencode are mounted from LXD custom
+# storage volumes (see setup.sh), so they survive container recreation. Do not
+# create them eagerly here beyond what the mountpoints need.
+
+hostname: build-system-dev
+manage_etc_hosts: true
+
+# Target user for the dev environment (matches the host user for uid alignment
+# when the project tree is bind-mounted).
+users:
+  - name: noavarice
+    groups: [sudo, adm]
+    shell: /bin/bash
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+    lock_passwd: true
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gnupg
+  - git
+  - vim
+  - zsh
+  - openjdk-21-jdk
+  - openjdk-25-jdk
+  - maven
+  - jq
+  - unzip
+  - wget
+
+write_files:
+  - path: /tmp/setup-node20.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      # Preferred: NodeSource APT repo pinned to Node 20.x. NodeSource targets a
+      # distro-agnostic 'nodistro' suite, so it works on 26.04 (resolute).
+      if curl -fsSL https://deb.nodesource.com/setup_20.x | bash -; then
+        apt-get install -y nodejs
+        echo "node provisioned via NodeSource: $(node -v)"
+        exit 0
+      fi
+      # Fallback if NodeSource is unreachable: pinned Node 20 LTS tarball.
+      echo "NodeSource unsupported; installing Node 20 LTS tarball"
+      NODE_MAJOR=20 NODE_URL=$(curl -fsSL https://nodejs.org/dist/latest-v20.x/ \
+        | grep -oE 'node-v20\.[0-9]+\.[0-9]+-linux-x64\.tar\.xz' | sort -V | tail -1)
+      curl -fsSL "https://nodejs.org/dist/latest-v20.x/${NODE_URL}" -o /tmp/node.tar.xz
+      tar -xJf /tmp/node.tar.xz -C /usr/local --strip-components=1
+      rm -f /tmp/node.tar.xz
+      echo "node provisioned via tarball: $(node -v)"
+
+  - path: /tmp/install-opencode.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      # Install opencode as the target user. This runs once during provisioning,
+      # so a transient network/npm-registry blip must NOT silently leave the
+      # container without opencode: retry several times, and fail the provisioning
+      # (non-zero exit, surfaced in cloud-init-output.log) if it still cannot.
+      # --no-modify-path: PATH is wired centrally via /etc/profile.d/java-env.sh
+      # and ~/.zshenv, so we don't want the installer editing ~/.zshrc.
+      set -euo pipefail
+      for attempt in 1 2 3 4 5; do
+        if runuser -u noavarice -- bash -c \
+          'curl -fsSL https://opencode.ai/v2/install | bash -s -- --no-modify-path'; then
+          echo "opencode installed (attempt $attempt)"
+          exit 0
+        fi
+        echo "opencode install attempt $attempt failed; retrying in 15s..."
+        sleep 15
+      done
+      echo "ERROR: opencode install failed after 5 attempts" >&2
+      exit 1
+
+  - path: /tmp/setup-ohmyzsh.sh
+    permissions: "0755"
+    content: |
+      #!/bin/bash
+      set -e
+      if [ ! -d /home/noavarice/.oh-my-zsh ]; then
+        git clone --depth=1 https://github.com/ohmyzsh/ohmyzsh.git /home/noavarice/.oh-my-zsh
+      fi
+      if [ ! -f /home/noavarice/.zshrc ]; then
+        cp /home/noavarice/.oh-my-zsh/templates/zshrc.zsh-template /home/noavarice/.zshrc
+      fi
+      chsh -s /usr/bin/zsh noavarice
+
+  - path: /etc/profile.d/java-env.sh
+    permissions: "0644"
+    content: |
+      # Maven resolves its JVM via JAVA_HOME. JDK 21 is the project default.
+      export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64
+      export PATH="${JAVA_HOME}/bin:${PATH}"
+      if [ -f ~/.opencode/bin/opencode ]; then
+        export PATH="$HOME/.opencode/bin:${PATH}"
+      fi
+      # Switch to JDK 25 for experiments: use-jdk25
+      use-jdk21() { export JAVA_HOME=/usr/lib/jvm/java-21-openjdk-amd64; export PATH="$JAVA_HOME/bin:$PATH"; }
+      use-jdk25() { export JAVA_HOME=/usr/lib/jvm/java-25-openjdk-amd64; export PATH="$JAVA_HOME/bin:$PATH"; }
+
+  - path: /home/noavarice/.zshenv
+    permissions: "0644"
+    content: |
+      # Keep JAVA_HOME available even for non-login, non-interactive shells.
+      [ -r /etc/profile.d/java-env.sh ] && . /etc/profile.d/java-env.sh
+      if [ -f "$HOME/.opencode/bin/opencode" ]; then
+        export PATH="$HOME/.opencode/bin:$PATH"
+      fi
+
+runcmd:
+  - set -e
+  - # On the Ubuntu 26.04 cloud image the 'users:' home dir is left owned by root.
+  - # Make it user-owned FIRST so per-user installers (opencode, oh-my-zsh) can write
+  - # to $HOME during provisioning. Files those create as root are reclaimed by the
+  - # final chown at the end of runcmd.
+  - chown -R noavarice:noavarice /home/noavarice
+  - bash /tmp/setup-node20.sh
+  - # Set JDK 21 as the default java/javac via update-alternatives-led tools.
+  - update-java-alternatives -l
+  - update-alternatives --set java /usr/lib/jvm/java-21-openjdk-amd64/bin/java || true
+  - update-alternatives --set javac /usr/lib/jvm/java-21-openjdk-amd64/bin/javac || true
+  - # opencode (official installer, runs as the target user, with retry; fails the
+  - # provisioning loudly if it cannot install). The ~/.config/opencode volume parent
+  - # must exist and be user-owned before the installer writes into it.
+  - install -d -o noavarice -g noavarice /home/noavarice/.config
+  - bash /tmp/install-opencode.sh
+  - bash /tmp/setup-ohmyzsh.sh
+  - # Maven repository root inside the persistent ~/.m2 volume (just ensure it exists)
+  - install -d -o noavarice -g noavarice /home/noavarice/.m2/repository
+  - # Reclaim anything a later root-run step created (setup-ohmyzsh.sh writes .zshrc /
+  - # .oh-my-zsh as root), the ~/.m2 and ~/.config/opencode volume mounts (which start
+  - # root-owned on a brand-new volume), and fresh .zcompdump files. Home was already
+  - # chowned early; this catches everything after that, leaving home user-owned.
+  - chown -R noavarice:noavarice /home/noavarice
+  - # Persist container identity note
+  - echo "build-system-dev LXD dev container" > /etc/motd
+  - rm -f /tmp/setup-node20.sh /tmp/setup-ohmyzsh.sh /tmp/install-opencode.sh
