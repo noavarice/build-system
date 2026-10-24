@@ -14,14 +14,14 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Tests for GroupArtifact class")
 class GroupArtifactTest {
 
-  @DisplayName("Check parsing works")
-  @TestFactory
-  DynamicTest[] testParsingWorks() {
-    final String value = "ch.qos.logback:logback-core";
-    final GroupArtifact ga = GroupArtifact.parse(value);
-    return new DynamicTest[]{
-        dynamicTest("Check group ID", () -> assertEquals("ch.qos.logback", ga.groupId())),
-        dynamicTest("Check artifact ID", () -> assertEquals("logback-core", ga.artifactId())),
-    };
-  }
+    @DisplayName("Check parsing works")
+    @TestFactory
+    DynamicTest[] testParsingWorks() {
+        final String value = "ch.qos.logback:logback-core";
+        final GroupArtifact ga = GroupArtifact.parse(value);
+        return new DynamicTest[] {
+            dynamicTest("Check group ID", () -> assertEquals("ch.qos.logback", ga.groupId())),
+            dynamicTest("Check artifact ID", () -> assertEquals("logback-core", ga.artifactId())),
+        };
+    }
 }

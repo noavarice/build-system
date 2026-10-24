@@ -3,11 +3,10 @@ package com.github.build.test.junit;
 import com.github.build.BuildService;
 import com.github.build.FsUtils;
 import com.github.build.MainSourceSetArgs;
-import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.RepositoryProxySupport;
-import com.github.build.SourceSet;
 import com.github.build.SourceRoots;
+import com.github.build.SourceSet;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.TestSourceSetDependency;
 import com.github.build.compile.JavaCompileService;
@@ -42,96 +41,82 @@ import org.junit.jupiter.api.io.TempDir;
 @Disabled("Fix classpath issues")
 class JUnitIT {
 
-  private final ProjectService projectService = new ProjectService();
+    private final ProjectService projectService = new ProjectService();
 
-  private final DependencyService dependencyService;
+    private final DependencyService dependencyService;
 
-  private final TestService testService;
+    private final TestService testService;
 
-  private final BuildService buildService;
+    private final BuildService buildService;
 
-  JUnitIT(@TempDir final Path localRepositoryBasePath) {
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
+    JUnitIT(@TempDir final Path localRepositoryBasePath) {
+        final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+        final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+        session.setSystemProperty("java.version", "21");
+        final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+        final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+        session.setLocalRepositoryManager(manager);
 
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-            .build()
-    );
-    dependencyService = new MavenArtifactResolverDependencyService(
-        repoSystem,
-        session,
-        repositories
-    );
-    testService = new TestService(dependencyService);
-    buildService = new BuildService(new JavaCompileService(), dependencyService, new JarService());
-  }
+        final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                "proxy",
+                                "default",
+                                RepositoryProxySupport.mavenCentralUri().toString())
+                        .build());
+        dependencyService = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+        testService = new TestService(dependencyService);
+        buildService = new BuildService(new JavaCompileService(), dependencyService, new JarService());
+    }
 
-  @DisplayName("Check running tests work")
-  @TestFactory
-  DynamicTest[] testRunningWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+    @DisplayName("Check running tests work")
+    @TestFactory
+    DynamicTest[] testRunningWorks(@TempDir final Path tempDir) {
+        FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
 
-    final DependencyConstraints junitBom = dependencyService.getConstraints(
-        GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
-    );
-    final var main = new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-        Set.of(Path.of("src", "main", "resources")),
-        List.of(),
-        List.of(),
-        DependencyConstraints.EMPTY
-    );
-    final var testCompileAndRun = List.<TestSourceSetDependency>of(
-        main,
-        GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api")
-    );
-    final var testRuntime = new ArrayList<>(testCompileAndRun);
-    testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
-    testRuntime.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.19"));
-    final var test = new TestSourceSetArgs(
-        SourceSet.Id.TEST.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-        Set.of(Path.of("src", "test", "resources")),
-        testCompileAndRun,
-        testRuntime,
-        junitBom
-    );
-    final var project = projectService.create("org.example", "calculator", "0.1.0",
-        builder -> builder
-            .withPath(Path.of("calculator"))
-            .withSourceSets(main, test)
-    );
+        final DependencyConstraints junitBom =
+                dependencyService.getConstraints(GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1"));
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                Set.of(Path.of("src", "main", "resources")),
+                List.of(),
+                List.of(),
+                DependencyConstraints.EMPTY);
+        final var testCompileAndRun =
+                List.<TestSourceSetDependency>of(main, GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"));
+        final var testRuntime = new ArrayList<>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
+        testRuntime.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.19"));
+        final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                testCompileAndRun,
+                testRuntime,
+                junitBom);
+        final var project = projectService.create(
+                "org.example",
+                "calculator",
+                "0.1.0",
+                builder -> builder.withPath(Path.of("calculator")).withSourceSets(main, test));
 
-    // compile main and test source sets
-    buildService.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
-    buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
+        // compile main and test source sets
+        buildService.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
+        buildService.copyResources(tempDir, project, SourceSet.Id.MAIN);
 
-    buildService.compileJava(tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY);
-    buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
+        buildService.compileJava(tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY);
+        buildService.copyResources(tempDir, project, SourceSet.Id.TEST);
 
-    final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-    final Path buildRuntimePath = Path.of(buildRuntimePathStr);
-    final var testArgs = new JUnitTestArgs(
-        List.of(buildRuntimePath),
-        ClassLoader.getPlatformClassLoader()
-    );
-    final TestResults result = testService.withJUnit(tempDir, project, testArgs);
-    return new DynamicTest[]{
-        DynamicTest.dynamicTest("Check succeeded count",
-            () -> Assertions.assertEquals(3, result.testsSucceededCount())),
-        DynamicTest.dynamicTest("Check failed count",
-            () -> Assertions.assertEquals(0, result.testsFailedCount())),
-        DynamicTest.dynamicTest("Check skipped count",
-            () -> Assertions.assertEquals(0, result.testsSkippedCount())),
-    };
-  }
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final Path buildRuntimePath = Path.of(buildRuntimePathStr);
+        final var testArgs = new JUnitTestArgs(List.of(buildRuntimePath), ClassLoader.getPlatformClassLoader());
+        final TestResults result = testService.withJUnit(tempDir, project, testArgs);
+        return new DynamicTest[] {
+            DynamicTest.dynamicTest(
+                    "Check succeeded count", () -> Assertions.assertEquals(3, result.testsSucceededCount())),
+            DynamicTest.dynamicTest("Check failed count", () -> Assertions.assertEquals(0, result.testsFailedCount())),
+            DynamicTest.dynamicTest(
+                    "Check skipped count", () -> Assertions.assertEquals(0, result.testsSkippedCount())),
+        };
+    }
 }

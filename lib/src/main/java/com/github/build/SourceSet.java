@@ -31,58 +31,57 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record SourceSet(
-    Project project,
-    Id id,
-    SourceRoots javaSourceRoots,
-    SourceRoots kotlinSourceRoots,
-    SourceRoots aspectjSourceRoots,
-    Set<Path> resourceDirectories,
-    // dependency declaration order matters
-    List<Dependency> compileDependencies,
-    List<Dependency> runtimeDependencies,
-    List<Dependency> exposedClasspath,
-    DependencyConstraints dependencyConstraints
-) implements MainSourceSetDependency, TestSourceSetDependency, ExtraSourceSetDependency {
+        Project project,
+        Id id,
+        SourceRoots javaSourceRoots,
+        SourceRoots kotlinSourceRoots,
+        SourceRoots aspectjSourceRoots,
+        Set<Path> resourceDirectories,
+        // dependency declaration order matters
+        List<Dependency> compileDependencies,
+        List<Dependency> runtimeDependencies,
+        List<Dependency> exposedClasspath,
+        DependencyConstraints dependencyConstraints)
+        implements MainSourceSetDependency, TestSourceSetDependency, ExtraSourceSetDependency {
 
-  public SourceSet {
-    Objects.requireNonNull(project);
-    Objects.requireNonNull(id);
-    Objects.requireNonNull(javaSourceRoots);
-    Objects.requireNonNull(kotlinSourceRoots);
-    Objects.requireNonNull(aspectjSourceRoots);
+    public SourceSet {
+        Objects.requireNonNull(project);
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(javaSourceRoots);
+        Objects.requireNonNull(kotlinSourceRoots);
+        Objects.requireNonNull(aspectjSourceRoots);
 
-    if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
-      throw new IllegalArgumentException("Source set must have at least one source root directory");
+        if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
+            throw new IllegalArgumentException("Source set must have at least one source root directory");
+        }
+
+        resourceDirectories = resourceDirectories.stream()
+                .peek(Objects::requireNonNull)
+                .peek(PathUtils::checkRelative)
+                .map(Path::normalize)
+                .collect(toUnmodifiableSet());
+
+        compileDependencies = List.copyOf(compileDependencies);
+        runtimeDependencies = List.copyOf(runtimeDependencies);
+        exposedClasspath = List.copyOf(exposedClasspath);
     }
 
-    resourceDirectories = resourceDirectories
-        .stream()
-        .peek(Objects::requireNonNull)
-        .peek(PathUtils::checkRelative)
-        .map(Path::normalize)
-        .collect(toUnmodifiableSet());
+    public record Id(String value) {
 
-    compileDependencies = List.copyOf(compileDependencies);
-    runtimeDependencies = List.copyOf(runtimeDependencies);
-    exposedClasspath = List.copyOf(exposedClasspath);
-  }
+        public static final Id MAIN = new Id("main");
 
-  public record Id(String value) {
+        public static final Id TEST = new Id("test");
 
-    public static final Id MAIN = new Id("main");
+        public Id {
+            value = Objects.requireNonNull(value).strip();
+            if (value.isBlank()) {
+                throw new IllegalArgumentException();
+            }
+        }
 
-    public static final Id TEST = new Id("test");
-
-    public Id {
-      value = Objects.requireNonNull(value).strip();
-      if (value.isBlank()) {
-        throw new IllegalArgumentException();
-      }
+        @Override
+        public String toString() {
+            return value;
+        }
     }
-
-    @Override
-    public String toString() {
-      return value;
-    }
-  }
 }

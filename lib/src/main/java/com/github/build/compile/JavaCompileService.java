@@ -23,91 +23,76 @@ import org.slf4j.event.Level;
  */
 public final class JavaCompileService {
 
-  private static final Logger log = LoggerFactory.getLogger(JavaCompileService.class);
+    private static final Logger log = LoggerFactory.getLogger(JavaCompileService.class);
 
-  /**
-   * Performs compilation with specified arguments.
-   *
-   * @param args Compilation arguments (sources, classes directory, etc.)
-   * @return True if compilation succeeds, false otherwise
-   */
-  public boolean compile(final JavaCompileArgs args) {
-    Objects.requireNonNull(args);
-    log.debug("Compiling {} files: {}", args.sources().size(), args.sources());
+    /**
+     * Performs compilation with specified arguments.
+     *
+     * @param args Compilation arguments (sources, classes directory, etc.)
+     * @return True if compilation succeeds, false otherwise
+     */
+    public boolean compile(final JavaCompileArgs args) {
+        Objects.requireNonNull(args);
+        log.debug("Compiling {} files: {}", args.sources().size(), args.sources());
 
-    final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
-    final DiagnosticListener<JavaFileObject> diagnosticListener = diagnostic -> {
-      final Level level = switch (diagnostic.getKind()) {
-        case ERROR -> Level.ERROR;
-        case WARNING, MANDATORY_WARNING -> Level.WARN;
-        case NOTE -> Level.INFO;
-        case OTHER -> Level.DEBUG;
-      };
-      log.atLevel(level).log("{}", diagnostic);
-    };
+        final JavaCompiler compiler = ToolProvider.getSystemJavaCompiler();
+        final DiagnosticListener<JavaFileObject> diagnosticListener = diagnostic -> {
+            final Level level = switch (diagnostic.getKind()) {
+                case ERROR -> Level.ERROR;
+                case WARNING, MANDATORY_WARNING -> Level.WARN;
+                case NOTE -> Level.INFO;
+                case OTHER -> Level.DEBUG;
+            };
+            log.atLevel(level).log("{}", diagnostic);
+        };
 
-    final var fileManager = compiler.getStandardFileManager(
-        diagnosticListener,
-        Locale.US,
-        StandardCharsets.UTF_8
-    );
+        final var fileManager = compiler.getStandardFileManager(diagnosticListener, Locale.US, StandardCharsets.UTF_8);
 
-    final var classPathFiles = args.classpath()
-        .stream()
-        .map(Path::toFile)
-        .toList();
-    try {
-      fileManager.setLocation(StandardLocation.CLASS_PATH, classPathFiles);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+        final var classPathFiles = args.classpath().stream().map(Path::toFile).toList();
+        try {
+            fileManager.setLocation(StandardLocation.CLASS_PATH, classPathFiles);
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        try {
+            Files.createDirectories(args.classesDir());
+            fileManager.setLocation(
+                    StandardLocation.CLASS_OUTPUT, List.of(args.classesDir().toFile()));
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        final var compUnits = fileManager.getJavaFileObjectsFromPaths(args.sources());
+        final List<String> compilerOptions = args.options().toList();
+        final var task =
+                compiler.getTask(new LogWriter(), fileManager, diagnosticListener, compilerOptions, null, compUnits);
+        task.setLocale(Locale.US);
+        final boolean result = task.call();
+        log.debug("Compilation {}", result ? "succeeded" : "failed");
+
+        return result;
     }
 
-    try {
-      Files.createDirectories(args.classesDir());
-      fileManager.setLocation(
-          StandardLocation.CLASS_OUTPUT,
-          List.of(args.classesDir().toFile())
-      );
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    /**
+     * Writes compiler output to {@link Logger}.
+     */
+    private static final class LogWriter extends Writer {
+
+        @Override
+        public void write(final char[] cbuf, final int off, final int len) {
+            final var compilerMessage = new String(cbuf);
+            log.debug("[compiler] {}", compilerMessage);
+        }
+
+        @Override
+        public void flush() {
+            // do nothing
+        }
+
+        @Override
+        public void close() {
+            // do nothing
+        }
     }
-
-    final var compUnits = fileManager.getJavaFileObjectsFromPaths(args.sources());
-    final List<String> compilerOptions = args.options().toList();
-    final var task = compiler.getTask(
-        new LogWriter(),
-        fileManager,
-        diagnosticListener,
-        compilerOptions,
-        null,
-        compUnits
-    );
-    task.setLocale(Locale.US);
-    final boolean result = task.call();
-    log.debug("Compilation {}", result ? "succeeded" : "failed");
-
-    return result;
-  }
-
-  /**
-   * Writes compiler output to {@link Logger}.
-   */
-  private static final class LogWriter extends Writer {
-
-    @Override
-    public void write(final char[] cbuf, final int off, final int len) {
-      final var compilerMessage = new String(cbuf);
-      log.debug("[compiler] {}", compilerMessage);
-    }
-
-    @Override
-    public void flush() {
-      // do nothing
-    }
-
-    @Override
-    public void close() {
-      // do nothing
-    }
-  }
 }

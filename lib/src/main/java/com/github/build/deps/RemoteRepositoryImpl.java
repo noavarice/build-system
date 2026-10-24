@@ -48,302 +48,259 @@ import org.xml.sax.helpers.XMLFilterImpl;
  */
 public final class RemoteRepositoryImpl implements RemoteRepository {
 
-  private static final Logger log = LoggerFactory.getLogger(RemoteRepositoryImpl.class);
+    private static final Logger log = LoggerFactory.getLogger(RemoteRepositoryImpl.class);
 
-  private final URI baseUri;
+    private final URI baseUri;
 
-  private final HttpClient client;
+    private final HttpClient client;
 
-  public RemoteRepositoryImpl(final URI baseUri, final HttpClient client) {
-    this.baseUri = Objects.requireNonNull(baseUri);
-    this.client = Objects.requireNonNull(client);
-  }
-
-  @Override
-  public String toString() {
-    return baseUri.toString();
-  }
-
-  /**
-   * Downloads dependency JAR.
-   *
-   * @param dependency Dependency coordinates
-   * @return Resolution result, never null, empty if no dependency found
-   */
-  @Override
-  public Optional<ArtifactDownloadResult> download(final GroupArtifactVersion dependency) {
-    final var uri = buildUri(dependency, ".jar");
-    log.debug("Downloading {} JAR from {}", dependency, uri);
-    final var request = HttpRequest
-        .newBuilder(uri)
-        .GET()
-        .build();
-    final HttpResponse<InputStream> response;
-    try {
-      response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException(e);
-    }
-
-    final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
-    if (!is2xx) {
-      log.warn("Downloading {} JAR failed, response status: {}", dependency, response.statusCode());
-      return Optional.empty();
-    }
-
-    final var result = new ArtifactDownloadResult(response.body());
-    return Optional.of(result);
-  }
-
-  @Override
-  public Optional<Pom> getPom(final GroupArtifactVersion gav) {
-    final URI uri = buildUri(gav, ".pom");
-    log.debug("Downloading {} POM from {}", gav, uri);
-    final var request = HttpRequest
-        .newBuilder(uri)
-        .GET()
-        .build();
-    final HttpResponse<InputStream> response;
-    try {
-      response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException(e);
-    }
-
-    final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
-    if (!is2xx) {
-      log.warn("Downloading {} POM failed, response status: {}", gav, response.statusCode());
-      return Optional.empty();
-    }
-
-    final Model model;
-    try (final InputStream is = response.body()) {
-      final var reader = new MavenXpp3Reader();
-      model = reader.read(is);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final XmlPullParserException e) {
-      throw new IllegalStateException(e);
-    }
-
-    final Pom result = toPom(model);
-    return Optional.of(result);
-  }
-
-  private static Pom toPom(final Model model) {
-    final Pom.Parent parent = mapParent(model.getParent());
-
-    String groupId = model.getGroupId();
-    if (groupId == null) {
-      groupId = parent.groupId();
-    }
-
-    String version = model.getVersion();
-    if (version == null) {
-      version = parent.version();
-    }
-
-    final List<Pom.Dependency> dependencies = mapDependencies(model.getDependencies());
-    final List<Pom.Dependency> dependencyManagement = model.getDependencyManagement() != null
-        ? mapDependencies(model.getDependencyManagement().getDependencies())
-        : List.of();
-    final Map<String, String> properties = mapProperties(model.getProperties());
-    return new Pom(
-        groupId,
-        model.getArtifactId(),
-        version,
-        parent,
-        properties,
-        dependencyManagement,
-        dependencies
-    );
-  }
-
-  private static Pom.Parent mapParent(final Parent parent) {
-    if (parent == null) {
-      return null;
-    }
-
-    return new Pom.Parent(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
-  }
-
-  private static List<Pom.Dependency> mapDependencies(
-      final List<org.apache.maven.model.Dependency> dependencies
-  ) {
-    if (dependencies == null || dependencies.isEmpty()) {
-      return List.of();
-    }
-
-    return dependencies
-        .stream()
-        .map(d -> {
-          final boolean optional = "true".equals(d.getOptional());
-          final var scope = d.getScope() == null
-              ? Pom.Dependency.Scope.COMPILE
-              : Pom.Dependency.Scope.valueOf(d.getScope().toUpperCase(Locale.US));
-          final Set<GroupArtifact> exclusions;
-          if (d.getExclusions() == null) {
-            exclusions = Set.of();
-          } else {
-            exclusions = d.getExclusions()
-                .stream()
-                .map(exclusion -> new GroupArtifact(
-                    exclusion.getGroupId(),
-                    exclusion.getArtifactId())
-                )
-                .collect(toUnmodifiableSet());
-          }
-
-          return new Pom.Dependency(
-              d.getGroupId(),
-              d.getArtifactId(),
-              d.getVersion(),
-              scope,
-              exclusions,
-              optional
-          );
-        })
-        .toList();
-  }
-
-  private static Map<String, String> mapProperties(final Properties properties) {
-    if (properties == null) {
-      return Map.of();
-    }
-
-    final var result = new HashMap<String, String>();
-    for (final String name : properties.stringPropertyNames()) {
-      final String value = properties.getProperty(name);
-      result.put(name, value);
-    }
-
-    return Map.copyOf(result);
-  }
-
-  private URI buildUri(final GroupArtifactVersion gav, final String suffix) {
-    // TODO: fragile - use dedicated URI builder
-    final String classifier = gav.classifier() == null ? "" : '-' + gav.classifier();
-    final String result = baseUri
-        + "/" + gav.groupId().replace('.', '/')
-        + '/' + gav.artifactId()
-        + '/' + gav.version()
-        + '/' + gav.artifactId() + '-' + gav.version() + classifier + suffix;
-    try {
-      return new URI(result);
-    } catch (final URISyntaxException e) {
-      throw new IllegalStateException(e);
-    }
-  }
-
-  @Override
-  public Optional<String> findMax(final GroupArtifact ga, final MavenVersion.Range range) {
-    if (range.exactVersion()) {
-      final String result = Objects.requireNonNull(range.lower()).value();
-      return Optional.of(result);
-    }
-
-    // TODO: fragile - use dedicated URI builder
-    final URI uri;
-    try {
-      final String uriStr = baseUri
-          + "/" + ga.groupId().replace('.', '/')
-          + '/' + ga.artifactId()
-          + "/maven-metadata.xml";
-      uri = new URI(uriStr);
-    } catch (final URISyntaxException e) {
-      throw new IllegalStateException(e);
-    }
-
-    log.debug("Downloading {} metadata from {}", ga, uri);
-    final var request = HttpRequest
-        .newBuilder(uri)
-        .GET()
-        .build();
-    final HttpResponse<InputStream> response;
-    try {
-      response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final InterruptedException e) {
-      Thread.currentThread().interrupt();
-      throw new IllegalStateException(e);
-    }
-
-    final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
-    if (!is2xx) {
-      log.warn("Downloading {} metadata failed, response status: {}", ga, response.statusCode());
-      return Optional.empty();
-    }
-
-    final Metadata metadata;
-    try (final InputStream is = response.body()) {
-      final var spf = SAXParserFactory.newInstance();
-      spf.setNamespaceAware(true);
-
-      final XMLReader xmlReader = spf
-          .newSAXParser()
-          .getXMLReader();
-
-      // some POMs may lack namespace declaration
-      // which is necessary for JAXB unmarshalling to succeed
-      final XMLFilter filter = new NamespaceAddingFilter("http://maven.apache.org/METADATA/1.1.0");
-      filter.setParent(xmlReader);
-
-      final var inputSource = new InputSource(is);
-      final var saxSource = new SAXSource(filter, inputSource);
-
-      final var context = JAXBContext.newInstance("org.apache.maven.metadata._1_1");
-      final var unmarshaller = context.createUnmarshaller();
-      @SuppressWarnings("unchecked")
-      final var element = (JAXBElement<Metadata>) unmarshaller.unmarshal(saxSource);
-      metadata = element.getValue();
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    } catch (final JAXBException | ParserConfigurationException | SAXException e) {
-      throw new IllegalStateException(e);
-    }
-
-    return metadata.getVersioning().getVersions().getVersion()
-        .stream()
-        .map(ComparableVersion::new)
-        .filter(range::contains)
-        .max(naturalOrder())
-        .map(ComparableVersion::getCanonical);
-  }
-
-  /**
-   * XML filter that adds Maven namespace if it's missing.
-   * <p>
-   * This way it's not necessary to change received XML.
-   */
-  public static final class NamespaceAddingFilter extends XMLFilterImpl {
-
-    private final String namespace;
-
-    public NamespaceAddingFilter(final String namespace) {
-      this.namespace = namespace;
+    public RemoteRepositoryImpl(final URI baseUri, final HttpClient client) {
+        this.baseUri = Objects.requireNonNull(baseUri);
+        this.client = Objects.requireNonNull(client);
     }
 
     @Override
-    public void startElement(
-        final String uri,
-        final String localName,
-        final String qName,
-        final Attributes attributes
-    ) throws SAXException {
-      final boolean uriPresent = uri != null && !uri.isBlank();
-      super.startElement(
-          uriPresent ? uri : namespace,
-          localName,
-          qName,
-          attributes
-      );
+    public String toString() {
+        return baseUri.toString();
     }
-  }
+
+    /**
+     * Downloads dependency JAR.
+     *
+     * @param dependency Dependency coordinates
+     * @return Resolution result, never null, empty if no dependency found
+     */
+    @Override
+    public Optional<ArtifactDownloadResult> download(final GroupArtifactVersion dependency) {
+        final var uri = buildUri(dependency, ".jar");
+        log.debug("Downloading {} JAR from {}", dependency, uri);
+        final var request = HttpRequest.newBuilder(uri).GET().build();
+        final HttpResponse<InputStream> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+
+        final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
+        if (!is2xx) {
+            log.warn("Downloading {} JAR failed, response status: {}", dependency, response.statusCode());
+            return Optional.empty();
+        }
+
+        final var result = new ArtifactDownloadResult(response.body());
+        return Optional.of(result);
+    }
+
+    @Override
+    public Optional<Pom> getPom(final GroupArtifactVersion gav) {
+        final URI uri = buildUri(gav, ".pom");
+        log.debug("Downloading {} POM from {}", gav, uri);
+        final var request = HttpRequest.newBuilder(uri).GET().build();
+        final HttpResponse<InputStream> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+
+        final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
+        if (!is2xx) {
+            log.warn("Downloading {} POM failed, response status: {}", gav, response.statusCode());
+            return Optional.empty();
+        }
+
+        final Model model;
+        try (final InputStream is = response.body()) {
+            final var reader = new MavenXpp3Reader();
+            model = reader.read(is);
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (final XmlPullParserException e) {
+            throw new IllegalStateException(e);
+        }
+
+        final Pom result = toPom(model);
+        return Optional.of(result);
+    }
+
+    private static Pom toPom(final Model model) {
+        final Pom.Parent parent = mapParent(model.getParent());
+
+        String groupId = model.getGroupId();
+        if (groupId == null) {
+            groupId = parent.groupId();
+        }
+
+        String version = model.getVersion();
+        if (version == null) {
+            version = parent.version();
+        }
+
+        final List<Pom.Dependency> dependencies = mapDependencies(model.getDependencies());
+        final List<Pom.Dependency> dependencyManagement = model.getDependencyManagement() != null
+                ? mapDependencies(model.getDependencyManagement().getDependencies())
+                : List.of();
+        final Map<String, String> properties = mapProperties(model.getProperties());
+        return new Pom(groupId, model.getArtifactId(), version, parent, properties, dependencyManagement, dependencies);
+    }
+
+    private static Pom.Parent mapParent(final Parent parent) {
+        if (parent == null) {
+            return null;
+        }
+
+        return new Pom.Parent(parent.getGroupId(), parent.getArtifactId(), parent.getVersion());
+    }
+
+    private static List<Pom.Dependency> mapDependencies(final List<org.apache.maven.model.Dependency> dependencies) {
+        if (dependencies == null || dependencies.isEmpty()) {
+            return List.of();
+        }
+
+        return dependencies.stream()
+                .map(d -> {
+                    final boolean optional = "true".equals(d.getOptional());
+                    final var scope = d.getScope() == null
+                            ? Pom.Dependency.Scope.COMPILE
+                            : Pom.Dependency.Scope.valueOf(d.getScope().toUpperCase(Locale.US));
+                    final Set<GroupArtifact> exclusions;
+                    if (d.getExclusions() == null) {
+                        exclusions = Set.of();
+                    } else {
+                        exclusions = d.getExclusions().stream()
+                                .map(exclusion -> new GroupArtifact(exclusion.getGroupId(), exclusion.getArtifactId()))
+                                .collect(toUnmodifiableSet());
+                    }
+
+                    return new Pom.Dependency(
+                            d.getGroupId(), d.getArtifactId(), d.getVersion(), scope, exclusions, optional);
+                })
+                .toList();
+    }
+
+    private static Map<String, String> mapProperties(final Properties properties) {
+        if (properties == null) {
+            return Map.of();
+        }
+
+        final var result = new HashMap<String, String>();
+        for (final String name : properties.stringPropertyNames()) {
+            final String value = properties.getProperty(name);
+            result.put(name, value);
+        }
+
+        return Map.copyOf(result);
+    }
+
+    private URI buildUri(final GroupArtifactVersion gav, final String suffix) {
+        // TODO: fragile - use dedicated URI builder
+        final String classifier = gav.classifier() == null ? "" : '-' + gav.classifier();
+        final String result = baseUri
+                + "/" + gav.groupId().replace('.', '/')
+                + '/' + gav.artifactId()
+                + '/' + gav.version()
+                + '/' + gav.artifactId() + '-' + gav.version() + classifier + suffix;
+        try {
+            return new URI(result);
+        } catch (final URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+    }
+
+    @Override
+    public Optional<String> findMax(final GroupArtifact ga, final MavenVersion.Range range) {
+        if (range.exactVersion()) {
+            final String result = Objects.requireNonNull(range.lower()).value();
+            return Optional.of(result);
+        }
+
+        // TODO: fragile - use dedicated URI builder
+        final URI uri;
+        try {
+            final String uriStr =
+                    baseUri + "/" + ga.groupId().replace('.', '/') + '/' + ga.artifactId() + "/maven-metadata.xml";
+            uri = new URI(uriStr);
+        } catch (final URISyntaxException e) {
+            throw new IllegalStateException(e);
+        }
+
+        log.debug("Downloading {} metadata from {}", ga, uri);
+        final var request = HttpRequest.newBuilder(uri).GET().build();
+        final HttpResponse<InputStream> response;
+        try {
+            response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (final InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException(e);
+        }
+
+        final boolean is2xx = response.statusCode() >= 200 && response.statusCode() < 300;
+        if (!is2xx) {
+            log.warn("Downloading {} metadata failed, response status: {}", ga, response.statusCode());
+            return Optional.empty();
+        }
+
+        final Metadata metadata;
+        try (final InputStream is = response.body()) {
+            final var spf = SAXParserFactory.newInstance();
+            spf.setNamespaceAware(true);
+
+            final XMLReader xmlReader = spf.newSAXParser().getXMLReader();
+
+            // some POMs may lack namespace declaration
+            // which is necessary for JAXB unmarshalling to succeed
+            final XMLFilter filter = new NamespaceAddingFilter("http://maven.apache.org/METADATA/1.1.0");
+            filter.setParent(xmlReader);
+
+            final var inputSource = new InputSource(is);
+            final var saxSource = new SAXSource(filter, inputSource);
+
+            final var context = JAXBContext.newInstance("org.apache.maven.metadata._1_1");
+            final var unmarshaller = context.createUnmarshaller();
+            @SuppressWarnings("unchecked")
+            final var element = (JAXBElement<Metadata>) unmarshaller.unmarshal(saxSource);
+            metadata = element.getValue();
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        } catch (final JAXBException | ParserConfigurationException | SAXException e) {
+            throw new IllegalStateException(e);
+        }
+
+        return metadata.getVersioning().getVersions().getVersion().stream()
+                .map(ComparableVersion::new)
+                .filter(range::contains)
+                .max(naturalOrder())
+                .map(ComparableVersion::getCanonical);
+    }
+
+    /**
+     * XML filter that adds Maven namespace if it's missing.
+     * <p>
+     * This way it's not necessary to change received XML.
+     */
+    public static final class NamespaceAddingFilter extends XMLFilterImpl {
+
+        private final String namespace;
+
+        public NamespaceAddingFilter(final String namespace) {
+            this.namespace = namespace;
+        }
+
+        @Override
+        public void startElement(
+                final String uri, final String localName, final String qName, final Attributes attributes)
+                throws SAXException {
+            final boolean uriPresent = uri != null && !uri.isBlank();
+            super.startElement(uriPresent ? uri : namespace, localName, qName, attributes);
+        }
+    }
 }

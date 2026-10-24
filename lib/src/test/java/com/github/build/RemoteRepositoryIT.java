@@ -30,191 +30,153 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Tests for remote repository")
 class RemoteRepositoryIT {
 
-  private final URI baseUri = RepositoryProxySupport.mavenCentralUri();
+    private final URI baseUri = RepositoryProxySupport.mavenCentralUri();
 
-  private final HttpClient client = HttpClient.newHttpClient();
+    private final HttpClient client = HttpClient.newHttpClient();
 
-  private final RemoteRepository repo = new RemoteRepositoryImpl(baseUri, client);
+    private final RemoteRepository repo = new RemoteRepositoryImpl(baseUri, client);
 
-  private final GroupArtifactVersion slf4j = GroupArtifactVersion.parse(
-      "org.slf4j:slf4j-api:2.0.17"
-  );
+    private final GroupArtifactVersion slf4j = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
 
-  private final GroupArtifactVersion logbackParent = GroupArtifactVersion.parse(
-      "ch.qos.logback:logback-parent:1.5.8"
-  );
+    private final GroupArtifactVersion logbackParent =
+            GroupArtifactVersion.parse("ch.qos.logback:logback-parent:1.5.8");
 
-  private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
-      "ch.qos.logback:logback-classic:1.5.18"
-  );
+    private final GroupArtifactVersion logbackClassic =
+            GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.18");
 
-  private final GroupArtifactVersion nonExistentSlf4j = GroupArtifactVersion.parse(
-      "org.slf4j:slf4j-api:1.9.0"
-  );
+    private final GroupArtifactVersion nonExistentSlf4j = GroupArtifactVersion.parse("org.slf4j:slf4j-api:1.9.0");
 
-  @DisplayName("Tests for downloading dependency JAR")
-  @Nested
-  class Downloading {
+    @DisplayName("Tests for downloading dependency JAR")
+    @Nested
+    class Downloading {
 
-    @DisplayName("Check downloading dependency jar works")
-    @TestFactory
-    DynamicTest[] testDownloadingJar() {
-      final var ref = new AtomicReference<Optional<ArtifactDownloadResult>>();
-      final byte[] expectedBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
-      return new DynamicTest[]{
-          dynamicTest("Check method works", () ->
-              assertThatCode(() -> ref.set(repo.download(slf4j))).doesNotThrowAnyException()
-          ),
-          dynamicTest("Check result is not empty", () -> assertThat(ref.get()).isPresent()),
-          dynamicTest("Check actual JAR bytes match", () -> {
-            final byte[] actualBytes;
-            try (final var stream = ref.get().get().stream()) {
-              actualBytes = stream.readAllBytes();
-            }
-            assertThat(actualBytes).isEqualTo(expectedBytes);
-          }),
-      };
+        @DisplayName("Check downloading dependency jar works")
+        @TestFactory
+        DynamicTest[] testDownloadingJar() {
+            final var ref = new AtomicReference<Optional<ArtifactDownloadResult>>();
+            final byte[] expectedBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Check method works",
+                        () -> assertThatCode(() -> ref.set(repo.download(slf4j)))
+                                .doesNotThrowAnyException()),
+                dynamicTest(
+                        "Check result is not empty", () -> assertThat(ref.get()).isPresent()),
+                dynamicTest("Check actual JAR bytes match", () -> {
+                    final byte[] actualBytes;
+                    try (final var stream = ref.get().get().stream()) {
+                        actualBytes = stream.readAllBytes();
+                    }
+                    assertThat(actualBytes).isEqualTo(expectedBytes);
+                }),
+            };
+        }
+
+        @DisplayName("Check downloading non-existent dependency jar works")
+        @Test
+        void testDownloadingNonExistentJar() {
+            assertThat(repo.download(nonExistentSlf4j)).isEmpty();
+        }
     }
 
-    @DisplayName("Check downloading non-existent dependency jar works")
-    @Test
-    void testDownloadingNonExistentJar() {
-      assertThat(repo.download(nonExistentSlf4j)).isEmpty();
+    @DisplayName("Tests for getting dependency POM")
+    @Nested
+    class GettingPom {
+
+        @DisplayName("Check downloading non-existent dependency POM works")
+        @Test
+        void testGettingPomForNonExistentDependency() {
+            assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
+        }
+
+        @DisplayName("Check getting POM without namespace works")
+        @Test
+        void testGettingPomWithoutNamespaceWorks() {
+            // does not contain namespace declaration
+            final var bouncyCastle = GroupArtifactVersion.parse("org.bouncycastle:bcpkix-jdk18on:1.80");
+            assertDoesNotThrow(() -> repo.getPom(bouncyCastle));
+        }
+
+        @DisplayName("Check downloading existing dependency POM works")
+        @TestFactory
+        DynamicTest[] testGettingPomForExistingDependencyWorks() {
+            final var ref = new AtomicReference<Optional<Pom>>();
+
+            // checking method works beforehand for simplifying actual tests
+            assertThatCode(() -> ref.set(repo.getPom(logbackParent))).doesNotThrowAnyException();
+
+            final Pom pom = ref.get().orElseThrow();
+            return new DynamicTest[] {
+                dynamicTest("Check group ID", () -> assertThat(pom.groupId()).isEqualTo("ch.qos.logback")),
+                dynamicTest(
+                        "Check artifactId", () -> assertThat(pom.artifactId()).isEqualTo("logback-parent")),
+                dynamicTest("Check version", () -> assertThat(pom.version()).isEqualTo("1.5.8")),
+                dynamicTest("Check parent", () -> assertThat(pom.parent()).isNull()),
+                dynamicTest(
+                        "Check property count",
+                        () -> assertThat(pom.properties()).hasSize(39)),
+                dynamicTest(
+                        "Check one property",
+                        () -> assertThat(pom.properties().get("jdk.version")).isEqualTo("11")),
+                dynamicTest(
+                        "Check dependency count",
+                        () -> assertThat(pom.dependencies()).hasSize(4)),
+                dynamicTest(
+                        "Check one dependency",
+                        () -> assertThat(pom.dependencies().getFirst())
+                                .isEqualTo(new Pom.Dependency(
+                                        "org.assertj",
+                                        "assertj-core",
+                                        "${assertj-core.version}",
+                                        Pom.Dependency.Scope.TEST,
+                                        Set.of(),
+                                        false))),
+                dynamicTest(
+                        "Check dependency management entries count",
+                        () -> assertThat(pom.dependencyManagement()).hasSize(16)),
+                dynamicTest(
+                        "Check one dependency management entry",
+                        () -> assertThat(pom.dependencyManagement().getFirst())
+                                .isEqualTo(new Pom.Dependency(
+                                        "ch.qos.logback",
+                                        "logback-core",
+                                        "${project.version}",
+                                        Pom.Dependency.Scope.COMPILE,
+                                        Set.of(),
+                                        false))),
+            };
+        }
+
+        @DisplayName("Check optional dependencies")
+        @TestFactory
+        DynamicTest[] testOptionalDependencies() {
+            final var ref = new AtomicReference<Optional<Pom>>();
+
+            // checking method works beforehand for simplifying actual tests
+            assertThatCode(() -> ref.set(repo.getPom(logbackClassic))).doesNotThrowAnyException();
+
+            final Pom pom = ref.get().orElseThrow();
+            final var compileDependencies = pom.dependencies().stream()
+                    .filter(d -> d.scope() == Pom.Dependency.Scope.COMPILE)
+                    .toList();
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Check core dependency is required",
+                        () -> assertThat(compileDependencies.getFirst().optional())
+                                .isFalse()),
+                dynamicTest(
+                        "Check SLF4J dependency is required",
+                        () -> assertThat(compileDependencies.get(1).optional()).isFalse()),
+                dynamicTest(
+                        "Check Jakarta Mail API dependency is optional",
+                        () -> assertThat(compileDependencies.get(2).optional()).isTrue()),
+                dynamicTest(
+                        "Check Jakarta Activation API dependency is optional",
+                        () -> assertThat(compileDependencies.get(3).optional()).isTrue()),
+                dynamicTest(
+                        "Check Janino dependency is optional",
+                        () -> assertThat(compileDependencies.get(4).optional()).isTrue()),
+            };
+        }
     }
-  }
-
-  @DisplayName("Tests for getting dependency POM")
-  @Nested
-  class GettingPom {
-
-    @DisplayName("Check downloading non-existent dependency POM works")
-    @Test
-    void testGettingPomForNonExistentDependency() {
-      assertThat(repo.getPom(nonExistentSlf4j)).isEmpty();
-    }
-
-    @DisplayName("Check getting POM without namespace works")
-    @Test
-    void testGettingPomWithoutNamespaceWorks() {
-      // does not contain namespace declaration
-      final var bouncyCastle = GroupArtifactVersion.parse(
-          "org.bouncycastle:bcpkix-jdk18on:1.80"
-      );
-      assertDoesNotThrow(() -> repo.getPom(bouncyCastle));
-    }
-
-    @DisplayName("Check downloading existing dependency POM works")
-    @TestFactory
-    DynamicTest[] testGettingPomForExistingDependencyWorks() {
-      final var ref = new AtomicReference<Optional<Pom>>();
-
-      // checking method works beforehand for simplifying actual tests
-      assertThatCode(
-          () -> ref.set(repo.getPom(logbackParent))
-      ).doesNotThrowAnyException();
-
-      final Pom pom = ref.get().orElseThrow();
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check group ID",
-              () -> assertThat(pom.groupId()).isEqualTo("ch.qos.logback")
-          ),
-          dynamicTest(
-              "Check artifactId",
-              () -> assertThat(pom.artifactId()).isEqualTo("logback-parent")
-          ),
-          dynamicTest(
-              "Check version",
-              () -> assertThat(pom.version()).isEqualTo("1.5.8")
-          ),
-          dynamicTest(
-              "Check parent",
-              () -> assertThat(pom.parent()).isNull()
-          ),
-          dynamicTest(
-              "Check property count",
-              () -> assertThat(pom.properties()).hasSize(39)
-          ),
-          dynamicTest(
-              "Check one property",
-              () -> assertThat(pom.properties().get("jdk.version")).isEqualTo("11")
-          ),
-          dynamicTest(
-              "Check dependency count",
-              () -> assertThat(pom.dependencies()).hasSize(4)
-          ),
-          dynamicTest(
-              "Check one dependency",
-              () -> assertThat(pom.dependencies().getFirst())
-                  .isEqualTo(
-                      new Pom.Dependency(
-                          "org.assertj",
-                          "assertj-core",
-                          "${assertj-core.version}",
-                          Pom.Dependency.Scope.TEST,
-                          Set.of(),
-                          false
-                      )
-                  )
-          ),
-          dynamicTest(
-              "Check dependency management entries count",
-              () -> assertThat(pom.dependencyManagement()).hasSize(16)
-          ),
-          dynamicTest(
-              "Check one dependency management entry",
-              () -> assertThat(pom.dependencyManagement().getFirst())
-                  .isEqualTo(
-                      new Pom.Dependency(
-                          "ch.qos.logback",
-                          "logback-core",
-                          "${project.version}",
-                          Pom.Dependency.Scope.COMPILE,
-                          Set.of(),
-                          false
-                      )
-                  )
-          ),
-      };
-    }
-
-    @DisplayName("Check optional dependencies")
-    @TestFactory
-    DynamicTest[] testOptionalDependencies() {
-      final var ref = new AtomicReference<Optional<Pom>>();
-
-      // checking method works beforehand for simplifying actual tests
-      assertThatCode(
-          () -> ref.set(repo.getPom(logbackClassic))
-      ).doesNotThrowAnyException();
-
-      final Pom pom = ref.get().orElseThrow();
-      final var compileDependencies = pom.dependencies()
-          .stream()
-          .filter(d -> d.scope() == Pom.Dependency.Scope.COMPILE)
-          .toList();
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check core dependency is required",
-              () -> assertThat(compileDependencies.getFirst().optional()).isFalse()
-          ),
-          dynamicTest(
-              "Check SLF4J dependency is required",
-              () -> assertThat(compileDependencies.get(1).optional()).isFalse()
-          ),
-          dynamicTest(
-              "Check Jakarta Mail API dependency is optional",
-              () -> assertThat(compileDependencies.get(2).optional()).isTrue()
-          ),
-          dynamicTest(
-              "Check Jakarta Activation API dependency is optional",
-              () -> assertThat(compileDependencies.get(3).optional()).isTrue()
-          ),
-          dynamicTest(
-              "Check Janino dependency is optional",
-              () -> assertThat(compileDependencies.get(4).optional()).isTrue()
-          ),
-      };
-    }
-  }
 }

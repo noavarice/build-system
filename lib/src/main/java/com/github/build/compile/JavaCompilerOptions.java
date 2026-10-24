@@ -9,69 +9,68 @@ import org.jspecify.annotations.Nullable;
  */
 public final class JavaCompilerOptions {
 
-  public static final JavaCompilerOptions EMPTY = new JavaCompilerOptions(null, false);
+    public static final JavaCompilerOptions EMPTY = new JavaCompilerOptions(null, false);
 
-  public static Builder builder() {
-    return new Builder();
-  }
-
-  @Nullable
-  private final String release;
-
-  private final boolean parameters;
-
-  private JavaCompilerOptions(@Nullable final String release, final boolean parameters) {
-    this.release = release;
-    this.parameters = parameters;
-  }
-
-  public List<String> toList() {
-    final var result = new ArrayList<String>();
-
-    if (release != null) {
-      result.add("--release");
-      result.add(release);
+    public static Builder builder() {
+        return new Builder();
     }
-
-    if (parameters) {
-      result.add("-parameters");
-    }
-
-    return result;
-  }
-
-  public static final class Builder {
 
     @Nullable
-    private String release = null;
+    private final String release;
 
-    private boolean parameters = false;
+    private final boolean parameters;
 
-    private Builder() {
+    private JavaCompilerOptions(@Nullable final String release, final boolean parameters) {
+        this.release = release;
+        this.parameters = parameters;
     }
 
-    public Builder release(final String release) {
-      if (release == null) {
-        this.release = null;
-      } else {
-        if (release.isBlank()) {
-          throw new IllegalArgumentException();
+    public List<String> toList() {
+        final var result = new ArrayList<String>();
+
+        if (release != null) {
+            result.add("--release");
+            result.add(release);
         }
 
-        // TODO: add validation
-        this.release = release.strip();
-      }
+        if (parameters) {
+            result.add("-parameters");
+        }
 
-      return this;
+        return result;
     }
 
-    public Builder parameters(final boolean parameters) {
-      this.parameters = parameters;
-      return this;
-    }
+    public static final class Builder {
 
-    public JavaCompilerOptions build() {
-      return new JavaCompilerOptions(release, parameters);
+        @Nullable
+        private String release = null;
+
+        private boolean parameters = false;
+
+        private Builder() {}
+
+        public Builder release(final String release) {
+            if (release == null) {
+                this.release = null;
+            } else {
+                if (release.isBlank()) {
+                    throw new IllegalArgumentException();
+                }
+
+                // TODO: add validation
+                this.release = release.strip();
+            }
+
+            return this;
+        }
+
+        public Builder parameters(final boolean parameters) {
+            this.parameters = parameters;
+            return this;
+        }
+
+        public JavaCompilerOptions build() {
+            return new JavaCompilerOptions(release, parameters);
+        }
     }
-  }
 }

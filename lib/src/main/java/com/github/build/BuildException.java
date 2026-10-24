@@ -8,11 +8,11 @@ package com.github.build;
  */
 public class BuildException extends RuntimeException {
 
-  public BuildException(final String message) {
-    super(message);
-  }
+    public BuildException(final String message) {
+        super(message);
+    }
 
-  public BuildException(final String message, final Throwable cause) {
-    super(message, cause);
-  }
+    public BuildException(final String message, final Throwable cause) {
+        super(message, cause);
+    }
 }

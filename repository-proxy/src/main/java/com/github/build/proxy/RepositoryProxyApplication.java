@@ -14,7 +14,7 @@ import org.springframework.boot.context.properties.ConfigurationPropertiesScan;
 @ConfigurationPropertiesScan
 public class RepositoryProxyApplication {
 
-  public static void main(final String[] args) {
-    SpringApplication.run(RepositoryProxyApplication.class, args);
-  }
+    public static void main(final String[] args) {
+        SpringApplication.run(RepositoryProxyApplication.class, args);
+    }
 }

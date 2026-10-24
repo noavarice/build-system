@@ -20,19 +20,16 @@ import org.springframework.boot.context.properties.bind.DefaultValue;
  */
 @ConfigurationProperties(prefix = "repository-proxy")
 public record RepositoryProxyProperties(
-    Path localRepository,
-    Map<String, URI> repositories,
-    @DefaultValue("10s") Duration connectTimeout,
-    @DefaultValue("60s") Duration requestTimeout
-) {
+        Path localRepository,
+        Map<String, URI> repositories,
+        @DefaultValue("10s") Duration connectTimeout,
+        @DefaultValue("60s") Duration requestTimeout) {
 
-  public RepositoryProxyProperties {
-    Objects.requireNonNull(localRepository, "repository-proxy.local-repository must be set");
-    if (repositories == null || repositories.isEmpty()) {
-      throw new IllegalArgumentException(
-          "repository-proxy.repositories must contain at least one repository"
-      );
+    public RepositoryProxyProperties {
+        Objects.requireNonNull(localRepository, "repository-proxy.local-repository must be set");
+        if (repositories == null || repositories.isEmpty()) {
+            throw new IllegalArgumentException("repository-proxy.repositories must contain at least one repository");
+        }
+        repositories = Map.copyOf(repositories);
     }
-    repositories = Map.copyOf(repositories);
-  }
 }

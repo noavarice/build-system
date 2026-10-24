@@ -23,320 +23,171 @@ import org.junit.jupiter.api.TestFactory;
 @DisplayName("Dependency graph model test")
 class GraphTest {
 
-  private final GroupArtifactVersion starterTomcatGav = GroupArtifactVersion.parse(
-      "org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"
-  );
+    private final GroupArtifactVersion starterTomcatGav =
+            GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5");
 
-  private final GraphValue starterTomcat = GraphValue.of(starterTomcatGav);
+    private final GraphValue starterTomcat = GraphValue.of(starterTomcatGav);
 
-  private final GroupArtifactVersion tomcatEmbedCoreGav = GroupArtifactVersion.parse(
-      "org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"
-  );
+    private final GroupArtifactVersion tomcatEmbedCoreGav =
+            GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20");
 
-  private final GraphValue tomcatEmbedCore = GraphValue.of(tomcatEmbedCoreGav);
+    private final GraphValue tomcatEmbedCore = GraphValue.of(tomcatEmbedCoreGav);
 
-  private final GroupArtifactVersion tomcatEmbedElGav = GroupArtifactVersion.parse(
-      "org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"
-  );
+    private final GroupArtifactVersion tomcatEmbedElGav =
+            GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20");
 
-  private final GraphValue tomcatEmbedEl = GraphValue.of(tomcatEmbedElGav);
+    private final GraphValue tomcatEmbedEl = GraphValue.of(tomcatEmbedElGav);
 
-  private final GroupArtifactVersion tomcatEmbedWebsocketGav = GroupArtifactVersion.parse(
-      "org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"
-  );
+    private final GroupArtifactVersion tomcatEmbedWebsocketGav =
+            GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20");
 
-  private final GraphValue tomcatEmbedWebsocket = GraphValue.of(tomcatEmbedWebsocketGav);
+    private final GraphValue tomcatEmbedWebsocket = GraphValue.of(tomcatEmbedWebsocketGav);
 
-  private final GroupArtifactVersion tomcatAnnotationsGav = GroupArtifactVersion.parse(
-      "org.apache.tomcat:tomcat-annotations-api:jar:10.1.20"
-  );
+    private final GroupArtifactVersion tomcatAnnotationsGav =
+            GroupArtifactVersion.parse("org.apache.tomcat:tomcat-annotations-api:jar:10.1.20");
 
-  private final GraphValue tomcatAnnotations = GraphValue.of(tomcatAnnotationsGav);
+    private final GraphValue tomcatAnnotations = GraphValue.of(tomcatAnnotationsGav);
 
-  private final GroupArtifactVersion jakartaAnnotationsGav = GroupArtifactVersion.parse(
-      "jakarta.annotation:jakarta.annotation-api:2.1.1"
-  );
+    private final GroupArtifactVersion jakartaAnnotationsGav =
+            GroupArtifactVersion.parse("jakarta.annotation:jakarta.annotation-api:2.1.1");
 
-  private final GraphValue jakartaAnnotations = GraphValue.of(jakartaAnnotationsGav);
+    private final GraphValue jakartaAnnotations = GraphValue.of(jakartaAnnotationsGav);
 
-  @DisplayName("Adding graph path works")
-  @TestFactory
-  DynamicTest[] testAdd() {
-    final var graph = new Graph();
+    @DisplayName("Adding graph path works")
+    @TestFactory
+    DynamicTest[] testAdd() {
+        final var graph = new Graph();
 
-    final var annotationsPath = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
-    graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
-    graph.add(tomcatEmbedWebsocket, Set.of(), new GraphPath(starterTomcat));
-    graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
-    graph.add(tomcatAnnotations, Set.of(), annotationsPath);
+        final var annotationsPath = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+        graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
+        graph.add(tomcatEmbedWebsocket, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
+        graph.add(tomcatAnnotations, Set.of(), annotationsPath);
 
-    final var elPath = new GraphPath(starterTomcat);
-    graph.add(tomcatEmbedEl, Set.of(), elPath);
+        final var elPath = new GraphPath(starterTomcat);
+        graph.add(tomcatEmbedEl, Set.of(), elPath);
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check annotations dependency",
-            () -> assertTrue(graph.contains(annotationsPath.addLast(tomcatAnnotations)))
-        ),
-        dynamicTest(
-            "Check El dependency",
-            () -> assertTrue(graph.contains(elPath.addLast(tomcatEmbedEl)))
-        ),
-    };
-  }
+        return new DynamicTest[] {
+            dynamicTest(
+                    "Check annotations dependency",
+                    () -> assertTrue(graph.contains(annotationsPath.addLast(tomcatAnnotations)))),
+            dynamicTest("Check El dependency", () -> assertTrue(graph.contains(elPath.addLast(tomcatEmbedEl)))),
+        };
+    }
 
-  @DisplayName("Removing graph path works")
-  @TestFactory
-  DynamicTest[] testRemove() {
-    final var graph = new Graph();
-    graph.add(
-        starterTomcat,
-        Set.of(),
-        GraphPath.ROOT
-    );
-    graph.add(
-        jakartaAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedEl,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(tomcatAnnotations.groupArtifact()),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedCore)
-    );
-    graph.add(
-        tomcatEmbedWebsocket,
-        Set.of(tomcatAnnotations.groupArtifact()),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
-    );
-    graph.add(
-        tomcatAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore)
-    );
+    @DisplayName("Removing graph path works")
+    @TestFactory
+    DynamicTest[] testRemove() {
+        final var graph = new Graph();
+        graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
+        graph.add(jakartaAnnotations, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedEl, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(tomcatAnnotations.groupArtifact()), new GraphPath(starterTomcat));
+        graph.add(tomcatAnnotations, Set.of(), new GraphPath(starterTomcat, tomcatEmbedCore));
+        graph.add(tomcatEmbedWebsocket, Set.of(tomcatAnnotations.groupArtifact()), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
+        graph.add(tomcatAnnotations, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore));
 
-    final var tomcatAnnotationsWebsocketPath = new GraphPath(
-        starterTomcat,
-        tomcatEmbedWebsocket,
-        tomcatEmbedCore,
-        tomcatAnnotations
-    );
-    assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
+        final var tomcatAnnotationsWebsocketPath =
+                new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore, tomcatAnnotations);
+        assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
 
-    final var tomcatAnnotationsCorePath = new GraphPath(
-        starterTomcat,
-        tomcatEmbedCore,
-        tomcatAnnotations
-    );
-    assumeTrue(graph.contains(tomcatAnnotationsCorePath));
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check method returns true when something is removed",
-            () -> assertTrue(graph.removeLast(tomcatAnnotationsCorePath))
-        ),
-        dynamicTest(
-            "Check method returns false when path is not present",
-            () -> assertFalse(graph.removeLast(tomcatAnnotationsCorePath))
-        ),
-        dynamicTest(
-            "Check Jakarta Annotations dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, jakartaAnnotations);
-              assertTrue(graph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed El dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
-              assertTrue(graph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed Core dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
-              assertTrue(graph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed Core dependency is present via Starter -> Websocket",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
-              assertTrue(graph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat annotations dependency is present via Starter -> Websocket -> Core",
-            () -> assertTrue(graph.contains(tomcatAnnotationsWebsocketPath))
-        ),
-        dynamicTest(
-            "Check Tomcat annotations dependency is not present via Starter -> Core",
-            () -> assertFalse(graph.contains(tomcatAnnotationsCorePath))
-        ),
-    };
-  }
+        final var tomcatAnnotationsCorePath = new GraphPath(starterTomcat, tomcatEmbedCore, tomcatAnnotations);
+        assumeTrue(graph.contains(tomcatAnnotationsCorePath));
+        return new DynamicTest[] {
+            dynamicTest(
+                    "Check method returns true when something is removed",
+                    () -> assertTrue(graph.removeLast(tomcatAnnotationsCorePath))),
+            dynamicTest(
+                    "Check method returns false when path is not present",
+                    () -> assertFalse(graph.removeLast(tomcatAnnotationsCorePath))),
+            dynamicTest("Check Jakarta Annotations dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, jakartaAnnotations);
+                assertTrue(graph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed El dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
+                assertTrue(graph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed Core dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
+                assertTrue(graph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed Core dependency is present via Starter -> Websocket", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+                assertTrue(graph.contains(path));
+            }),
+            dynamicTest(
+                    "Check Tomcat annotations dependency is present via Starter -> Websocket -> Core",
+                    () -> assertTrue(graph.contains(tomcatAnnotationsWebsocketPath))),
+            dynamicTest(
+                    "Check Tomcat annotations dependency is not present via Starter -> Core",
+                    () -> assertFalse(graph.contains(tomcatAnnotationsCorePath))),
+        };
+    }
 
-  @DisplayName("Test Spring Boot Starter Tomcat resolved graph")
-  @TestFactory
-  DynamicTest[] testSpringBootStarterTomcatResolvedGraph() {
-    final var graph = new Graph();
-    graph.add(
-        starterTomcat,
-        Set.of(),
-        GraphPath.ROOT
-    );
-    graph.add(
-        jakartaAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedEl,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(tomcatAnnotations.groupArtifact()),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedCore)
-    );
-    graph.add(
-        tomcatEmbedWebsocket,
-        Set.of(tomcatAnnotations.groupArtifact()),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
-    );
-    graph.add(
-        tomcatAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore)
-    );
+    @DisplayName("Test Spring Boot Starter Tomcat resolved graph")
+    @TestFactory
+    DynamicTest[] testSpringBootStarterTomcatResolvedGraph() {
+        final var graph = new Graph();
+        graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
+        graph.add(jakartaAnnotations, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedEl, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(tomcatAnnotations.groupArtifact()), new GraphPath(starterTomcat));
+        graph.add(tomcatAnnotations, Set.of(), new GraphPath(starterTomcat, tomcatEmbedCore));
+        graph.add(tomcatEmbedWebsocket, Set.of(tomcatAnnotations.groupArtifact()), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
+        graph.add(tomcatAnnotations, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore));
 
-    final var tomcatAnnotationsWebsocketPath = new GraphPath(
-        starterTomcat,
-        tomcatEmbedWebsocket,
-        tomcatEmbedCore,
-        tomcatAnnotations
-    );
-    assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
+        final var tomcatAnnotationsWebsocketPath =
+                new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore, tomcatAnnotations);
+        assumeTrue(graph.contains(tomcatAnnotationsWebsocketPath));
 
-    final var tomcatAnnotationsCorePath = new GraphPath(
-        starterTomcat,
-        tomcatEmbedCore,
-        tomcatAnnotations
-    );
-    assumeTrue(graph.contains(tomcatAnnotationsCorePath));
+        final var tomcatAnnotationsCorePath = new GraphPath(starterTomcat, tomcatEmbedCore, tomcatAnnotations);
+        assumeTrue(graph.contains(tomcatAnnotationsCorePath));
 
-    final Graph resolvedGraph = graph.resolve();
+        final Graph resolvedGraph = graph.resolve();
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check Jakarta Annotations dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, jakartaAnnotations);
-              assertTrue(resolvedGraph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed El dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
-              assertTrue(resolvedGraph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed Core dependency is present via Starter",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
-              assertTrue(resolvedGraph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat Embed Core dependency is not present via Starter -> Websocket",
-            () -> {
-              final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
-              assertFalse(resolvedGraph.contains(path));
-            }
-        ),
-        dynamicTest(
-            "Check Tomcat annotations dependency is not present via Starter -> Websocket -> Core",
-            () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsWebsocketPath))
-        ),
-        dynamicTest(
-            "Check Tomcat annotations dependency is not present via Starter -> Core",
-            () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsCorePath))
-        ),
-    };
-  }
+        return new DynamicTest[] {
+            dynamicTest("Check Jakarta Annotations dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, jakartaAnnotations);
+                assertTrue(resolvedGraph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed El dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedEl);
+                assertTrue(resolvedGraph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed Core dependency is present via Starter", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedCore);
+                assertTrue(resolvedGraph.contains(path));
+            }),
+            dynamicTest("Check Tomcat Embed Core dependency is not present via Starter -> Websocket", () -> {
+                final var path = new GraphPath(starterTomcat, tomcatEmbedWebsocket, tomcatEmbedCore);
+                assertFalse(resolvedGraph.contains(path));
+            }),
+            dynamicTest(
+                    "Check Tomcat annotations dependency is not present via Starter -> Websocket -> Core",
+                    () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsWebsocketPath))),
+            dynamicTest(
+                    "Check Tomcat annotations dependency is not present via Starter -> Core",
+                    () -> assertFalse(resolvedGraph.contains(tomcatAnnotationsCorePath))),
+        };
+    }
 
-  @DisplayName("Test Spring Boot Starter Tomcat dependency set")
-  @Test
-  void testSpringBootStarterTomcatDependencySet() {
-    final var graph = new Graph();
-    graph.add(
-        starterTomcat,
-        Set.of(),
-        GraphPath.ROOT
-    );
-    graph.add(
-        jakartaAnnotations,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedEl,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedWebsocket,
-        Set.of(),
-        new GraphPath(starterTomcat)
-    );
-    graph.add(
-        tomcatEmbedCore,
-        Set.of(),
-        new GraphPath(starterTomcat, tomcatEmbedWebsocket)
-    );
+    @DisplayName("Test Spring Boot Starter Tomcat dependency set")
+    @Test
+    void testSpringBootStarterTomcatDependencySet() {
+        final var graph = new Graph();
+        graph.add(starterTomcat, Set.of(), GraphPath.ROOT);
+        graph.add(jakartaAnnotations, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedEl, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedWebsocket, Set.of(), new GraphPath(starterTomcat));
+        graph.add(tomcatEmbedCore, Set.of(), new GraphPath(starterTomcat, tomcatEmbedWebsocket));
 
-    final Set<GroupArtifactVersion> expected = Set.of(
-        starterTomcatGav,
-        jakartaAnnotationsGav,
-        tomcatEmbedElGav,
-        tomcatEmbedCoreGav,
-        tomcatEmbedWebsocketGav
-    );
-    final Set<GroupArtifactVersion> actual = graph.toDependencies();
-    assertThat(actual).isEqualTo(expected);
-  }
+        final Set<GroupArtifactVersion> expected = Set.of(
+                starterTomcatGav, jakartaAnnotationsGav, tomcatEmbedElGav, tomcatEmbedCoreGav, tomcatEmbedWebsocketGav);
+        final Set<GroupArtifactVersion> actual = graph.toDependencies();
+        assertThat(actual).isEqualTo(expected);
+    }
 }

@@ -13,19 +13,18 @@ import java.util.Objects;
  */
 public final class ResourceUtils {
 
-  private ResourceUtils() {
-  }
+    private ResourceUtils() {}
 
-  public static String readString(final String resourcePath) {
-    final byte[] bytes = read(resourcePath);
-    return new String(bytes, StandardCharsets.UTF_8);
-  }
-
-  public static byte[] read(final String resourcePath) {
-    try (final var is = JavaCompileServiceTest.class.getResourceAsStream(resourcePath)) {
-      return Objects.requireNonNull(is).readAllBytes();
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+    public static String readString(final String resourcePath) {
+        final byte[] bytes = read(resourcePath);
+        return new String(bytes, StandardCharsets.UTF_8);
     }
-  }
+
+    public static byte[] read(final String resourcePath) {
+        try (final var is = JavaCompileServiceTest.class.getResourceAsStream(resourcePath)) {
+            return Objects.requireNonNull(is).readAllBytes();
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
 }

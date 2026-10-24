@@ -9,24 +9,23 @@ import java.nio.file.Path;
  */
 public final class PathUtils {
 
-  private PathUtils() {
-  }
+    private PathUtils() {}
 
-  public static void checkRelative(final Path path) {
-    if (path.isAbsolute()) {
-      throw new IllegalArgumentException("Must be a relative path");
+    public static void checkRelative(final Path path) {
+        if (path.isAbsolute()) {
+            throw new IllegalArgumentException("Must be a relative path");
+        }
     }
-  }
 
-  public static void checkAbsolute(final Path path) {
-    if (!path.isAbsolute()) {
-      throw new IllegalArgumentException("Must be an absolute path");
+    public static void checkAbsolute(final Path path) {
+        if (!path.isAbsolute()) {
+            throw new IllegalArgumentException("Must be an absolute path");
+        }
     }
-  }
 
-  public static void checkDirectory(final Path path) {
-    if (!Files.isDirectory(path)) {
-      throw new IllegalArgumentException(path + " does not exist or is not a directory");
+    public static void checkDirectory(final Path path) {
+        if (!Files.isDirectory(path)) {
+            throw new IllegalArgumentException(path + " does not exist or is not a directory");
+        }
     }
-  }
 }

@@ -26,114 +26,81 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Compilation service tests")
 class JavaCompileServiceTest {
 
-  private final JavaCompileService service = new JavaCompileService();
+    private final JavaCompileService service = new JavaCompileService();
 
-  @DisplayName("Compile directly")
-  @Nested
-  class Directly {
+    @DisplayName("Compile directly")
+    @Nested
+    class Directly {
 
-    @DisplayName("Compiling hello world project works")
-    @TestFactory
-    DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
+        @DisplayName("Compiling hello world project works")
+        @TestFactory
+        DynamicTest[] compilingHelloWorldWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+            final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
 
-      final var args = new JavaCompileArgs(
-          Set.of(source),
-          tempDir.resolve("classes"),
-          Set.of(),
-          JavaCompilerOptions.EMPTY
-      );
-      args.sources().forEach(path -> assumeThat(path).isRegularFile());
-      assumeThat(args.classesDir()).doesNotExist();
+            final var args = new JavaCompileArgs(
+                    Set.of(source), tempDir.resolve("classes"), Set.of(), JavaCompilerOptions.EMPTY);
+            args.sources().forEach(path -> assumeThat(path).isRegularFile());
+            assumeThat(args.classesDir()).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check compilation succeeds",
-              () -> assertTrue(service.compile(args))
-          ),
-          dynamicTest(
-              "Check class file generated",
-              () -> assertThat(
-                  args.classesDir().resolve("org/example/HelloWorld.class")
-              ).isNotEmptyFile()
-          ),
-      };
+            return new DynamicTest[] {
+                dynamicTest("Check compilation succeeds", () -> assertTrue(service.compile(args))),
+                dynamicTest(
+                        "Check class file generated",
+                        () -> assertThat(args.classesDir().resolve("org/example/HelloWorld.class"))
+                                .isNotEmptyFile()),
+            };
+        }
+
+        @DisplayName("Compiling without required classpath dependency fails")
+        @TestFactory
+        DynamicTest[] compilingWithoutRequiredDependencyFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final Path source = tempDir.resolve("slf4j-example/src/main/java/org/example/Slf4jExample.java");
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Check classes directory does not exist yet",
+                        () -> assertThat(classesDir).doesNotExist()),
+                dynamicTest(
+                        "Check class file does not exist yet",
+                        () -> assertThat(classFile).doesNotExist()),
+                dynamicTest("Check compilation fails", () -> {
+                    final var args =
+                            new JavaCompileArgs(Set.of(source), classesDir, Set.of(), JavaCompilerOptions.EMPTY);
+                    assertFalse(service.compile(args));
+                }),
+                dynamicTest(
+                        "Check class file is not generated",
+                        () -> assertThat(classFile).doesNotExist()),
+            };
+        }
+
+        @DisplayName("Compiling with dependency works")
+        @TestFactory
+        DynamicTest[] compilingWithDependencyWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final Path source = tempDir.resolve("slf4j-example/src/main/java/org/example/Slf4jExample.java");
+            final Path jar = tempDir.resolve("slf4j-api.jar");
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Check classes directory does not exist yet",
+                        () -> assertThat(classesDir).doesNotExist()),
+                dynamicTest(
+                        "Check class file does not exist yet",
+                        () -> assertThat(classFile).doesNotExist()),
+                dynamicTest("Check build succeeds", () -> {
+                    final var args =
+                            new JavaCompileArgs(Set.of(source), classesDir, Set.of(jar), JavaCompilerOptions.EMPTY);
+                    assertTrue(service.compile(args));
+                }),
+                dynamicTest(
+                        "Check class file generated",
+                        () -> assertThat(classFile).isNotEmptyFile()),
+            };
+        }
     }
-
-    @DisplayName("Compiling without required classpath dependency fails")
-    @TestFactory
-    DynamicTest[] compilingWithoutRequiredDependencyFails(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final Path source = tempDir.resolve(
-          "slf4j-example/src/main/java/org/example/Slf4jExample.java"
-      );
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check classes directory does not exist yet",
-              () -> assertThat(classesDir).doesNotExist()
-          ),
-          dynamicTest(
-              "Check class file does not exist yet",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-          dynamicTest(
-              "Check compilation fails",
-              () -> {
-                final var args = new JavaCompileArgs(
-                    Set.of(source),
-                    classesDir,
-                    Set.of(),
-                    JavaCompilerOptions.EMPTY
-                );
-                assertFalse(service.compile(args));
-              }
-          ),
-          dynamicTest(
-              "Check class file is not generated",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
-    }
-
-    @DisplayName("Compiling with dependency works")
-    @TestFactory
-    DynamicTest[] compilingWithDependencyWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final Path source = tempDir.resolve(
-          "slf4j-example/src/main/java/org/example/Slf4jExample.java"
-      );
-      final Path jar = tempDir.resolve("slf4j-api.jar");
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main");
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check classes directory does not exist yet",
-              () -> assertThat(classesDir).doesNotExist()
-          ),
-          dynamicTest(
-              "Check class file does not exist yet",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-          dynamicTest(
-              "Check build succeeds",
-              () -> {
-                final var args = new JavaCompileArgs(
-                    Set.of(source),
-                    classesDir,
-                    Set.of(jar),
-                    JavaCompilerOptions.EMPTY
-                );
-                assertTrue(service.compile(args));
-              }
-          ),
-          dynamicTest(
-              "Check class file generated",
-              () -> assertThat(classFile).isNotEmptyFile()
-          ),
-      };
-    }
-  }
 }

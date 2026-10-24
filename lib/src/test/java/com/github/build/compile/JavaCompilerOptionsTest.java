@@ -12,14 +12,11 @@ import org.junit.jupiter.api.Test;
 @DisplayName("Compiler options domain object tests")
 class JavaCompilerOptionsTest {
 
-  @DisplayName("Check converting object to list of compiler option strings")
-  @Test
-  void testToList() {
-    final var options = JavaCompilerOptions
-        .builder()
-        .release("17")
-        .parameters(true)
-        .build();
-    assertThat(options.toList()).isEqualTo(List.of("--release", "17", "-parameters"));
-  }
+    @DisplayName("Check converting object to list of compiler option strings")
+    @Test
+    void testToList() {
+        final var options =
+                JavaCompilerOptions.builder().release("17").parameters(true).build();
+        assertThat(options.toList()).isEqualTo(List.of("--release", "17", "-parameters"));
+    }
 }

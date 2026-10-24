@@ -38,49 +38,47 @@ import ch.qos.logback.core.util.Loader;
 @ConfiguratorRank(ConfiguratorRank.CUSTOM_LOW_PRIORITY)
 public final class DefaultLoggingConfigurator extends ContextAwareBase implements Configurator {
 
-  private static final String PATTERN =
-      "%highlight(%-5level) %X{project:-} %X{ss:-} - %msg%n";
+    private static final String PATTERN = "%highlight(%-5level) %X{project:-} %X{ss:-} - %msg%n";
 
-  @Override
-  public ExecutionStatus configure(final LoggerContext context) {
-    if (isOverridden()) {
-      return ExecutionStatus.INVOKE_NEXT_IF_ANY;
+    @Override
+    public ExecutionStatus configure(final LoggerContext context) {
+        if (isOverridden()) {
+            return ExecutionStatus.INVOKE_NEXT_IF_ANY;
+        }
+
+        final var encoder = new PatternLayoutEncoder();
+        encoder.setContext(context);
+        encoder.setPattern(PATTERN);
+        encoder.start();
+
+        final var appender = new ConsoleAppender<ILoggingEvent>();
+        appender.setContext(context);
+        appender.setEncoder(encoder);
+        appender.start();
+
+        final Logger root = context.getLogger(Logger.ROOT_LOGGER_NAME);
+        root.detachAndStopAllAppenders();
+        root.setLevel(Level.INFO);
+        root.addAppender(appender);
+
+        return ExecutionStatus.DO_NOT_INVOKE_NEXT_IF_ANY;
     }
 
-    final var encoder = new PatternLayoutEncoder();
-    encoder.setContext(context);
-    encoder.setPattern(PATTERN);
-    encoder.start();
+    private static boolean isOverridden() {
+        final String configFile = System.getProperty("logback.configurationFile");
+        if (configFile != null && !configFile.isBlank()) {
+            return true;
+        }
 
-    final var appender = new ConsoleAppender<ILoggingEvent>();
-    appender.setContext(context);
-    appender.setEncoder(encoder);
-    appender.start();
-
-    final Logger root = context.getLogger(Logger.ROOT_LOGGER_NAME);
-    root.detachAndStopAllAppenders();
-    root.setLevel(Level.INFO);
-    root.addAppender(appender);
-
-    return ExecutionStatus.DO_NOT_INVOKE_NEXT_IF_ANY;
-  }
-
-  private static boolean isOverridden() {
-    final String configFile = System.getProperty("logback.configurationFile");
-    if (configFile != null && !configFile.isBlank()) {
-      return true;
+        final ClassLoader classLoader = classLoader();
+        return Loader.getResource("logback-test.xml", classLoader) != null
+                || Loader.getResource("logback.xml", classLoader) != null;
     }
 
-    final ClassLoader classLoader = classLoader();
-    return Loader.getResource("logback-test.xml", classLoader) != null
-        || Loader.getResource("logback.xml", classLoader) != null;
-  }
-
-  private static ClassLoader classLoader() {
-    final ClassLoader threadContextClassLoader =
-        Thread.currentThread().getContextClassLoader();
-    return threadContextClassLoader != null
-        ? threadContextClassLoader
-        : DefaultLoggingConfigurator.class.getClassLoader();
-  }
+    private static ClassLoader classLoader() {
+        final ClassLoader threadContextClassLoader = Thread.currentThread().getContextClassLoader();
+        return threadContextClassLoader != null
+                ? threadContextClassLoader
+                : DefaultLoggingConfigurator.class.getClassLoader();
+    }
 }

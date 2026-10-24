@@ -10,8 +10,8 @@ import com.github.build.MainSourceSetArgs;
 import com.github.build.Project;
 import com.github.build.ProjectService;
 import com.github.build.RepositoryProxySupport;
-import com.github.build.SourceSet;
 import com.github.build.SourceRoots;
+import com.github.build.SourceSet;
 import com.github.build.TestSourceSetArgs;
 import com.github.build.deps.maven.MavenArtifactResolverDependencyService;
 import com.github.build.deps.maven.ProjectWorkspaceReader;
@@ -48,1026 +48,865 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Tests for dependency service over Maven Artifact Resolver")
 class MavenArtifactResolverDependencyServiceIT {
 
-  private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
-      "ch.qos.logback:logback-classic:1.5.18"
-  );
+    private final GroupArtifactVersion logbackClassic =
+            GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.18");
 
-  private final GroupArtifactVersion springContext = GroupArtifactVersion.parse(
-      "org.springframework:spring-context:6.0.11"
-  );
+    private final GroupArtifactVersion springContext =
+            GroupArtifactVersion.parse("org.springframework:spring-context:6.0.11");
 
-  private final GroupArtifactVersion jacksonParameterNames = GroupArtifactVersion.parse(
-      "com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.4"
-  );
+    private final GroupArtifactVersion jacksonParameterNames =
+            GroupArtifactVersion.parse("com.fasterxml.jackson.module:jackson-module-parameter-names:2.15.4");
 
-  private final GroupArtifactVersion springBootWeb = GroupArtifactVersion.parse(
-      "org.springframework.boot:spring-boot-starter-web:3.2.5"
-  );
+    private final GroupArtifactVersion springBootWeb =
+            GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-web:3.2.5");
 
-  private final Path localRepositoryBasePath;
-
-  private final DependencyService service;
-
-  MavenArtifactResolverDependencyServiceIT(@TempDir final Path localRepositoryBasePath) {
-    this.localRepositoryBasePath = localRepositoryBasePath;
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
-
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-            .build()
-    );
-    service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
-  }
-
-  @Nested
-  class Resolution {
-
-    @DisplayName("Check resolving transitive dependencies for a single dependency")
-    @Test
-    void testResolvingTransitiveDependencies() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(logbackClassic))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Set.of(
-          logbackClassic,
-          GroupArtifactVersion.parse("ch.qos.logback:logback-core:1.5.18"),
-          GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17")
-      );
-
-      assertThat(actual).isEqualTo(expected);
-    }
-
-    @DisplayName("Check resolving more transitive dependencies for a single dependency")
-    @Test
-    void testResolvingMoreTransitiveDependencies() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(springContext))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Set.of(
-          springContext,
-          GroupArtifactVersion.parse("org.springframework:spring-aop:6.0.11"),
-          GroupArtifactVersion.parse("org.springframework:spring-beans:6.0.11"),
-          GroupArtifactVersion.parse("org.springframework:spring-core:6.0.11"),
-          GroupArtifactVersion.parse("org.springframework:spring-expression:6.0.11"),
-          GroupArtifactVersion.parse("org.springframework:spring-jcl:6.0.11")
-      );
-
-      assertThat(actual).isEqualTo(expected);
-    }
-
-    @DisplayName("Check resolving dependency with a chain of parents")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingWithChainOfParents() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(jacksonParameterNames))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Set.of(
-          jacksonParameterNames,
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.15.4"),
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.15.4"),
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.15.4")
-      );
-
-      assertThat(actual).isEqualTo(expected);
-    }
-
-    @DisplayName("Check resolving even more transitive dependencies for a single dependency")
-    @Test
-    @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingEvenMoreTransitiveDependencies() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(springBootWeb))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Set.of(
-          GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-web:jar:3.2.5"),
-          GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter:jar:3.2.5"),
-          GroupArtifactVersion.parse("org.springframework.boot:spring-boot:jar:3.2.5"),
-          GroupArtifactVersion.parse(
-              "org.springframework.boot:spring-boot-autoconfigure:jar:3.2.5"),
-          GroupArtifactVersion.parse(
-              "org.springframework.boot:spring-boot-starter-logging:jar:3.2.5"),
-          GroupArtifactVersion.parse("ch.qos.logback:logback-classic:jar:1.4.14"),
-          GroupArtifactVersion.parse("ch.qos.logback:logback-core:jar:1.4.14"),
-          GroupArtifactVersion.parse("org.slf4j:slf4j-api:jar:2.0.7"),
-          GroupArtifactVersion.parse("org.apache.logging.log4j:log4j-to-slf4j:jar:2.21.1"),
-          GroupArtifactVersion.parse("org.apache.logging.log4j:log4j-api:jar:2.21.1"),
-          GroupArtifactVersion.parse("org.slf4j:jul-to-slf4j:jar:2.0.13"),
-          GroupArtifactVersion.parse("jakarta.annotation:jakarta.annotation-api:jar:2.1.1"),
-          GroupArtifactVersion.parse("org.springframework:spring-core:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.springframework:spring-jcl:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.yaml:snakeyaml:jar:2.2"),
-          GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-json:jar:3.2.5"),
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:jar:2.15.4"),
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:jar:2.15.4"),
-          GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:jar:2.15.4"),
-          GroupArtifactVersion.parse(
-              "com.fasterxml.jackson.datatype:jackson-datatype-jdk8:jar:2.15.4"),
-          GroupArtifactVersion.parse(
-              "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:2.15.4"),
-          GroupArtifactVersion.parse(
-              "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:2.15.4"),
-          GroupArtifactVersion.parse(
-              "org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"),
-          GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"),
-          GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"),
-          GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"),
-          GroupArtifactVersion.parse("org.springframework:spring-web:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.springframework:spring-beans:jar:6.1.6"),
-          GroupArtifactVersion.parse("io.micrometer:micrometer-observation:jar:1.12.5"),
-          GroupArtifactVersion.parse("io.micrometer:micrometer-commons:jar:1.12.5"),
-          GroupArtifactVersion.parse("org.springframework:spring-webmvc:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.springframework:spring-aop:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.springframework:spring-context:jar:6.1.6"),
-          GroupArtifactVersion.parse("org.springframework:spring-expression:jar:6.1.6")
-      );
-
-      final var actualSorted = actual
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      final var expectedSorted = expected
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      assertThat(actualSorted).isEqualTo(expectedSorted);
-    }
-
-    @DisplayName("Check resolving dependencies with hard version requirements")
-    @Test
-    void testResolvingWithHardVersionRequirements() {
-      final var bcpkix = GroupArtifactVersion.parse(
-          "org.bouncycastle:bcpkix-jdk18on:1.80"
-      );
-      assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
-    }
-
-    @DisplayName("Check resolving multiple dependencies")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingMultipleDependencies() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      final var dependencies = List.of(
-          GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
-          GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22")
-      );
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(dependencies, DependencyConstraints.EMPTY))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Stream
-          .of(new String[]{
-              "org.apache.maven.resolver:maven-resolver-api:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-util:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
-              "org.slf4j:slf4j-api:2.0.17",
-          })
-          .map(GroupArtifactVersion::parse)
-          .collect(Collectors.toUnmodifiableSet());
-
-      final var actualSorted = actual
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      final var expectedSorted = expected
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      assertThat(actualSorted).isEqualTo(expectedSorted);
-    }
-
-    @DisplayName("Check resolving multiple dependencies with constraints")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingMultipleDependenciesWithConstraints() {
-      final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
-      final var dependencies = List.of(
-          GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22")
-      );
-      final var constraints = DependencyConstraints
-          .builder()
-          .withExactVersion("org.slf4j:slf4j-api:2.0.15")
-          .build();
-      assertThatCode(
-          () -> ref.set(service.resolveTransitive(dependencies, constraints))
-      ).doesNotThrowAnyException();
-
-      final Set<GroupArtifactVersion> actual = ref.get();
-      final Set<GroupArtifactVersion> expected = Stream
-          .of(new String[]{
-              "org.apache.maven.resolver:maven-resolver-api:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-util:1.9.22",
-              "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
-              "org.slf4j:slf4j-api:2.0.15",
-          })
-          .map(GroupArtifactVersion::parse)
-          .collect(Collectors.toUnmodifiableSet());
-
-      final var actualSorted = actual
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      final var expectedSorted = expected
-          .stream()
-          .map(c -> c.toString())
-          .sorted()
-          .toList();
-      assertThat(actualSorted).isEqualTo(expectedSorted);
-    }
-  }
-
-  @DisplayName("Check resolving projects")
-  @Nested
-  class ProjectResolution {
-
-    private final GroupArtifactVersion springCore6 = GroupArtifactVersion.parse(
-        "org.springframework:spring-core:6.0.0"
-    );
-
-    private final GroupArtifactVersion springJcl = GroupArtifactVersion.parse(
-        "org.springframework:spring-jcl:6.0.0"
-    );
-
-    private final GroupArtifactVersion springCore7 = GroupArtifactVersion.parse(
-        "org.springframework:spring-core:7.0.0"
-    );
-
-    private final GroupArtifactVersion commonsLogging = GroupArtifactVersion.parse(
-        "commons-logging:commons-logging:1.3.5"
-    );
-
-    private final GroupArtifactVersion jspecify = GroupArtifactVersion.parse(
-        "org.jspecify:jspecify:1.0.0"
-    );
-
-    private final ProjectService projectService = new ProjectService();
-
-    private final Project project1;
-
-    private final Project project2;
+    private final Path localRepositoryBasePath;
 
     private final DependencyService service;
 
-    ProjectResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
-      project1 = projectService.create("org.example", "project1", "0.1.0",
-          builder -> builder
-              .withPath("project1")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(springCore6),
-                      List.of(springCore6),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+    MavenArtifactResolverDependencyServiceIT(@TempDir final Path localRepositoryBasePath) {
+        this.localRepositoryBasePath = localRepositoryBasePath;
+        final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+        final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+        session.setSystemProperty("java.version", "21");
+        final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+        final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+        session.setLocalRepositoryManager(manager);
 
-      project2 = projectService.create("org.example", "project2", "0.1.0",
-          builder -> builder
-              .withPath("project2")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(project1),
-                      List.of(project1),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-
-      session.setWorkspaceReader(
-          new ProjectWorkspaceReader(
-              new WorkspaceRepository("build-system"),
-              workdir,
-              projectService
-          )
-      );
-
-      session.setSystemProperty("java.version", "21");
-      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-          localRepositoryBasePath.toFile()
-      );
-      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-      session.setLocalRepositoryManager(manager);
-
-      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-          new org.eclipse.aether.repository.RemoteRepository
-              .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-              .build()
-      );
-      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+        final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                "proxy",
+                                "default",
+                                RepositoryProxySupport.mavenCentralUri().toString())
+                        .build());
+        service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
     }
 
-    @DisplayName("Check resolving project as a direct dependency")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingProjectAsDirectDependency() {
-      final Set<GroupArtifactVersion> result = service.resolveTransitive(
-          List.of(project1.gav()),
-          DependencyConstraints.EMPTY
-      );
-      assertThat(result).isEqualTo(
-          Set.of(project1.gav(), springCore6, springJcl)
-      );
+    @Nested
+    class Resolution {
+
+        @DisplayName("Check resolving transitive dependencies for a single dependency")
+        @Test
+        void testResolvingTransitiveDependencies() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            assertThatCode(() -> ref.set(service.resolveTransitive(logbackClassic)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Set.of(
+                    logbackClassic,
+                    GroupArtifactVersion.parse("ch.qos.logback:logback-core:1.5.18"),
+                    GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"));
+
+            assertThat(actual).isEqualTo(expected);
+        }
+
+        @DisplayName("Check resolving more transitive dependencies for a single dependency")
+        @Test
+        void testResolvingMoreTransitiveDependencies() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            assertThatCode(() -> ref.set(service.resolveTransitive(springContext)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Set.of(
+                    springContext,
+                    GroupArtifactVersion.parse("org.springframework:spring-aop:6.0.11"),
+                    GroupArtifactVersion.parse("org.springframework:spring-beans:6.0.11"),
+                    GroupArtifactVersion.parse("org.springframework:spring-core:6.0.11"),
+                    GroupArtifactVersion.parse("org.springframework:spring-expression:6.0.11"),
+                    GroupArtifactVersion.parse("org.springframework:spring-jcl:6.0.11"));
+
+            assertThat(actual).isEqualTo(expected);
+        }
+
+        @DisplayName("Check resolving dependency with a chain of parents")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingWithChainOfParents() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            assertThatCode(() -> ref.set(service.resolveTransitive(jacksonParameterNames)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Set.of(
+                    jacksonParameterNames,
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.15.4"));
+
+            assertThat(actual).isEqualTo(expected);
+        }
+
+        @DisplayName("Check resolving even more transitive dependencies for a single dependency")
+        @Test
+        @Timeout(value = 120, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingEvenMoreTransitiveDependencies() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            assertThatCode(() -> ref.set(service.resolveTransitive(springBootWeb)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Set.of(
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-web:jar:3.2.5"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter:jar:3.2.5"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot:jar:3.2.5"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-autoconfigure:jar:3.2.5"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-logging:jar:3.2.5"),
+                    GroupArtifactVersion.parse("ch.qos.logback:logback-classic:jar:1.4.14"),
+                    GroupArtifactVersion.parse("ch.qos.logback:logback-core:jar:1.4.14"),
+                    GroupArtifactVersion.parse("org.slf4j:slf4j-api:jar:2.0.7"),
+                    GroupArtifactVersion.parse("org.apache.logging.log4j:log4j-to-slf4j:jar:2.21.1"),
+                    GroupArtifactVersion.parse("org.apache.logging.log4j:log4j-api:jar:2.21.1"),
+                    GroupArtifactVersion.parse("org.slf4j:jul-to-slf4j:jar:2.0.13"),
+                    GroupArtifactVersion.parse("jakarta.annotation:jakarta.annotation-api:jar:2.1.1"),
+                    GroupArtifactVersion.parse("org.springframework:spring-core:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.springframework:spring-jcl:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.yaml:snakeyaml:jar:2.2"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-json:jar:3.2.5"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:jar:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:jar:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:jar:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.datatype:jackson-datatype-jdk8:jar:2.15.4"),
+                    GroupArtifactVersion.parse("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:jar:2.15.4"),
+                    GroupArtifactVersion.parse(
+                            "com.fasterxml.jackson.module:jackson-module-parameter-names:jar:2.15.4"),
+                    GroupArtifactVersion.parse("org.springframework.boot:spring-boot-starter-tomcat:jar:3.2.5"),
+                    GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-core:jar:10.1.20"),
+                    GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-el:jar:10.1.20"),
+                    GroupArtifactVersion.parse("org.apache.tomcat.embed:tomcat-embed-websocket:jar:10.1.20"),
+                    GroupArtifactVersion.parse("org.springframework:spring-web:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.springframework:spring-beans:jar:6.1.6"),
+                    GroupArtifactVersion.parse("io.micrometer:micrometer-observation:jar:1.12.5"),
+                    GroupArtifactVersion.parse("io.micrometer:micrometer-commons:jar:1.12.5"),
+                    GroupArtifactVersion.parse("org.springframework:spring-webmvc:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.springframework:spring-aop:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.springframework:spring-context:jar:6.1.6"),
+                    GroupArtifactVersion.parse("org.springframework:spring-expression:jar:6.1.6"));
+
+            final var actualSorted =
+                    actual.stream().map(c -> c.toString()).sorted().toList();
+            final var expectedSorted =
+                    expected.stream().map(c -> c.toString()).sorted().toList();
+            assertThat(actualSorted).isEqualTo(expectedSorted);
+        }
+
+        @DisplayName("Check resolving dependencies with hard version requirements")
+        @Test
+        void testResolvingWithHardVersionRequirements() {
+            final var bcpkix = GroupArtifactVersion.parse("org.bouncycastle:bcpkix-jdk18on:1.80");
+            assertThatCode(() -> service.resolveTransitive(bcpkix)).doesNotThrowAnyException();
+        }
+
+        @DisplayName("Check resolving multiple dependencies")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingMultipleDependencies() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            final var dependencies = List.of(
+                    GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
+                    GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22"));
+            assertThatCode(() -> ref.set(service.resolveTransitive(dependencies, DependencyConstraints.EMPTY)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Stream.of(new String[] {
+                        "org.apache.maven.resolver:maven-resolver-api:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-util:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
+                        "org.slf4j:slf4j-api:2.0.17",
+                    })
+                    .map(GroupArtifactVersion::parse)
+                    .collect(Collectors.toUnmodifiableSet());
+
+            final var actualSorted =
+                    actual.stream().map(c -> c.toString()).sorted().toList();
+            final var expectedSorted =
+                    expected.stream().map(c -> c.toString()).sorted().toList();
+            assertThat(actualSorted).isEqualTo(expectedSorted);
+        }
+
+        @DisplayName("Check resolving multiple dependencies with constraints")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingMultipleDependenciesWithConstraints() {
+            final var ref = new AtomicReference<Set<GroupArtifactVersion>>();
+            final var dependencies =
+                    List.of(GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-impl:1.9.22"));
+            final var constraints = DependencyConstraints.builder()
+                    .withExactVersion("org.slf4j:slf4j-api:2.0.15")
+                    .build();
+            assertThatCode(() -> ref.set(service.resolveTransitive(dependencies, constraints)))
+                    .doesNotThrowAnyException();
+
+            final Set<GroupArtifactVersion> actual = ref.get();
+            final Set<GroupArtifactVersion> expected = Stream.of(new String[] {
+                        "org.apache.maven.resolver:maven-resolver-api:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-impl:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-spi:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-util:1.9.22",
+                        "org.apache.maven.resolver:maven-resolver-named-locks:1.9.22",
+                        "org.slf4j:slf4j-api:2.0.15",
+                    })
+                    .map(GroupArtifactVersion::parse)
+                    .collect(Collectors.toUnmodifiableSet());
+
+            final var actualSorted =
+                    actual.stream().map(c -> c.toString()).sorted().toList();
+            final var expectedSorted =
+                    expected.stream().map(c -> c.toString()).sorted().toList();
+            assertThat(actualSorted).isEqualTo(expectedSorted);
+        }
     }
 
-    @DisplayName("Check resolving projects as direct and transitive dependencies")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingProjectAsDirectAndTransitiveDependencies() {
-      final Set<GroupArtifactVersion> result = service.resolveTransitive(
-          List.of(project2.gav()),
-          DependencyConstraints.EMPTY
-      );
-      assertThat(result).isEqualTo(
-          Set.of(project2.gav(), project1.gav(), springCore6, springJcl)
-      );
+    @DisplayName("Check resolving projects")
+    @Nested
+    class ProjectResolution {
+
+        private final GroupArtifactVersion springCore6 =
+                GroupArtifactVersion.parse("org.springframework:spring-core:6.0.0");
+
+        private final GroupArtifactVersion springJcl =
+                GroupArtifactVersion.parse("org.springframework:spring-jcl:6.0.0");
+
+        private final GroupArtifactVersion springCore7 =
+                GroupArtifactVersion.parse("org.springframework:spring-core:7.0.0");
+
+        private final GroupArtifactVersion commonsLogging =
+                GroupArtifactVersion.parse("commons-logging:commons-logging:1.3.5");
+
+        private final GroupArtifactVersion jspecify = GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0");
+
+        private final ProjectService projectService = new ProjectService();
+
+        private final Project project1;
+
+        private final Project project2;
+
+        private final DependencyService service;
+
+        ProjectResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+            project1 = projectService.create(
+                    "org.example",
+                    "project1",
+                    "0.1.0",
+                    builder -> builder.withPath("project1")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(springCore6),
+                                            List.of(springCore6),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
+
+            project2 = projectService.create(
+                    "org.example",
+                    "project2",
+                    "0.1.0",
+                    builder -> builder.withPath("project2")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(project1),
+                                            List.of(project1),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
+
+            final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+            final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+
+            session.setWorkspaceReader(
+                    new ProjectWorkspaceReader(new WorkspaceRepository("build-system"), workdir, projectService));
+
+            session.setSystemProperty("java.version", "21");
+            final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+            final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+            session.setLocalRepositoryManager(manager);
+
+            final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                    List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                    "proxy",
+                                    "default",
+                                    RepositoryProxySupport.mavenCentralUri().toString())
+                            .build());
+            service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+        }
+
+        @DisplayName("Check resolving project as a direct dependency")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingProjectAsDirectDependency() {
+            final Set<GroupArtifactVersion> result =
+                    service.resolveTransitive(List.of(project1.gav()), DependencyConstraints.EMPTY);
+            assertThat(result).isEqualTo(Set.of(project1.gav(), springCore6, springJcl));
+        }
+
+        @DisplayName("Check resolving projects as direct and transitive dependencies")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingProjectAsDirectAndTransitiveDependencies() {
+            final Set<GroupArtifactVersion> result =
+                    service.resolveTransitive(List.of(project2.gav()), DependencyConstraints.EMPTY);
+            assertThat(result).isEqualTo(Set.of(project2.gav(), project1.gav(), springCore6, springJcl));
+        }
+
+        @DisplayName("Check resolving projects while overriding transitive dependencies")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingProjectWhileOverridingTransitiveDependencies() {
+            final Set<GroupArtifactVersion> result =
+                    service.resolveTransitive(List.of(project2.gav(), springCore7), DependencyConstraints.EMPTY);
+            // transitive spring-context 6.0.0 from project1 must be replaced
+            // with direct dependency on spring-context 7.0.0
+            assertThat(result).isEqualTo(Set.of(project2.gav(), project1.gav(), springCore7, commonsLogging, jspecify));
+        }
     }
 
-    @DisplayName("Check resolving projects while overriding transitive dependencies")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingProjectWhileOverridingTransitiveDependencies() {
-      final Set<GroupArtifactVersion> result = service.resolveTransitive(
-          List.of(project2.gav(), springCore7),
-          DependencyConstraints.EMPTY
-      );
-      // transitive spring-context 6.0.0 from project1 must be replaced
-      // with direct dependency on spring-context 7.0.0
-      assertThat(result).isEqualTo(
-          Set.of(project2.gav(), project1.gav(), springCore7, commonsLogging, jspecify)
-      );
-    }
-  }
+    @DisplayName("Check resolving projects via ProjectService-backed workspace reader")
+    @Nested
+    class ProjectServiceIntegration {
 
-  @DisplayName("Check resolving projects via ProjectService-backed workspace reader")
-  @Nested
-  class ProjectServiceIntegration {
+        private final GroupArtifactVersion springCore6 =
+                GroupArtifactVersion.parse("org.springframework:spring-core:6.0.0");
 
-    private final GroupArtifactVersion springCore6 = GroupArtifactVersion.parse(
-        "org.springframework:spring-core:6.0.0"
-    );
+        private final GroupArtifactVersion springJcl =
+                GroupArtifactVersion.parse("org.springframework:spring-jcl:6.0.0");
 
-    private final GroupArtifactVersion springJcl = GroupArtifactVersion.parse(
-        "org.springframework:spring-jcl:6.0.0"
-    );
+        private final Project projectA;
 
-    private final Project projectA;
+        private final Project projectB;
 
-    private final Project projectB;
+        private final Project projectC;
 
-    private final Project projectC;
+        private final DependencyService service;
 
-    private final DependencyService service;
+        ProjectServiceIntegration(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+            final ProjectService projectService = new ProjectService();
+            projectA = projectService.create(
+                    "org.example",
+                    "project-a",
+                    "0.1.0",
+                    builder -> builder.withPath("project-a")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(springCore6),
+                                            List.of(springCore6),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
 
-    ProjectServiceIntegration(
-        @TempDir final Path workdir,
-        @TempDir final Path localRepositoryBasePath
-    ) {
-      final ProjectService projectService = new ProjectService();
-      projectA = projectService.create("org.example", "project-a", "0.1.0",
-          builder -> builder
-              .withPath("project-a")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(springCore6),
-                      List.of(springCore6),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+            projectB = projectService.create(
+                    "org.example",
+                    "project-b",
+                    "0.1.0",
+                    builder -> builder.withPath("project-b")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(projectA),
+                                            List.of(projectA),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
 
-      projectB = projectService.create("org.example", "project-b", "0.1.0",
-          builder -> builder
-              .withPath("project-b")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(projectA),
-                      List.of(projectA),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+            projectC = projectService.create(
+                    "org.example",
+                    "project-c",
+                    "0.1.0",
+                    builder -> builder.withPath("project-c")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(projectB),
+                                            List.of(projectB),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
 
-      projectC = projectService.create("org.example", "project-c", "0.1.0",
-          builder -> builder
-              .withPath("project-c")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(projectB),
-                      List.of(projectB),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+            final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+            final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
 
-      final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-      final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+            session.setWorkspaceReader(
+                    new ProjectWorkspaceReader(new WorkspaceRepository("build-system"), workdir, projectService));
 
-      session.setWorkspaceReader(
-          new ProjectWorkspaceReader(
-              new WorkspaceRepository("build-system"),
-              workdir,
-              projectService
-          )
-      );
+            session.setSystemProperty("java.version", "21");
+            final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+            final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+            session.setLocalRepositoryManager(manager);
 
-      session.setSystemProperty("java.version", "21");
-      final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-          localRepositoryBasePath.toFile()
-      );
-      final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-      session.setLocalRepositoryManager(manager);
+            final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                    List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                    "proxy",
+                                    "default",
+                                    RepositoryProxySupport.mavenCentralUri().toString())
+                            .build());
+            service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
+        }
 
-      final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-          new org.eclipse.aether.repository.RemoteRepository
-              .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-              .build()
-      );
-      service = new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
-    }
+        @DisplayName("Check resolving project-a from service-backed workspace reader")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingSingleProjectFromService() {
+            final Set<GroupArtifactVersion> result =
+                    service.resolveTransitive(List.of(projectA.gav()), DependencyConstraints.EMPTY);
+            assertThat(result).isEqualTo(Set.of(projectA.gav(), springCore6, springJcl));
+        }
 
-    @DisplayName("Check resolving project-a from service-backed workspace reader")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingSingleProjectFromService() {
-      final Set<GroupArtifactVersion> result = service.resolveTransitive(
-          List.of(projectA.gav()),
-          DependencyConstraints.EMPTY
-      );
-      assertThat(result).isEqualTo(
-          Set.of(projectA.gav(), springCore6, springJcl)
-      );
+        @DisplayName("Check resolving full transitive chain from service-backed workspace reader")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testResolvingFullTransitiveChainFromService() {
+            final Set<GroupArtifactVersion> result =
+                    service.resolveTransitive(List.of(projectC.gav()), DependencyConstraints.EMPTY);
+            assertThat(result)
+                    .isEqualTo(Set.of(projectC.gav(), projectB.gav(), projectA.gav(), springCore6, springJcl));
+        }
+
+        @DisplayName("Check all three projects are individually resolvable from service")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testAllProjectsIndividuallyResolvableFromService() {
+            assertThat(service.resolveTransitive(List.of(projectA.gav()), DependencyConstraints.EMPTY))
+                    .contains(projectA.gav());
+            assertThat(service.resolveTransitive(List.of(projectB.gav()), DependencyConstraints.EMPTY))
+                    .contains(projectB.gav());
+            assertThat(service.resolveTransitive(List.of(projectC.gav()), DependencyConstraints.EMPTY))
+                    .contains(projectC.gav());
+        }
     }
 
-    @DisplayName("Check resolving full transitive chain from service-backed workspace reader")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testResolvingFullTransitiveChainFromService() {
-      final Set<GroupArtifactVersion> result = service.resolveTransitive(
-          List.of(projectC.gav()),
-          DependencyConstraints.EMPTY
-      );
-      assertThat(result).isEqualTo(
-          Set.of(projectC.gav(), projectB.gav(), projectA.gav(), springCore6, springJcl)
-      );
-    }
-
-    @DisplayName("Check all three projects are individually resolvable from service")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testAllProjectsIndividuallyResolvableFromService() {
-      assertThat(service.resolveTransitive(List.of(projectA.gav()), DependencyConstraints.EMPTY))
-          .contains(projectA.gav());
-      assertThat(service.resolveTransitive(List.of(projectB.gav()), DependencyConstraints.EMPTY))
-          .contains(projectB.gav());
-      assertThat(service.resolveTransitive(List.of(projectC.gav()), DependencyConstraints.EMPTY))
-          .contains(projectC.gav());
-    }
-  }
-
-  @DisplayName("""
+    @DisplayName("""
       Tests for fetching resolved dependencies from remote repositories
       and saving to local repository
       """)
-  @Nested
-  class FetchingToLocalRepository {
+    @Nested
+    class FetchingToLocalRepository {
 
-    @DisplayName("Check fetching null dependency set fails")
-    @Test
-    void testFetchingNullSetFails() {
-      assertThrowsExactly(
-          NullPointerException.class,
-          () -> service.fetchToLocal(null)
-      );
+        @DisplayName("Check fetching null dependency set fails")
+        @Test
+        void testFetchingNullSetFails() {
+            assertThrowsExactly(NullPointerException.class, () -> service.fetchToLocal(null));
+        }
+
+        @DisplayName("Check fetching empty dependency set works")
+        @Test
+        void testFetchingEmptySetWorks() {
+            assertThat(service.fetchToLocal(Set.of())).isEmpty();
+        }
+
+        @DisplayName("Check fetching single dependency works")
+        @TestFactory
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        DynamicTest[] testFetchingSingleDependencyWorks() {
+            final var gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+            final Set<GroupArtifactVersion> dependencies = Set.of(gav);
+            final Path expectedJarPath =
+                    localRepositoryBasePath.resolve("org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar");
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Check JAR is not present yet",
+                        () -> assertThat(expectedJarPath).doesNotExist()),
+                dynamicTest(
+                        "Check fetching works",
+                        () -> assertThat(service.fetchToLocal(dependencies))
+                                .containsOnly(Map.entry(gav, expectedJarPath))),
+            };
+        }
     }
 
-    @DisplayName("Check fetching empty dependency set works")
-    @Test
-    void testFetchingEmptySetWorks() {
-      assertThat(service.fetchToLocal(Set.of())).isEmpty();
+    @DisplayName("Getting dependency constraints tests")
+    @Nested
+    class GetConstraints {
+
+        // TODO: test BOM with parent
+        @DisplayName("Check getting constraints from single BOM without parent works")
+        @Test
+        void testGettingSingleBomWithoutParentWorks() {
+            final var springBom = GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.0");
+            final DependencyConstraints expected = DependencyConstraints.builder()
+                    .withExactVersion(
+                            "org.springframework:spring-aop:7.0.0",
+                            "org.springframework:spring-aspects:7.0.0",
+                            "org.springframework:spring-beans:7.0.0",
+                            "org.springframework:spring-context:7.0.0",
+                            "org.springframework:spring-context-indexer:7.0.0",
+                            "org.springframework:spring-context-support:7.0.0",
+                            "org.springframework:spring-core:7.0.0",
+                            "org.springframework:spring-core-test:7.0.0",
+                            "org.springframework:spring-expression:7.0.0",
+                            "org.springframework:spring-instrument:7.0.0",
+                            "org.springframework:spring-jdbc:7.0.0",
+                            "org.springframework:spring-jms:7.0.0",
+                            "org.springframework:spring-messaging:7.0.0",
+                            "org.springframework:spring-orm:7.0.0",
+                            "org.springframework:spring-oxm:7.0.0",
+                            "org.springframework:spring-r2dbc:7.0.0",
+                            "org.springframework:spring-test:7.0.0",
+                            "org.springframework:spring-tx:7.0.0",
+                            "org.springframework:spring-web:7.0.0",
+                            "org.springframework:spring-webflux:7.0.0",
+                            "org.springframework:spring-webmvc:7.0.0",
+                            "org.springframework:spring-websocket:7.0.0")
+                    .build();
+            final DependencyConstraints actual = service.getConstraints(springBom);
+            assertEquals(expected, actual);
+        }
+
+        @DisplayName("Check getting constraints from multiple BOMs works")
+        @Test
+        void testGettingMultipleBomWorks() {
+            final var springBom = GroupArtifactVersion.parse("org.springframework:spring-framework-bom:7.0.0");
+            final var springDataBom = GroupArtifactVersion.parse("org.springframework.data:spring-data-bom:2025.1.0");
+            final DependencyConstraints expected = DependencyConstraints.builder()
+                    .withExactVersion(
+                            // Spring Framework BOM
+                            "org.springframework:spring-aop:7.0.0",
+                            "org.springframework:spring-aspects:7.0.0",
+                            "org.springframework:spring-beans:7.0.0",
+                            "org.springframework:spring-context:7.0.0",
+                            "org.springframework:spring-context-indexer:7.0.0",
+                            "org.springframework:spring-context-support:7.0.0",
+                            "org.springframework:spring-core:7.0.0",
+                            "org.springframework:spring-core-test:7.0.0",
+                            "org.springframework:spring-expression:7.0.0",
+                            "org.springframework:spring-instrument:7.0.0",
+                            "org.springframework:spring-jdbc:7.0.0",
+                            "org.springframework:spring-jms:7.0.0",
+                            "org.springframework:spring-messaging:7.0.0",
+                            "org.springframework:spring-orm:7.0.0",
+                            "org.springframework:spring-oxm:7.0.0",
+                            "org.springframework:spring-r2dbc:7.0.0",
+                            "org.springframework:spring-test:7.0.0",
+                            "org.springframework:spring-tx:7.0.0",
+                            "org.springframework:spring-web:7.0.0",
+                            "org.springframework:spring-webflux:7.0.0",
+                            "org.springframework:spring-webmvc:7.0.0",
+                            "org.springframework:spring-websocket:7.0.0",
+
+                            // Spring Data BOM
+                            "org.springframework.data:spring-data-cassandra:5.0.0",
+                            "org.springframework.data:spring-data-commons:4.0.0",
+                            "org.springframework.data:spring-data-couchbase:6.0.0",
+                            "org.springframework.data:spring-data-elasticsearch:6.0.0",
+                            "org.springframework.data:spring-data-jdbc:4.0.0",
+                            "org.springframework.data:spring-data-r2dbc:4.0.0",
+                            "org.springframework.data:spring-data-relational:4.0.0",
+                            "org.springframework.data:spring-data-jpa:4.0.0",
+                            "org.springframework.data:spring-data-envers:4.0.0",
+                            "org.springframework.data:spring-data-mongodb:5.0.0",
+                            "org.springframework.data:spring-data-neo4j:8.0.0",
+                            "org.springframework.data:spring-data-redis:4.0.0",
+                            "org.springframework.data:spring-data-rest-webmvc:5.0.0",
+                            "org.springframework.data:spring-data-rest-core:5.0.0",
+                            "org.springframework.data:spring-data-rest-hal-explorer:5.0.0",
+                            "org.springframework.data:spring-data-keyvalue:4.0.0",
+                            "org.springframework.data:spring-data-ldap:4.0.0")
+                    .build();
+            final DependencyConstraints actual = service.getConstraints(springBom, springDataBom);
+            assertEquals(expected, actual);
+        }
     }
 
-    @DisplayName("Check fetching single dependency works")
-    @TestFactory
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    DynamicTest[] testFetchingSingleDependencyWorks() {
-      final var gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-      final Set<GroupArtifactVersion> dependencies = Set.of(gav);
-      final Path expectedJarPath = localRepositoryBasePath.resolve(
-          "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar"
-      );
-      return new DynamicTest[]{
-          dynamicTest(
-              "Check JAR is not present yet",
-              () -> assertThat(expectedJarPath).doesNotExist()
-          ),
-          dynamicTest(
-              "Check fetching works",
-              () -> assertThat(service.fetchToLocal(dependencies)).containsOnly(
-                  Map.entry(gav, expectedJarPath)
-              )
-          ),
-      };
-    }
-  }
+    @DisplayName("Tests for resolving compile classpath for a project")
+    @Nested
+    class CompileClasspath {
 
-  @DisplayName("Getting dependency constraints tests")
-  @Nested
-  class GetConstraints {
+        private final GroupArtifactVersion jacksonDatabind220 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.20.2");
+        private final GroupArtifactVersion jacksonAnnotations220 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.20");
+        private final GroupArtifactVersion jacksonCore220 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.20.2");
 
-    // TODO: test BOM with parent
-    @DisplayName("Check getting constraints from single BOM without parent works")
-    @Test
-    void testGettingSingleBomWithoutParentWorks() {
-      final var springBom = GroupArtifactVersion.parse(
-          "org.springframework:spring-framework-bom:7.0.0"
-      );
-      final DependencyConstraints expected = DependencyConstraints
-          .builder()
-          .withExactVersion(
-              "org.springframework:spring-aop:7.0.0",
-              "org.springframework:spring-aspects:7.0.0",
-              "org.springframework:spring-beans:7.0.0",
-              "org.springframework:spring-context:7.0.0",
-              "org.springframework:spring-context-indexer:7.0.0",
-              "org.springframework:spring-context-support:7.0.0",
-              "org.springframework:spring-core:7.0.0",
-              "org.springframework:spring-core-test:7.0.0",
-              "org.springframework:spring-expression:7.0.0",
-              "org.springframework:spring-instrument:7.0.0",
-              "org.springframework:spring-jdbc:7.0.0",
-              "org.springframework:spring-jms:7.0.0",
-              "org.springframework:spring-messaging:7.0.0",
-              "org.springframework:spring-orm:7.0.0",
-              "org.springframework:spring-oxm:7.0.0",
-              "org.springframework:spring-r2dbc:7.0.0",
-              "org.springframework:spring-test:7.0.0",
-              "org.springframework:spring-tx:7.0.0",
-              "org.springframework:spring-web:7.0.0",
-              "org.springframework:spring-webflux:7.0.0",
-              "org.springframework:spring-webmvc:7.0.0",
-              "org.springframework:spring-websocket:7.0.0"
-          )
-          .build();
-      final DependencyConstraints actual = service.getConstraints(springBom);
-      assertEquals(expected, actual);
-    }
+        private final GroupArtifactVersion jacksonDatabind221 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.21.7");
+        private final GroupArtifactVersion jacksonAnnotations221 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.21");
+        private final GroupArtifactVersion jacksonCore221 =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.21.7");
 
-    @DisplayName("Check getting constraints from multiple BOMs works")
-    @Test
-    void testGettingMultipleBomWorks() {
-      final var springBom = GroupArtifactVersion.parse(
-          "org.springframework:spring-framework-bom:7.0.0"
-      );
-      final var springDataBom = GroupArtifactVersion.parse(
-          "org.springframework.data:spring-data-bom:2025.1.0"
-      );
-      final DependencyConstraints expected = DependencyConstraints
-          .builder()
-          .withExactVersion(
-              // Spring Framework BOM
-              "org.springframework:spring-aop:7.0.0",
-              "org.springframework:spring-aspects:7.0.0",
-              "org.springframework:spring-beans:7.0.0",
-              "org.springframework:spring-context:7.0.0",
-              "org.springframework:spring-context-indexer:7.0.0",
-              "org.springframework:spring-context-support:7.0.0",
-              "org.springframework:spring-core:7.0.0",
-              "org.springframework:spring-core-test:7.0.0",
-              "org.springframework:spring-expression:7.0.0",
-              "org.springframework:spring-instrument:7.0.0",
-              "org.springframework:spring-jdbc:7.0.0",
-              "org.springframework:spring-jms:7.0.0",
-              "org.springframework:spring-messaging:7.0.0",
-              "org.springframework:spring-orm:7.0.0",
-              "org.springframework:spring-oxm:7.0.0",
-              "org.springframework:spring-r2dbc:7.0.0",
-              "org.springframework:spring-test:7.0.0",
-              "org.springframework:spring-tx:7.0.0",
-              "org.springframework:spring-web:7.0.0",
-              "org.springframework:spring-webflux:7.0.0",
-              "org.springframework:spring-webmvc:7.0.0",
-              "org.springframework:spring-websocket:7.0.0",
+        private final Project lib;
 
-              // Spring Data BOM
-              "org.springframework.data:spring-data-cassandra:5.0.0",
-              "org.springframework.data:spring-data-commons:4.0.0",
-              "org.springframework.data:spring-data-couchbase:6.0.0",
-              "org.springframework.data:spring-data-elasticsearch:6.0.0",
-              "org.springframework.data:spring-data-jdbc:4.0.0",
-              "org.springframework.data:spring-data-r2dbc:4.0.0",
-              "org.springframework.data:spring-data-relational:4.0.0",
-              "org.springframework.data:spring-data-jpa:4.0.0",
-              "org.springframework.data:spring-data-envers:4.0.0",
-              "org.springframework.data:spring-data-mongodb:5.0.0",
-              "org.springframework.data:spring-data-neo4j:8.0.0",
-              "org.springframework.data:spring-data-redis:4.0.0",
-              "org.springframework.data:spring-data-rest-webmvc:5.0.0",
-              "org.springframework.data:spring-data-rest-core:5.0.0",
-              "org.springframework.data:spring-data-rest-hal-explorer:5.0.0",
-              "org.springframework.data:spring-data-keyvalue:4.0.0",
-              "org.springframework.data:spring-data-ldap:4.0.0"
-          )
-          .build();
-      final DependencyConstraints actual = service.getConstraints(springBom, springDataBom);
-      assertEquals(expected, actual);
-    }
-  }
+        private final Project app;
 
-  @DisplayName("Tests for resolving compile classpath for a project")
-  @Nested
-  class CompileClasspath {
+        private final DependencyService service;
 
-    private final GroupArtifactVersion jacksonDatabind220 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-databind:2.20.2"
-    );
-    private final GroupArtifactVersion jacksonAnnotations220 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-annotations:2.20"
-    );
-    private final GroupArtifactVersion jacksonCore220 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-core:2.20.2"
-    );
+        CompileClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+            final var projectService = new ProjectService();
 
-    private final GroupArtifactVersion jacksonDatabind221 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-databind:2.21.7"
-    );
-    private final GroupArtifactVersion jacksonAnnotations221 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-annotations:2.21"
-    );
-    private final GroupArtifactVersion jacksonCore221 = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-core:2.21.7"
-    );
+            // depends on compile-only Jackson Databind 2.20.0
+            lib = projectService.create(
+                    "org.example",
+                    "lib",
+                    "0.1.0",
+                    builder -> builder.withPath("lib")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(jacksonDatabind220),
+                                            List.of(),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
 
-    private final Project lib;
+            // depends on lib (compile/runtime) and another version of Jackson (compile-only)
+            app = projectService.create(
+                    "org.example",
+                    "app",
+                    "0.1.0",
+                    builder -> builder.withPath("app")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(lib, jacksonDatabind221),
+                                            List.of(lib),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
 
-    private final Project app;
+            service = dependencyService(workdir, localRepositoryBasePath, projectService);
+        }
 
-    private final DependencyService service;
+        @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testDirectProvidedDependencyResolved() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(lib.mainSourceSet());
+            assertThat(result.keySet())
+                    .withFailMessage("Must contain direct compile-only dependency")
+                    .contains(jacksonDatabind220);
+            assertThat(result.keySet())
+                    .withFailMessage("Must contain transitive dependencies of direct compile-only dependency")
+                    .contains(jacksonAnnotations220, jacksonCore220);
+            assertThat(result.keySet()).containsOnly(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
+        }
 
-    CompileClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
-      final var projectService = new ProjectService();
-
-      // depends on compile-only Jackson Databind 2.20.0
-      lib = projectService.create("org.example", "lib", "0.1.0",
-          builder -> builder
-              .withPath("lib")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(jacksonDatabind220),
-                      List.of(),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      // depends on lib (compile/runtime) and another version of Jackson (compile-only)
-      app = projectService.create("org.example", "app", "0.1.0",
-          builder -> builder
-              .withPath("app")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(lib, jacksonDatabind221),
-                      List.of(lib),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      service = dependencyService(workdir, localRepositoryBasePath, projectService);
+        @DisplayName("Check transitive provided dependencies are not resolved")
+        @Test
+        @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testTransitiveProvidedDependenciesNotResolved() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(app.mainSourceSet());
+            final Set<GroupArtifactVersion> dependencies = result.keySet();
+            assertThat(dependencies)
+                    .withFailMessage("Must contain lib as direct dependency")
+                    .contains(lib.gav());
+            assertThat(dependencies)
+                    .withFailMessage("Must contain Jackson Databind 2.21.0 as direct compile-only dependency")
+                    .contains(jacksonDatabind221);
+            assertThat(dependencies)
+                    .withFailMessage(
+                            "Must contain Jackson Core/Annotations as transitive dependencies of direct compile-only Jackson 2.21.0 dependency")
+                    .contains(jacksonAnnotations221, jacksonCore221);
+            assertThat(dependencies)
+                    .withFailMessage("Must not contain Jackson 2.20.0 as transitive compile-only dependency")
+                    .doesNotContain(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
+            assertThat(dependencies).containsOnly(lib.gav(), jacksonDatabind221, jacksonAnnotations221, jacksonCore221);
+        }
     }
 
-    @DisplayName("Check that direct provided dependencies are resolved to the compile classpath")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testDirectProvidedDependencyResolved() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          lib.mainSourceSet()
-      );
-      assertThat(result.keySet())
-          .withFailMessage("Must contain direct compile-only dependency")
-          .contains(jacksonDatabind220);
-      assertThat(result.keySet())
-          .withFailMessage("Must contain transitive dependencies of direct compile-only dependency")
-          .contains(jacksonAnnotations220, jacksonCore220);
-      assertThat(result.keySet())
-          .containsOnly(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
+    @DisplayName("Tests for resolving runtime classpath for a source set")
+    @Nested
+    class RuntimeClasspath {
+
+        private final GroupArtifactVersion jacksonDatabind =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-databind:2.20.2");
+        private final GroupArtifactVersion jacksonAnnotations =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-annotations:2.20");
+        private final GroupArtifactVersion jacksonCore =
+                GroupArtifactVersion.parse("com.fasterxml.jackson.core:jackson-core:2.20.2");
+
+        private final GroupArtifactVersion logbackClassic =
+                GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.6.5");
+        private final GroupArtifactVersion logbackCore =
+                GroupArtifactVersion.parse("ch.qos.logback:logback-core:1.6.5");
+        private final GroupArtifactVersion slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.19");
+
+        private final Project lib;
+
+        private final Project app;
+
+        private final DependencyService service;
+
+        RuntimeClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+            final var projectService = new ProjectService();
+
+            // depends on compile-only Jackson Databind 2.20.0
+            lib = projectService.create(
+                    "org.example",
+                    "lib",
+                    "0.1.0",
+                    builder -> builder.withPath("lib")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(),
+                                            List.of(jacksonDatabind),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
+
+            // depends on lib (compile/runtime) and another version of Jackson (compile-only)
+            app = projectService.create(
+                    "org.example",
+                    "app",
+                    "0.1.0",
+                    builder -> builder.withPath("app")
+                            .withSourceSets(
+                                    new MainSourceSetArgs(
+                                            SourceSet.Id.MAIN.toString(),
+                                            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                                            Set.of(Path.of("src", "main", "resources")),
+                                            List.of(lib, logbackClassic),
+                                            List.of(lib, logbackClassic),
+                                            DependencyConstraints.EMPTY),
+                                    TestSourceSetArgs.withTestDefaults()));
+
+            service = dependencyService(workdir, localRepositoryBasePath, projectService);
+        }
+
+        @DisplayName("Check that direct runtime dependencies are resolved to the runtime classpath")
+        @Test
+        @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testDirectRuntimeDependencyResolved() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(lib.mainSourceSet());
+            assertThat(result.keySet())
+                    .withFailMessage("Must contain direct runtime-only dependency")
+                    .contains(jacksonDatabind);
+            assertThat(result.keySet())
+                    .withFailMessage("Must contain transitive dependencies of direct runtime-only dependency")
+                    .contains(jacksonAnnotations, jacksonCore);
+            assertThat(result.keySet()).containsOnly(jacksonDatabind, jacksonAnnotations, jacksonCore);
+        }
+
+        @DisplayName("Check transitive runtime dependencies are resolved")
+        @Test
+        @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+        void testTransitiveRuntimeDependenciesResolved() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(app.mainSourceSet());
+            final Set<GroupArtifactVersion> dependencies = result.keySet();
+            assertThat(dependencies)
+                    .withFailMessage("Must contain Logback and slf4j as direct dependency")
+                    .contains(logbackClassic, logbackCore, slf4jApi);
+            assertThat(dependencies)
+                    .withFailMessage("Must contain lib as direct dependency")
+                    .contains(lib.gav());
+            assertThat(dependencies)
+                    .withFailMessage("Must contain Jackson modules as transitive runtime-only dependency")
+                    .contains(jacksonDatabind, jacksonAnnotations, jacksonCore);
+            assertThat(dependencies)
+                    .containsOnly(
+                            lib.gav(),
+                            logbackClassic,
+                            logbackCore,
+                            slf4jApi,
+                            jacksonDatabind,
+                            jacksonAnnotations,
+                            jacksonCore);
+        }
     }
 
-    @DisplayName("Check transitive provided dependencies are not resolved")
-    @Test
-    @Timeout(value = 60, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testTransitiveProvidedDependenciesNotResolved() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          app.mainSourceSet()
-      );
-      final Set<GroupArtifactVersion> dependencies = result.keySet();
-      assertThat(dependencies)
-          .withFailMessage("Must contain lib as direct dependency")
-          .contains(lib.gav());
-      assertThat(dependencies)
-          .withFailMessage("Must contain Jackson Databind 2.21.0 as direct compile-only dependency")
-          .contains(jacksonDatabind221);
-      assertThat(dependencies)
-          .withFailMessage(
-              "Must contain Jackson Core/Annotations as transitive dependencies of direct compile-only Jackson 2.21.0 dependency")
-          .contains(jacksonAnnotations221, jacksonCore221);
-      assertThat(dependencies)
-          .withFailMessage(
-              "Must not contain Jackson 2.20.0 as transitive compile-only dependency")
-          .doesNotContain(jacksonDatabind220, jacksonAnnotations220, jacksonCore220);
-      assertThat(dependencies)
-          .containsOnly(lib.gav(), jacksonDatabind221, jacksonAnnotations221, jacksonCore221);
-    }
-  }
+    @DisplayName("Tests for resolving source set dependencies as project artifacts")
+    @Nested
+    class SourceSetResolution {
 
-  @DisplayName("Tests for resolving runtime classpath for a source set")
-  @Nested
-  class RuntimeClasspath {
+        private final DependencyService service;
 
-    private final GroupArtifactVersion jacksonDatabind = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-databind:2.20.2"
-    );
-    private final GroupArtifactVersion jacksonAnnotations = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-annotations:2.20"
-    );
-    private final GroupArtifactVersion jacksonCore = GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.core:jackson-core:2.20.2"
-    );
+        private final Project projectP;
 
-    private final GroupArtifactVersion logbackClassic = GroupArtifactVersion.parse(
-        "ch.qos.logback:logback-classic:1.6.5"
-    );
-    private final GroupArtifactVersion logbackCore = GroupArtifactVersion.parse(
-        "ch.qos.logback:logback-core:1.6.5"
-    );
-    private final GroupArtifactVersion slf4jApi = GroupArtifactVersion.parse(
-        "org.slf4j:slf4j-api:2.0.19"
-    );
+        private final Project projectQ;
 
-    private final Project lib;
+        SourceSetResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
+            final ProjectService projectService = new ProjectService();
+            projectQ = projectService.create("org.example", "q", "0.1.0", builder -> {
+                final var main = new MainSourceSetArgs(
+                        SourceSet.Id.MAIN.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                        Set.of(Path.of("src", "main", "resources")),
+                        List.of(),
+                        List.of(),
+                        DependencyConstraints.EMPTY);
+                final var test = new TestSourceSetArgs(
+                        SourceSet.Id.TEST.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                        Set.of(Path.of("src", "test", "resources")),
+                        List.of(main),
+                        List.of(),
+                        DependencyConstraints.EMPTY);
+                builder.withPath("q").withSourceSets(main, test);
+            });
 
-    private final Project app;
+            projectP = projectService.create("org.example", "p", "0.1.0", builder -> {
+                final var main = new MainSourceSetArgs(
+                        SourceSet.Id.MAIN.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                        Set.of(Path.of("src", "main", "resources")),
+                        List.of(projectQ),
+                        List.of(projectQ),
+                        DependencyConstraints.EMPTY);
+                // main as a test dependency is mapped to OnSourceSet(main)
+                final var test = new TestSourceSetArgs(
+                        SourceSet.Id.TEST.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                        Set.of(Path.of("src", "test", "resources")),
+                        List.of(main),
+                        List.of(main),
+                        DependencyConstraints.EMPTY);
+                builder.withPath("p").withSourceSets(main, test);
+            });
+            service = dependencyService(workdir, localRepositoryBasePath, projectService);
+        }
 
-    private final DependencyService service;
+        @DisplayName("Check resolving dependency on a source set")
+        @Test
+        void testResolvingSourceSetAsArtifact() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(projectQ.testSourceSet());
+            assertThat(result).containsOnlyKeys(projectQ.gav());
+        }
 
-    RuntimeClasspath(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
-      final var projectService = new ProjectService();
-
-      // depends on compile-only Jackson Databind 2.20.0
-      lib = projectService.create("org.example", "lib", "0.1.0",
-          builder -> builder
-              .withPath("lib")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(),
-                      List.of(jacksonDatabind),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      // depends on lib (compile/runtime) and another version of Jackson (compile-only)
-      app = projectService.create("org.example", "app", "0.1.0",
-          builder -> builder
-              .withPath("app")
-              .withSourceSets(
-                  new MainSourceSetArgs(
-                      SourceSet.Id.MAIN.toString(),
-                      SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                      Set.of(Path.of("src", "main", "resources")),
-                      List.of(lib, logbackClassic),
-                      List.of(lib, logbackClassic),
-                      DependencyConstraints.EMPTY
-                  ),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      service = dependencyService(workdir, localRepositoryBasePath, projectService);
+        @DisplayName("Check resolving dependency on a source set and transitive dependency on other project")
+        @Test
+        void testResolvingSourceSetAndTransitiveProjectAsArtifact() {
+            final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(projectP.testSourceSet());
+            assertThat(result).containsOnlyKeys(projectP.gav(), projectQ.gav());
+        }
     }
 
-    @DisplayName("Check that direct runtime dependencies are resolved to the runtime classpath")
-    @Test
-    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testDirectRuntimeDependencyResolved() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(
-          lib.mainSourceSet()
-      );
-      assertThat(result.keySet())
-          .withFailMessage("Must contain direct runtime-only dependency")
-          .contains(jacksonDatabind);
-      assertThat(result.keySet())
-          .withFailMessage("Must contain transitive dependencies of direct runtime-only dependency")
-          .contains(jacksonAnnotations, jacksonCore);
-      assertThat(result.keySet())
-          .containsOnly(jacksonDatabind, jacksonAnnotations, jacksonCore);
+    private static MavenArtifactResolverDependencyService dependencyService(
+            final Path workdir, final Path localRepositoryBasePath, final ProjectService projectService) {
+        final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+        final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+        session.setSystemProperty("java.version", "21");
+        session.setWorkspaceReader(
+                new ProjectWorkspaceReader(new WorkspaceRepository("build-system"), workdir, projectService));
+        // keep provided dependencies in the collected graph, the classpath filter will
+        // only expose them as direct dependencies of the root project
+        session.setDependencySelector(new AndDependencySelector(
+                new ScopeDependencySelector("provided", "test"),
+                new OptionalDependencySelector(),
+                new ExclusionDependencySelector()));
+        final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+        final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+        session.setLocalRepositoryManager(manager);
+
+        final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                "proxy",
+                                "default",
+                                RepositoryProxySupport.mavenCentralUri().toString())
+                        .build());
+        return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
     }
-
-    @DisplayName("Check transitive runtime dependencies are resolved")
-    @Test
-    @Timeout(value = 30, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
-    void testTransitiveRuntimeDependenciesResolved() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveRuntimeClasspath(
-          app.mainSourceSet()
-      );
-      final Set<GroupArtifactVersion> dependencies = result.keySet();
-      assertThat(dependencies)
-          .withFailMessage("Must contain Logback and slf4j as direct dependency")
-          .contains(logbackClassic, logbackCore, slf4jApi);
-      assertThat(dependencies)
-          .withFailMessage("Must contain lib as direct dependency")
-          .contains(lib.gav());
-      assertThat(dependencies)
-          .withFailMessage("Must contain Jackson modules as transitive runtime-only dependency")
-          .contains(jacksonDatabind, jacksonAnnotations, jacksonCore);
-      assertThat(dependencies)
-          .containsOnly(
-              lib.gav(),
-              logbackClassic, logbackCore, slf4jApi,
-              jacksonDatabind, jacksonAnnotations, jacksonCore);
-    }
-  }
-
-  @DisplayName("Tests for resolving source set dependencies as project artifacts")
-  @Nested
-  class SourceSetResolution {
-
-    private final DependencyService service;
-
-    private final Project projectP;
-
-    private final Project projectQ;
-
-    SourceSetResolution(@TempDir final Path workdir, @TempDir final Path localRepositoryBasePath) {
-      final ProjectService projectService = new ProjectService();
-      projectQ = projectService.create("org.example", "q", "0.1.0",
-          builder -> {
-            final var main =
-                new MainSourceSetArgs(
-                    SourceSet.Id.MAIN.toString(),
-                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                    Set.of(Path.of("src", "main", "resources")),
-                    List.of(),
-                    List.of(),
-                    DependencyConstraints.EMPTY
-                );
-            final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
-                List.of(main),
-                List.of(),
-                DependencyConstraints.EMPTY
-            );
-            builder
-                .withPath("q")
-                .withSourceSets(main, test);
-          }
-      );
-
-      projectP = projectService.create("org.example", "p", "0.1.0",
-          builder -> {
-            final var main = new MainSourceSetArgs(
-                SourceSet.Id.MAIN.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-                Set.of(Path.of("src", "main", "resources")),
-                List.of(projectQ),
-                List.of(projectQ),
-                DependencyConstraints.EMPTY
-            );
-            // main as a test dependency is mapped to OnSourceSet(main)
-            final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
-                List.of(main),
-                List.of(main),
-                DependencyConstraints.EMPTY
-            );
-            builder
-                .withPath("p")
-                .withSourceSets(main, test);
-          }
-      );
-      service = dependencyService(workdir, localRepositoryBasePath, projectService);
-    }
-
-    @DisplayName("Check resolving dependency on a source set")
-    @Test
-    void testResolvingSourceSetAsArtifact() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          projectQ.testSourceSet()
-      );
-      assertThat(result).containsOnlyKeys(projectQ.gav());
-    }
-
-    @DisplayName("Check resolving dependency on a source set and transitive dependency on other project")
-    @Test
-    void testResolvingSourceSetAndTransitiveProjectAsArtifact() {
-      final Map<GroupArtifactVersion, Path> result = service.resolveCompileClasspath(
-          projectP.testSourceSet()
-      );
-      assertThat(result).containsOnlyKeys(projectP.gav(), projectQ.gav());
-    }
-  }
-
-  private static MavenArtifactResolverDependencyService dependencyService(
-      final Path workdir,
-      final Path localRepositoryBasePath,
-      final ProjectService projectService
-  ) {
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    session.setWorkspaceReader(
-        new ProjectWorkspaceReader(
-            new WorkspaceRepository("build-system"),
-            workdir,
-            projectService
-        )
-    );
-    // keep provided dependencies in the collected graph, the classpath filter will
-    // only expose them as direct dependencies of the root project
-    session.setDependencySelector(new AndDependencySelector(
-        new ScopeDependencySelector("provided", "test"),
-        new OptionalDependencySelector(),
-        new ExclusionDependencySelector()
-    ));
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
-
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-            .build()
-    );
-    return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
-  }
 }

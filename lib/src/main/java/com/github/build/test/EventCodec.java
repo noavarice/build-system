@@ -6,7 +6,7 @@ package com.github.build.test;
  */
 public interface EventCodec<T> {
 
-  byte[] toBytes(T value);
+    byte[] toBytes(T value);
 
-  T toValue(byte[] bytes);
+    T toValue(byte[] bytes);
 }

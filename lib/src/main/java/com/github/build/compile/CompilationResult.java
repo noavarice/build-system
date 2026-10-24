@@ -12,8 +12,8 @@ import java.util.Objects;
  */
 public record CompilationResult(Path outputDirectory) {
 
-  public CompilationResult {
-    Objects.requireNonNull(outputDirectory);
-    outputDirectory = outputDirectory.normalize().toAbsolutePath();
-  }
+    public CompilationResult {
+        Objects.requireNonNull(outputDirectory);
+        outputDirectory = outputDirectory.normalize().toAbsolutePath();
+    }
 }

@@ -24,32 +24,28 @@ import org.jspecify.annotations.Nullable;
  * @since 1.0.0
  */
 public record AspectJCompileArgs(
-    Set<Path> sourceRoots,
-    Path classesDir,
-    Set<Path> classpath,
-    Set<Path> aspectPath,
-    @Nullable Path outXmlFile
-) {
+        Set<Path> sourceRoots,
+        Path classesDir,
+        Set<Path> classpath,
+        Set<Path> aspectPath,
+        @Nullable Path outXmlFile) {
 
-  public AspectJCompileArgs {
-    sourceRoots = Objects.requireNonNull(sourceRoots)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-    classesDir = Objects.requireNonNull(classesDir).normalize().toAbsolutePath();
-    classpath = Objects.requireNonNull(classpath)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-    aspectPath = Objects.requireNonNull(aspectPath)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-  }
+    public AspectJCompileArgs {
+        sourceRoots = Objects.requireNonNull(sourceRoots).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+        classesDir = Objects.requireNonNull(classesDir).normalize().toAbsolutePath();
+        classpath = Objects.requireNonNull(classpath).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+        aspectPath = Objects.requireNonNull(aspectPath).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+    }
 }

@@ -16,57 +16,61 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record MainSourceSetArgs(
-    String id,
-    SourceRoots javaSourceRoots,
-    SourceRoots kotlinSourceRoots,
-    SourceRoots aspectjSourceRoots,
-    Set<Path> resourceDirectories,
-    List<MainSourceSetDependency> compileDependencies,
-    List<MainSourceSetDependency> runtimeDependencies,
-    DependencyConstraints dependencyConstraints
-) implements TestSourceSetDependency, ExtraSourceSetDependency {
+        String id,
+        SourceRoots javaSourceRoots,
+        SourceRoots kotlinSourceRoots,
+        SourceRoots aspectjSourceRoots,
+        Set<Path> resourceDirectories,
+        List<MainSourceSetDependency> compileDependencies,
+        List<MainSourceSetDependency> runtimeDependencies,
+        DependencyConstraints dependencyConstraints)
+        implements TestSourceSetDependency, ExtraSourceSetDependency {
 
-  public MainSourceSetArgs(
-      final String id,
-      final SourceRoots javaSourceRoots,
-      final Set<Path> resourceDirectories,
-      final List<MainSourceSetDependency> compileDependencies,
-      final List<MainSourceSetDependency> runtimeDependencies,
-      final DependencyConstraints dependencyConstraints
-  ) {
-    this(id, javaSourceRoots, SourceRoots.EMPTY, SourceRoots.EMPTY, resourceDirectories,
-        compileDependencies, runtimeDependencies, dependencyConstraints);
-  }
-
-  public static MainSourceSetArgs withMainDefaults() {
-    return new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-        Set.of(Path.of("src", "main", "resources")),
-        List.of(),
-        List.of(),
-        DependencyConstraints.EMPTY
-    );
-  }
-
-  public MainSourceSetArgs {
-    Objects.requireNonNull(id);
-    Objects.requireNonNull(javaSourceRoots);
-    Objects.requireNonNull(kotlinSourceRoots);
-    Objects.requireNonNull(aspectjSourceRoots);
-    if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
-      throw new IllegalArgumentException("Source set must have at least one source root directory");
+    public MainSourceSetArgs(
+            final String id,
+            final SourceRoots javaSourceRoots,
+            final Set<Path> resourceDirectories,
+            final List<MainSourceSetDependency> compileDependencies,
+            final List<MainSourceSetDependency> runtimeDependencies,
+            final DependencyConstraints dependencyConstraints) {
+        this(
+                id,
+                javaSourceRoots,
+                SourceRoots.EMPTY,
+                SourceRoots.EMPTY,
+                resourceDirectories,
+                compileDependencies,
+                runtimeDependencies,
+                dependencyConstraints);
     }
 
-    resourceDirectories = resourceDirectories
-        .stream()
-        .peek(Objects::requireNonNull)
-        .peek(PathUtils::checkRelative)
-        .map(Path::normalize)
-        .collect(toUnmodifiableSet());
+    public static MainSourceSetArgs withMainDefaults() {
+        return new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                Set.of(Path.of("src", "main", "resources")),
+                List.of(),
+                List.of(),
+                DependencyConstraints.EMPTY);
+    }
 
-    compileDependencies = List.copyOf(compileDependencies);
-    runtimeDependencies = List.copyOf(runtimeDependencies);
-    Objects.requireNonNull(dependencyConstraints);
-  }
+    public MainSourceSetArgs {
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(javaSourceRoots);
+        Objects.requireNonNull(kotlinSourceRoots);
+        Objects.requireNonNull(aspectjSourceRoots);
+        if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
+            throw new IllegalArgumentException("Source set must have at least one source root directory");
+        }
+
+        resourceDirectories = resourceDirectories.stream()
+                .peek(Objects::requireNonNull)
+                .peek(PathUtils::checkRelative)
+                .map(Path::normalize)
+                .collect(toUnmodifiableSet());
+
+        compileDependencies = List.copyOf(compileDependencies);
+        runtimeDependencies = List.copyOf(runtimeDependencies);
+        Objects.requireNonNull(dependencyConstraints);
+    }
 }

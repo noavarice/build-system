@@ -20,63 +20,43 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Local repository tests")
 class LocalRepositoryTest {
 
-  @DisplayName("Check saving JAR works")
-  @TestFactory
-  DynamicTest[] savingJarWorks(@TempDir final Path tempDir) {
-    final var repository = new LocalRepository(tempDir, Map.of("sha256", "SHA-256"));
+    @DisplayName("Check saving JAR works")
+    @TestFactory
+    DynamicTest[] savingJarWorks(@TempDir final Path tempDir) {
+        final var repository = new LocalRepository(tempDir, Map.of("sha256", "SHA-256"));
 
-    final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-    final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
+        final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+        final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
 
-    final var expectedJarPath = tempDir.resolve(
-        "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar"
-    );
-    final var expectedHashPath = tempDir.resolve(
-        "org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.sha256"
-    );
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check directory is empty initially",
-            () -> assertThat(tempDir).isEmptyDirectory()
-        ),
-        dynamicTest(
-            "Check method works",
-            () -> assertThat(repository.saveJar(gav, jarBytes)).isEqualTo(expectedJarPath)
-        ),
-        dynamicTest(
-            "Check JAR created",
-            () -> assertThat(expectedJarPath).hasBinaryContent(jarBytes)
-        ),
-        dynamicTest(
-            "Check hash file created",
-            () -> assertThat(expectedHashPath).hasContent(
-                "7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832"
-            )
-        ),
-    };
-  }
+        final var expectedJarPath = tempDir.resolve("org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.jar");
+        final var expectedHashPath = tempDir.resolve("org/slf4j/slf4j-api/2.0.17/slf4j-api-2.0.17.sha256");
+        return new DynamicTest[] {
+            dynamicTest(
+                    "Check directory is empty initially",
+                    () -> assertThat(tempDir).isEmptyDirectory()),
+            dynamicTest(
+                    "Check method works",
+                    () -> assertThat(repository.saveJar(gav, jarBytes)).isEqualTo(expectedJarPath)),
+            dynamicTest("Check JAR created", () -> assertThat(expectedJarPath).hasBinaryContent(jarBytes)),
+            dynamicTest(
+                    "Check hash file created",
+                    () -> assertThat(expectedHashPath)
+                            .hasContent("7b751d952061954d5abfed7181c1f645d336091b679891591d63329c622eb832")),
+        };
+    }
 
-  @DisplayName("Checking JAR presence works")
-  @TestFactory
-  DynamicTest[] checkingJarPresenceWorks(@TempDir final Path tempDir) {
-    final var repository = new LocalRepository(tempDir, Map.of("sha256", "SHA-256"));
-    final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check JAR is not yet present",
-            () -> assertFalse(repository.jarPresent(gav))
-        ),
-        dynamicTest(
-            "Check method works",
-            () -> {
-              final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
-              assertThatCode(() -> repository.saveJar(gav, jarBytes)).doesNotThrowAnyException();
-            }
-        ),
-        dynamicTest(
-            "Check JAR is present",
-            () -> assertTrue(repository.jarPresent(gav))
-        ),
-    };
-  }
+    @DisplayName("Checking JAR presence works")
+    @TestFactory
+    DynamicTest[] checkingJarPresenceWorks(@TempDir final Path tempDir) {
+        final var repository = new LocalRepository(tempDir, Map.of("sha256", "SHA-256"));
+        final GroupArtifactVersion gav = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+        return new DynamicTest[] {
+            dynamicTest("Check JAR is not yet present", () -> assertFalse(repository.jarPresent(gav))),
+            dynamicTest("Check method works", () -> {
+                final byte[] jarBytes = ResourceUtils.read("/slf4j-api-2.0.17.jar");
+                assertThatCode(() -> repository.saveJar(gav, jarBytes)).doesNotThrowAnyException();
+            }),
+            dynamicTest("Check JAR is present", () -> assertTrue(repository.jarPresent(gav))),
+        };
+    }
 }

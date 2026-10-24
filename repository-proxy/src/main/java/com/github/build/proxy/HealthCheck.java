@@ -16,24 +16,23 @@ import java.time.Duration;
  */
 public final class HealthCheck {
 
-  private HealthCheck() {
-  }
+    private HealthCheck() {}
 
-  public static void main(final String[] args) {
-    final String url = args.length > 0 ? args[0] : "http://localhost:8080/health";
-    int status = -1;
-    try {
-      final var request = HttpRequest.newBuilder(URI.create(url))
-          .timeout(Duration.ofSeconds(3))
-          .GET()
-          .build();
-      status = HttpClient.newHttpClient()
-          .send(request, HttpResponse.BodyHandlers.discarding())
-          .statusCode();
-    } catch (final Exception e) {
-      status = -1;
+    public static void main(final String[] args) {
+        final String url = args.length > 0 ? args[0] : "http://localhost:8080/health";
+        int status = -1;
+        try {
+            final var request = HttpRequest.newBuilder(URI.create(url))
+                    .timeout(Duration.ofSeconds(3))
+                    .GET()
+                    .build();
+            status = HttpClient.newHttpClient()
+                    .send(request, HttpResponse.BodyHandlers.discarding())
+                    .statusCode();
+        } catch (final Exception e) {
+            status = -1;
+        }
+
+        System.exit(status >= 200 && status < 300 ? 0 : 1);
     }
-
-    System.exit(status >= 200 && status < 300 ? 0 : 1);
-  }
 }

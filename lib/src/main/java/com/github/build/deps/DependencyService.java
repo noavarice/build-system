@@ -12,29 +12,24 @@ import java.util.Set;
  */
 public interface DependencyService {
 
-  /**
-   * @deprecated Use {@link #resolveTransitive(List, DependencyConstraints)} as more general method
-   */
-  @Deprecated(forRemoval = true)
-  Set<GroupArtifactVersion> resolveTransitive(GroupArtifactVersion artifact);
+    /**
+     * @deprecated Use {@link #resolveTransitive(List, DependencyConstraints)} as more general method
+     */
+    @Deprecated(forRemoval = true)
+    Set<GroupArtifactVersion> resolveTransitive(GroupArtifactVersion artifact);
 
-  Set<GroupArtifactVersion> resolveTransitive(
-      List<GroupArtifactVersion> artifacts,
-      DependencyConstraints constraints
-  );
+    Set<GroupArtifactVersion> resolveTransitive(
+            List<GroupArtifactVersion> artifacts, DependencyConstraints constraints);
 
-  Map<GroupArtifactVersion, Path> resolveCompileClasspath(SourceSet sourceSet);
+    Map<GroupArtifactVersion, Path> resolveCompileClasspath(SourceSet sourceSet);
 
-  Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(SourceSet sourceSet);
+    Map<GroupArtifactVersion, Path> resolveRuntimeClasspath(SourceSet sourceSet);
 
-  Set<GroupArtifactVersion> resolve(Project project);
+    Set<GroupArtifactVersion> resolve(Project project);
 
-  Map<GroupArtifactVersion, Path> fetchToLocal(Set<GroupArtifactVersion> artifacts);
+    Map<GroupArtifactVersion, Path> fetchToLocal(Set<GroupArtifactVersion> artifacts);
 
-  Path fetchToLocal(GroupArtifactVersion artifact, String classifier);
+    Path fetchToLocal(GroupArtifactVersion artifact, String classifier);
 
-  DependencyConstraints getConstraints(
-      GroupArtifactVersion bom,
-      GroupArtifactVersion... other
-  );
+    DependencyConstraints getConstraints(GroupArtifactVersion bom, GroupArtifactVersion... other);
 }

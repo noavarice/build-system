@@ -15,27 +15,23 @@ import org.jspecify.annotations.Nullable;
  * @since 1.0.0
  */
 public record JUnitTestArgs(
-    List<Path> buildRuntimeClasspath,
-    @Nullable ClassLoader testRuntimeParentClassLoader,
-    GroupArtifactVersion slf4jProviderFallback
-) {
+        List<Path> buildRuntimeClasspath,
+        @Nullable ClassLoader testRuntimeParentClassLoader,
+        GroupArtifactVersion slf4jProviderFallback) {
 
-  public JUnitTestArgs {
-    buildRuntimeClasspath = List.copyOf(buildRuntimeClasspath);
-    if (buildRuntimeClasspath.isEmpty()) {
-      throw new IllegalArgumentException();
+    public JUnitTestArgs {
+        buildRuntimeClasspath = List.copyOf(buildRuntimeClasspath);
+        if (buildRuntimeClasspath.isEmpty()) {
+            throw new IllegalArgumentException();
+        }
+
+        Objects.requireNonNull(slf4jProviderFallback);
     }
 
-    Objects.requireNonNull(slf4jProviderFallback);
-  }
+    public JUnitTestArgs(final List<Path> buildRuntimeClasspath, @Nullable ClassLoader testRuntimeParentClassLoader) {
+        this(buildRuntimeClasspath, testRuntimeParentClassLoader, DEFAULT_SLF4J_PROVIDER_FALLBACK);
+    }
 
-  public JUnitTestArgs(
-      final List<Path> buildRuntimeClasspath,
-      @Nullable ClassLoader testRuntimeParentClassLoader
-  ) {
-    this(buildRuntimeClasspath, testRuntimeParentClassLoader, DEFAULT_SLF4J_PROVIDER_FALLBACK);
-  }
-
-  private static final GroupArtifactVersion DEFAULT_SLF4J_PROVIDER_FALLBACK = GroupArtifactVersion
-      .parse("ch.qos.logback:logback-classic:1.5.21");
+    private static final GroupArtifactVersion DEFAULT_SLF4J_PROVIDER_FALLBACK =
+            GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21");
 }

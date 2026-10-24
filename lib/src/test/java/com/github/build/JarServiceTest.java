@@ -31,70 +31,50 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("JAR tests")
 class JarServiceTest {
 
-  private final JavaCompileService compileService = new JavaCompileService();
+    private final JavaCompileService compileService = new JavaCompileService();
 
-  private final JarService service = new JarService();
+    private final JarService service = new JarService();
 
-  @DisplayName("Creating JAR works")
-  @TestFactory
-  DynamicTest[] creatingJarWorks(@TempDir final Path tempDir) {
-    final var jarPath = tempDir.resolve("app.jar");
-    final var content = "Hello, world!".getBytes(StandardCharsets.UTF_8);
-    final var args = new JarArgs(
-        jarPath,
-        Map.of(Path.of("README.txt"), new JarArgs.Content.Bytes(content)),
-        null
-    );
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check creating JAR succeeds",
-            () -> assertDoesNotThrow(() -> service.create(args))
-        ),
-        dynamicTest(
-            "Check class file generated",
-            () -> assertTrue(Files.exists(jarPath))
-        ),
-    };
-  }
-
-  @DisplayName("Creating JAR for project works")
-  @TestFactory
-  DynamicTest[] creatingJarProjectWorks(@TempDir final Path tempDir) {
-    FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-
-    // compile sources
-    final Path classFile;
-    {
-      final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
-      final var args = new JavaCompileArgs(
-          Set.of(source),
-          tempDir.resolve("classes"),
-          Set.of(),
-          JavaCompilerOptions.EMPTY
-      );
-      compileService.compile(args);
-      classFile = tempDir.resolve("classes/org/example/HelloWorld.class");
+    @DisplayName("Creating JAR works")
+    @TestFactory
+    DynamicTest[] creatingJarWorks(@TempDir final Path tempDir) {
+        final var jarPath = tempDir.resolve("app.jar");
+        final var content = "Hello, world!".getBytes(StandardCharsets.UTF_8);
+        final var args = new JarArgs(jarPath, Map.of(Path.of("README.txt"), new JarArgs.Content.Bytes(content)), null);
+        return new DynamicTest[] {
+            dynamicTest("Check creating JAR succeeds", () -> assertDoesNotThrow(() -> service.create(args))),
+            dynamicTest("Check class file generated", () -> assertTrue(Files.exists(jarPath))),
+        };
     }
 
-    final var args = new JarArgs(
-        tempDir.resolve("app.jar"),
-        Map.of(Path.of("org/example/HelloWorld.class"), new JarArgs.Content.File(classFile)),
-        null
-    );
+    @DisplayName("Creating JAR for project works")
+    @TestFactory
+    DynamicTest[] creatingJarProjectWorks(@TempDir final Path tempDir) {
+        FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
 
-    return new DynamicTest[]{
-        dynamicTest(
-            "Check JAR does not exist yet",
-            () -> assumeThat(args.path()).doesNotExist()
-        ),
-        dynamicTest(
-            "Check creating JAR succeeds",
-            () -> assertThatCode(() -> service.create(args)).doesNotThrowAnyException()
-        ),
-        dynamicTest(
-            "Check JAR generated",
-            () -> assertThat(args.path()).isNotEmptyFile()
-        ),
-    };
-  }
+        // compile sources
+        final Path classFile;
+        {
+            final Path source = tempDir.resolve("hello-world/src/main/java/org/example/HelloWorld.java");
+            final var args = new JavaCompileArgs(
+                    Set.of(source), tempDir.resolve("classes"), Set.of(), JavaCompilerOptions.EMPTY);
+            compileService.compile(args);
+            classFile = tempDir.resolve("classes/org/example/HelloWorld.class");
+        }
+
+        final var args = new JarArgs(
+                tempDir.resolve("app.jar"),
+                Map.of(Path.of("org/example/HelloWorld.class"), new JarArgs.Content.File(classFile)),
+                null);
+
+        return new DynamicTest[] {
+            dynamicTest(
+                    "Check JAR does not exist yet",
+                    () -> assumeThat(args.path()).doesNotExist()),
+            dynamicTest(
+                    "Check creating JAR succeeds",
+                    () -> assertThatCode(() -> service.create(args)).doesNotThrowAnyException()),
+            dynamicTest("Check JAR generated", () -> assertThat(args.path()).isNotEmptyFile()),
+        };
+    }
 }

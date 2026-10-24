@@ -44,757 +44,640 @@ import org.junit.jupiter.api.io.TempDir;
 @DisplayName("Build service integration tests")
 class BuildServiceIT {
 
-  private final ProjectService projectService;
+    private final ProjectService projectService;
 
-  private final BuildService service;
+    private final BuildService service;
 
-  BuildServiceIT(@TempDir final Path localRepositoryBasePath) {
-    projectService = new ProjectService();
-    final DependencyService dependencyService = createDependencyService(
-        localRepositoryBasePath,
-        projectService,
-        null // without project workspace reader, so does not suit all tests
-    );
-    service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
-  }
-
-  @DisplayName("Check compiling main source set")
-  @Nested
-  class CompileMain {
-
-    @DisplayName("Compiling empty source set works")
-    @TestFactory
-    DynamicTest[] compilingEmptyWorks(@TempDir final Path tempDir) throws IOException {
-      Files.createDirectories(
-          tempDir
-              .resolve("empty-sources")
-              .resolve("src")
-              .resolve("main")
-              .resolve("java")
-      );
-      final var project = projectService.create("org.example", "empty-sources", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("empty-sources"))
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-
-      final Path classesDir = tempDir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir())
-          .resolve(project.artifactLayout().classesDir())
-          .resolve("main")
-          .resolve("java");
-      assertThat(classesDir).doesNotExist();
-
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Classes directory created but empty",
-              () -> assertThat(classesDir).isEmptyDirectory()
-          ),
-      };
+    BuildServiceIT(@TempDir final Path localRepositoryBasePath) {
+        projectService = new ProjectService();
+        final DependencyService dependencyService = createDependencyService(
+                localRepositoryBasePath,
+                projectService,
+                null // without project workspace reader, so does not suit all tests
+                );
+        service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
     }
 
-    @DisplayName("Compiling main source set works")
-    @TestFactory
-    DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var project = projectService.create("org.example", "calculator", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("calculator"))
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+    @DisplayName("Check compiling main source set")
+    @Nested
+    class CompileMain {
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/main/java");
-      assumeThat(classesDir).doesNotExist();
+        @DisplayName("Compiling empty source set works")
+        @TestFactory
+        DynamicTest[] compilingEmptyWorks(@TempDir final Path tempDir) throws IOException {
+            Files.createDirectories(tempDir.resolve("empty-sources")
+                    .resolve("src")
+                    .resolve("main")
+                    .resolve("java"));
+            final var project = projectService.create(
+                    "org.example",
+                    "empty-sources",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("empty-sources"))
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
 
-      final Path classFile = classesDir.resolve("org/example/Calculator.class");
-      assumeThat(classFile).doesNotExist();
+            final Path classesDir = tempDir.resolve(project.path())
+                    .resolve(project.artifactLayout().rootDir())
+                    .resolve(project.artifactLayout().classesDir())
+                    .resolve("main")
+                    .resolve("java");
+            assertThat(classesDir).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest(
+                        "Classes directory created but empty",
+                        () -> assertThat(classesDir).isEmptyDirectory()),
+            };
+        }
 
-    @DisplayName("Compiling main source with local JAR dependency works")
-    @TestFactory
-    DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var main = new MainSourceSetArgs(
-          SourceSet.Id.MAIN.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-          Set.of(Path.of("src", "main", "resources")),
-          List.of(new LocalJar(tempDir.resolve("slf4j-api.jar"))),
-          List.of(),
-          DependencyConstraints.EMPTY
-      );
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-      );
+        @DisplayName("Compiling main source set works")
+        @TestFactory
+        DynamicTest[] compilingMainWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+            final var project = projectService.create(
+                    "org.example",
+                    "calculator",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("calculator"))
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("calculator/build/classes/main/java");
+            assumeThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Calculator.class");
+            assumeThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
 
-    @DisplayName("Compiling main source without remote dependency fails")
-    @TestFactory
-    DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+        @DisplayName("Compiling main source with local JAR dependency works")
+        @TestFactory
+        DynamicTest[] compilingMainWithLocalJarDependencyWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var main = new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(new LocalJar(tempDir.resolve("slf4j-api.jar"))),
+                    List.of(),
+                    DependencyConstraints.EMPTY);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation fails",
-              () -> assertThatThrownBy(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).isInstanceOf(CompilationException.class)
-          ),
-          dynamicTest(
-              "Class file is not generated",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
-    }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
 
-    @DisplayName("Compiling main source with remote dependency works")
-    @TestFactory
-    DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
-      final var main = new MainSourceSetArgs(
-          SourceSet.Id.MAIN.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-          Set.of(Path.of("src", "main", "resources")),
-          List.of(slf4jApi),
-          List.of(),
-          DependencyConstraints.EMPTY
-      );
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-      );
+        @DisplayName("Compiling main source without remote dependency fails")
+        @TestFactory
+        DynamicTest[] compilingMainWithoutRemoteDependencyFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
 
-      final DependencyService dependencyService = createDependencyService(
-          tempDir.resolve("local-repository"),
-          projectService,
-          tempDir
-      );
-      final var service = new BuildService(
-          new JavaCompileService(),
-          dependencyService,
-          new JarService()
-      );
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation fails",
+                        () -> assertThatThrownBy(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .isInstanceOf(CompilationException.class)),
+                dynamicTest(
+                        "Class file is not generated",
+                        () -> assertThat(classFile).doesNotExist()),
+            };
+        }
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
+        @DisplayName("Compiling main source with remote dependency works")
+        @TestFactory
+        DynamicTest[] compilingMainWithRemoteDependencyWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var slf4jApi = GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17");
+            final var main = new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(slf4jApi),
+                    List.of(),
+                    DependencyConstraints.EMPTY);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
 
-    @DisplayName("""
+            final DependencyService dependencyService =
+                    createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
+            final var service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
+
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
+
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
+
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
+
+        @DisplayName("""
         Compiling main source with dependency without version
          and without dependency constraints fails
         """)
-    @TestFactory
-    DynamicTest[] compilingMainWithDependencyWithoutVersionAndConstraintFails(
-        @TempDir final Path tempDir
-    ) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-      final var main = new MainSourceSetArgs(
-          SourceSet.Id.MAIN.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-          Set.of(Path.of("src", "main", "resources")),
-          List.of(slf4jApi),
-          List.of(),
-          DependencyConstraints.EMPTY
-      );
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-      );
+        @TestFactory
+        DynamicTest[] compilingMainWithDependencyWithoutVersionAndConstraintFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+            final var main = new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(slf4jApi),
+                    List.of(),
+                    DependencyConstraints.EMPTY);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation fails",
-              () -> assertThatThrownBy(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).isInstanceOf(CompilationException.class)
-          ),
-          dynamicTest(
-              "Class file is not generated",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
-    }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation fails",
+                        () -> assertThatThrownBy(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .isInstanceOf(CompilationException.class)),
+                dynamicTest(
+                        "Class file is not generated",
+                        () -> assertThat(classFile).doesNotExist()),
+            };
+        }
 
-    @DisplayName("""
+        @DisplayName("""
         Compiling main source with dependency without version
          and with dependency constraints but without necessary
          constraint fails
         """)
-    @TestFactory
-    DynamicTest[] compilingMainWithoutNecessaryConstraintFails(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-      final var constraints = DependencyConstraints
-          .builder()
-          .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
-          .build();
-      final var main = new MainSourceSetArgs(
-          SourceSet.Id.MAIN.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-          Set.of(Path.of("src", "main", "resources")),
-          List.of(slf4jApi),
-          List.of(),
-          constraints
-      );
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-      );
+        @TestFactory
+        DynamicTest[] compilingMainWithoutNecessaryConstraintFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+            final var constraints = DependencyConstraints.builder()
+                    .withExactVersion(new GroupArtifact("ch.qos.logback", "logback-core"), "1.5.20")
+                    .build();
+            final var main = new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(slf4jApi),
+                    List.of(),
+                    constraints);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation fails",
-              () -> assertThatThrownBy(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).isInstanceOf(CompilationException.class)
-          ),
-          dynamicTest(
-              "Class file is not generated",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
-    }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation fails",
+                        () -> assertThatThrownBy(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .isInstanceOf(CompilationException.class)),
+                dynamicTest(
+                        "Class file is not generated",
+                        () -> assertThat(classFile).doesNotExist()),
+            };
+        }
 
-    @DisplayName("""
+        @DisplayName("""
         Compiling main source with dependency without version
          and with dependency constraints and with necessary
          constraint works
         """)
-    @TestFactory
-    DynamicTest[] compilingMainWithNecessaryConstraintWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
-      final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
-      final var constraints = DependencyConstraints
-          .builder()
-          .withExactVersion(slf4jApi, "2.0.17")
-          .build();
-      final var main = new MainSourceSetArgs(
-          SourceSet.Id.MAIN.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-          Set.of(Path.of("src", "main", "resources")),
-          List.of(slf4jApi),
-          List.of(),
-          constraints
-      );
-      final var project = projectService.create("org.example", "slf4j-example", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("slf4j-example"))
-              .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-      );
+        @TestFactory
+        DynamicTest[] compilingMainWithNecessaryConstraintWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/slf4j.yaml", tempDir);
+            final var slf4jApi = new GroupArtifact("org.slf4j", "slf4j-api");
+            final var constraints = DependencyConstraints.builder()
+                    .withExactVersion(slf4jApi, "2.0.17")
+                    .build();
+            final var main = new MainSourceSetArgs(
+                    SourceSet.Id.MAIN.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                    Set.of(Path.of("src", "main", "resources")),
+                    List.of(slf4jApi),
+                    List.of(),
+                    constraints);
+            final var project = projectService.create(
+                    "org.example",
+                    "slf4j-example",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("slf4j-example"))
+                            .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
 
-      final DependencyService dependencyService = createDependencyService(
-          tempDir.resolve("local-repository"),
-          projectService,
-          tempDir
-      );
+            final DependencyService dependencyService =
+                    createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
 
-      final BuildService service = new BuildService(
-          new JavaCompileService(),
-          dependencyService,
-          new JarService()
-      );
+            final BuildService service =
+                    new BuildService(new JavaCompileService(), dependencyService, new JarService());
 
-      final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("slf4j-example/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/Slf4jExample.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
-  }
-
-  @DisplayName("Check compiling main source set")
-  @Nested
-  class CompileMainWithProjectDependency {
-
-    @DisplayName("Compiling main source set without compiling project dependency fails")
-    @TestFactory
-    DynamicTest[] compilingMainWithoutCompilingProjectDependencyFails(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
-
-      final Project calculatorProject;
-      {
-        calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
-            builder -> builder
-                .withPath(Path.of("calculator"))
-                .withSourceSets(
-                    MainSourceSetArgs.withMainDefaults(),
-                    TestSourceSetArgs.withTestDefaults()
-                )
-        );
-      }
-
-      final Project calculatorConsumerProject;
-      {
-        final var main = new MainSourceSetArgs(
-            SourceSet.Id.MAIN.toString(),
-            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-            Set.of(Path.of("src", "main", "resources")),
-            List.of(calculatorProject),
-            List.of(),
-            DependencyConstraints.EMPTY
-        );
-        calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
-            "0.1.0",
-            builder -> builder
-                .withPath(Path.of("calculator-consumer"))
-                .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-        );
-      }
-
-      final DependencyService dependencyService = createDependencyService(
-          tempDir.resolve("local-repository"),
-          projectService,
-          tempDir
-      );
-      final var service = new BuildService(
-          new JavaCompileService(),
-          dependencyService,
-          new JarService()
-      );
-
-      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
-
-      final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
-      assertThat(classFile).doesNotExist();
-
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation fails",
-              () -> assertThatThrownBy(() -> service.compileJava(
-                  tempDir, calculatorConsumerProject.mainSourceSet(),
-                  JavaCompilerOptions.EMPTY
-              )).isInstanceOf(CompilationException.class)
-          ),
-          dynamicTest(
-              "Class file does not exist",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
     }
 
-    @DisplayName("Compiling main source set with compiled project dependency works")
-    @TestFactory
-    DynamicTest[] compilingMainWithCompiledProjectDependencyWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
+    @DisplayName("Check compiling main source set")
+    @Nested
+    class CompileMainWithProjectDependency {
 
-      final Project calculatorProject;
-      {
-        calculatorProject = projectService.create("org.example", "calculator", "0.1.0",
-            builder -> builder
-                .withPath(Path.of("calculator"))
-                .withSourceSets(
-                    MainSourceSetArgs.withMainDefaults(),
-                    TestSourceSetArgs.withTestDefaults()
-                )
-        );
-      }
+        @DisplayName("Compiling main source set without compiling project dependency fails")
+        @TestFactory
+        DynamicTest[] compilingMainWithoutCompilingProjectDependencyFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+            FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
 
-      final Project calculatorConsumerProject;
-      {
-        final var main = new MainSourceSetArgs(
-            SourceSet.Id.MAIN.toString(),
-            SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-            Set.of(Path.of("src", "main", "resources")),
-            List.of(calculatorProject),
-            List.of(),
-            DependencyConstraints.EMPTY
-        );
-        calculatorConsumerProject = projectService.create("org.example", "calculator-consumer",
-            "0.1.0",
-            builder -> builder
-                .withPath(Path.of("calculator-consumer"))
-                .withSourceSets(main, TestSourceSetArgs.withTestDefaults())
-        );
-      }
+            final Project calculatorProject;
+            {
+                calculatorProject = projectService.create(
+                        "org.example",
+                        "calculator",
+                        "0.1.0",
+                        builder -> builder.withPath(Path.of("calculator"))
+                                .withSourceSets(
+                                        MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+            }
 
-      final DependencyService dependencyService = createDependencyService(
-          tempDir.resolve("local-repository"),
-          projectService,
-          tempDir
-      );
-      final var service = new BuildService(
-          new JavaCompileService(),
-          dependencyService,
-          new JarService()
-      );
+            final Project calculatorConsumerProject;
+            {
+                final var main = new MainSourceSetArgs(
+                        SourceSet.Id.MAIN.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                        Set.of(Path.of("src", "main", "resources")),
+                        List.of(calculatorProject),
+                        List.of(),
+                        DependencyConstraints.EMPTY);
+                calculatorConsumerProject = projectService.create(
+                        "org.example",
+                        "calculator-consumer",
+                        "0.1.0",
+                        builder -> builder.withPath(Path.of("calculator-consumer"))
+                                .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
+            }
 
-      final var calculatorCompiled = service.compileJava(
-          tempDir, calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY
-      );
-      service.createJar(
-          tempDir, calculatorProject, List.of(calculatorCompiled.outputDirectory()), Map.of(), null
-      );
+            final DependencyService dependencyService =
+                    createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
+            final var service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
 
-      final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, calculatorConsumerProject.mainSourceSet(),
-                  JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
-  }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation fails",
+                        () -> assertThatThrownBy(() -> service.compileJava(
+                                        tempDir, calculatorConsumerProject.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .isInstanceOf(CompilationException.class)),
+                dynamicTest(
+                        "Class file does not exist", () -> assertThat(classFile).doesNotExist()),
+            };
+        }
 
-  @DisplayName("Check compiling test source set")
-  @Nested
-  class CompileTest {
+        @DisplayName("Compiling main source set with compiled project dependency works")
+        @TestFactory
+        DynamicTest[] compilingMainWithCompiledProjectDependencyWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+            FsUtils.setupFromYaml("/projects/calculator-consumer.yaml", tempDir);
 
-    @DisplayName("Compiling test source set without compiling main works")
-    @TestFactory
-    DynamicTest[] compilingTestWithoutMainFails(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = MainSourceSetArgs.withMainDefaults();
-      final var test = new TestSourceSetArgs(
-          SourceSet.Id.TEST.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-          Set.of(Path.of("src", "test", "resources")),
-          List.of(
-              main,
-              new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
-              new LocalJar(tempDir.resolve("apiguardian-api.jar"))
-          ),
-          List.of(),
-          DependencyConstraints.EMPTY
-      );
-      final var project = projectService.create("org.example", "calculator", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("calculator"))
-              .withSourceSets(main, test)
-      );
+            final Project calculatorProject;
+            {
+                calculatorProject = projectService.create(
+                        "org.example",
+                        "calculator",
+                        "0.1.0",
+                        builder -> builder.withPath(Path.of("calculator"))
+                                .withSourceSets(
+                                        MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+            }
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
-      assertThat(classesDir).doesNotExist();
+            final Project calculatorConsumerProject;
+            {
+                final var main = new MainSourceSetArgs(
+                        SourceSet.Id.MAIN.toString(),
+                        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                        Set.of(Path.of("src", "main", "resources")),
+                        List.of(calculatorProject),
+                        List.of(),
+                        DependencyConstraints.EMPTY);
+                calculatorConsumerProject = projectService.create(
+                        "org.example",
+                        "calculator-consumer",
+                        "0.1.0",
+                        builder -> builder.withPath(Path.of("calculator-consumer"))
+                                .withSourceSets(main, TestSourceSetArgs.withTestDefaults()));
+            }
 
-      final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
-      assertThat(classFile).doesNotExist();
+            final DependencyService dependencyService =
+                    createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
+            final var service = new BuildService(new JavaCompileService(), dependencyService, new JarService());
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation fails",
-              () -> assertThatThrownBy(() -> service.compileJava(
-                  tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
-              )).isInstanceOf(CompilationException.class)
-          ),
-          dynamicTest(
-              "Class file does not exist",
-              () -> assertThat(classFile).doesNotExist()
-          ),
-      };
+            final var calculatorCompiled =
+                    service.compileJava(tempDir, calculatorProject.mainSourceSet(), JavaCompilerOptions.EMPTY);
+            service.createJar(
+                    tempDir, calculatorProject, List.of(calculatorCompiled.outputDirectory()), Map.of(), null);
+
+            final Path classesDir = tempDir.resolve("calculator-consumer/build/classes/main/java");
+            assertThat(classesDir).doesNotExist();
+
+            final Path classFile = classesDir.resolve("org/example/CalculatorConsumer.class");
+            assertThat(classFile).doesNotExist();
+
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, calculatorConsumerProject.mainSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
     }
 
-    @DisplayName("Compiling test source set works")
-    @TestFactory
-    DynamicTest[] compilingTestAfterMainWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
-      final var main = MainSourceSetArgs.withMainDefaults();
-      final var test = new TestSourceSetArgs(
-          SourceSet.Id.TEST.toString(),
-          SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-          Set.of(Path.of("src", "test", "resources")),
-          List.of(
-              main,
-              new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
-              new LocalJar(tempDir.resolve("apiguardian-api.jar"))
-          ),
-          List.of(),
-          DependencyConstraints.EMPTY
-      );
-      final var project = projectService.create("org.example", "calculator", "0.1.0",
-          builder -> builder
-              .withPath(Path.of("calculator"))
-              .withSourceSets(main, test)
-      );
+    @DisplayName("Check compiling test source set")
+    @Nested
+    class CompileTest {
 
-      final var dependencyService =
-          createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
-      final BuildService service = new BuildService(
-          new JavaCompileService(),
-          dependencyService,
-          new JarService()
-      );
-      final var mainCompiled = service.compileJava(
-          tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY
-      );
-      service.createJar(
-          tempDir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
-      );
+        @DisplayName("Compiling test source set without compiling main works")
+        @TestFactory
+        DynamicTest[] compilingTestWithoutMainFails(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+            final var main = MainSourceSetArgs.withMainDefaults();
+            final var test = new TestSourceSetArgs(
+                    SourceSet.Id.TEST.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                    Set.of(Path.of("src", "test", "resources")),
+                    List.of(
+                            main,
+                            new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
+                            new LocalJar(tempDir.resolve("apiguardian-api.jar"))),
+                    List.of(),
+                    DependencyConstraints.EMPTY);
+            final var project = projectService.create(
+                    "org.example",
+                    "calculator",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("calculator")).withSourceSets(main, test));
 
-      final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
-      assertThat(classesDir).doesNotExist();
+            final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
-      assertThat(classFile).doesNotExist();
+            final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
+            assertThat(classFile).doesNotExist();
 
-      return new DynamicTest[]{
-          dynamicTest(
-              "Compilation succeeds",
-              () -> assertThatCode(() -> service.compileJava(
-                  tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY
-              )).doesNotThrowAnyException()
-          ),
-          dynamicTest(
-              "Class file exists",
-              () -> assertThat(classFile).isRegularFile()
-          ),
-      };
-    }
-  }
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation fails",
+                        () -> assertThatThrownBy(() -> service.compileJava(
+                                        tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY))
+                                .isInstanceOf(CompilationException.class)),
+                dynamicTest(
+                        "Class file does not exist", () -> assertThat(classFile).doesNotExist()),
+            };
+        }
 
-  @DisplayName("Tests for cleaning project build output")
-  @Nested
-  class CleanTest {
+        @DisplayName("Compiling test source set works")
+        @TestFactory
+        DynamicTest[] compilingTestAfterMainWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/calculator.yaml", tempDir);
+            final var main = MainSourceSetArgs.withMainDefaults();
+            final var test = new TestSourceSetArgs(
+                    SourceSet.Id.TEST.toString(),
+                    SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                    Set.of(Path.of("src", "test", "resources")),
+                    List.of(
+                            main,
+                            new LocalJar(tempDir.resolve("junit-jupiter-api.jar")),
+                            new LocalJar(tempDir.resolve("apiguardian-api.jar"))),
+                    List.of(),
+                    DependencyConstraints.EMPTY);
+            final var project = projectService.create(
+                    "org.example",
+                    "calculator",
+                    "0.1.0",
+                    builder -> builder.withPath(Path.of("calculator")).withSourceSets(main, test));
 
-    @DisplayName("Check cleaning missing directory works")
-    @Test
-    void testCleanMissingDirectoryWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
-          builder -> builder
-              .withPath("hello-world")
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-      final Path buildOutputDir = tempDir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir());
-      assertThat(buildOutputDir).doesNotExist();
-      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
-    }
+            final var dependencyService =
+                    createDependencyService(tempDir.resolve("local-repository"), projectService, tempDir);
+            final BuildService service =
+                    new BuildService(new JavaCompileService(), dependencyService, new JarService());
+            final var mainCompiled = service.compileJava(tempDir, project.mainSourceSet(), JavaCompilerOptions.EMPTY);
+            service.createJar(
+                    tempDir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
 
-    @DisplayName("Check cleaning empty directory works")
-    @Test
-    void testCleanEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
-      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
-          builder -> builder
-              .withPath("hello-world")
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+            final Path classesDir = tempDir.resolve("calculator/build/classes/test/java");
+            assertThat(classesDir).doesNotExist();
 
-      final Path buildOutputDir = tempDir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir());
-      Files.createDirectories(buildOutputDir);
-      assertThat(buildOutputDir).isEmptyDirectory();
+            final Path classFile = classesDir.resolve("org/example/CalculatorTest.class");
+            assertThat(classFile).doesNotExist();
 
-      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+            return new DynamicTest[] {
+                dynamicTest(
+                        "Compilation succeeds",
+                        () -> assertThatCode(() -> service.compileJava(
+                                        tempDir, project.testSourceSet(), JavaCompilerOptions.EMPTY))
+                                .doesNotThrowAnyException()),
+                dynamicTest("Class file exists", () -> assertThat(classFile).isRegularFile()),
+            };
+        }
     }
 
-    @DisplayName("Check cleaning non-empty directory works")
-    @Test
-    void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) {
-      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
-          builder -> builder
-              .withPath("hello-world")
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
-      final var java21 = JavaCompilerOptions
-          .builder()
-          .release("21")
-          .build();
-      service.compileJava(tempDir, project.mainSourceSet(), java21);
+    @DisplayName("Tests for cleaning project build output")
+    @Nested
+    class CleanTest {
 
-      final Path buildOutputDir = tempDir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir());
-      assertThat(buildOutputDir).isNotEmptyDirectory();
+        @DisplayName("Check cleaning missing directory works")
+        @Test
+        void testCleanMissingDirectoryWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+            final Project project = projectService.create(
+                    "org.example",
+                    "hello-world",
+                    "0.1.0",
+                    builder -> builder.withPath("hello-world")
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+            final Path buildOutputDir = tempDir.resolve(project.path())
+                    .resolve(project.artifactLayout().rootDir());
+            assertThat(buildOutputDir).doesNotExist();
+            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        }
 
-      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        @DisplayName("Check cleaning empty directory works")
+        @Test
+        void testCleanEmptyDirectoryWorks(@TempDir final Path tempDir) throws IOException {
+            FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+            final Project project = projectService.create(
+                    "org.example",
+                    "hello-world",
+                    "0.1.0",
+                    builder -> builder.withPath("hello-world")
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+
+            final Path buildOutputDir = tempDir.resolve(project.path())
+                    .resolve(project.artifactLayout().rootDir());
+            Files.createDirectories(buildOutputDir);
+            assertThat(buildOutputDir).isEmptyDirectory();
+
+            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        }
+
+        @DisplayName("Check cleaning non-empty directory works")
+        @Test
+        void testCleanNonEmptyDirectoryWorks(@TempDir final Path tempDir) {
+            FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+            final Project project = projectService.create(
+                    "org.example",
+                    "hello-world",
+                    "0.1.0",
+                    builder -> builder.withPath("hello-world")
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+            final var java21 = JavaCompilerOptions.builder().release("21").build();
+            service.compileJava(tempDir, project.mainSourceSet(), java21);
+
+            final Path buildOutputDir = tempDir.resolve(project.path())
+                    .resolve(project.artifactLayout().rootDir());
+            assertThat(buildOutputDir).isNotEmptyDirectory();
+
+            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        }
+
+        @DisplayName("Check cleaning build output which is regular file works silently")
+        @Test
+        void testCleanFile(@TempDir final Path tempDir) throws IOException {
+            FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
+            final Project project = projectService.create(
+                    "org.example",
+                    "hello-world",
+                    "0.1.0",
+                    builder -> builder.withPath("hello-world")
+                            .withSourceSets(
+                                    MainSourceSetArgs.withMainDefaults(), TestSourceSetArgs.withTestDefaults()));
+
+            final Path buildOutputDir = tempDir.resolve(project.path())
+                    .resolve(project.artifactLayout().rootDir());
+            Files.writeString(buildOutputDir, "This should not be a file");
+            assertThat(buildOutputDir).isNotEmptyFile();
+
+            assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        }
     }
 
-    @DisplayName("Check cleaning build output which is regular file works silently")
-    @Test
-    void testCleanFile(@TempDir final Path tempDir) throws IOException {
-      FsUtils.setupFromYaml("/projects/hello-world.yaml", tempDir);
-      final Project project = projectService.create("org.example", "hello-world", "0.1.0",
-          builder -> builder
-              .withPath("hello-world")
-              .withSourceSets(
-                  MainSourceSetArgs.withMainDefaults(),
-                  TestSourceSetArgs.withTestDefaults()
-              )
-      );
+    /**
+     * Dependency service with project workspace reader set.
+     */
+    private static DependencyService createDependencyService(
+            final Path localRepositoryBasePath, final ProjectService projectService, @Nullable final Path workdir) {
+        final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+        final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+        session.setSystemProperty("java.version", "21");
+        final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+        final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+        session.setLocalRepositoryManager(manager);
 
-      final Path buildOutputDir = tempDir
-          .resolve(project.path())
-          .resolve(project.artifactLayout().rootDir());
-      Files.writeString(buildOutputDir, "This should not be a file");
-      assertThat(buildOutputDir).isNotEmptyFile();
+        session.setDependencySelector(new AndDependencySelector(
+                new ScopeDependencySelector("test"),
+                new OptionalDependencySelector(),
+                new ExclusionDependencySelector()));
 
-      assertThatCode(() -> service.clean(tempDir, project)).doesNotThrowAnyException();
+        if (workdir != null) {
+            session.setWorkspaceReader(
+                    new ProjectWorkspaceReader(new WorkspaceRepository("test"), workdir, projectService));
+        }
+
+        final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                "proxy",
+                                "default",
+                                RepositoryProxySupport.mavenCentralUri().toString())
+                        .build());
+        return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
     }
-  }
-
-  /**
-   * Dependency service with project workspace reader set.
-   */
-  private static DependencyService createDependencyService(
-      final Path localRepositoryBasePath,
-      final ProjectService projectService,
-      @Nullable final Path workdir
-  ) {
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
-
-    session.setDependencySelector(new AndDependencySelector(
-        new ScopeDependencySelector("test"),
-        new OptionalDependencySelector(),
-        new ExclusionDependencySelector()
-    ));
-
-    if (workdir != null) {
-      session.setWorkspaceReader(new ProjectWorkspaceReader(
-          new WorkspaceRepository("test"),
-          workdir,
-          projectService
-      ));
-    }
-
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("proxy", "default", RepositoryProxySupport.mavenCentralUri().toString())
-            .build()
-    );
-    return new MavenArtifactResolverDependencyService(
-        repoSystem,
-        session,
-        repositories
-    );
-  }
 }

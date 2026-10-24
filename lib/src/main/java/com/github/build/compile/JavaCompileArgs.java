@@ -20,27 +20,20 @@ import java.util.Set;
  * undesired implementation-dependent path resolution
  * @since 1.0.0
  */
-public record JavaCompileArgs(
-    Set<Path> sources,
-    Path classesDir,
-    Set<Path> classpath,
-    JavaCompilerOptions options
-) {
+public record JavaCompileArgs(Set<Path> sources, Path classesDir, Set<Path> classpath, JavaCompilerOptions options) {
 
-  public JavaCompileArgs {
-    sources = Objects.requireNonNull(sources)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-    classesDir = Objects.requireNonNull(classesDir).normalize().toAbsolutePath();
-    classpath = Objects.requireNonNull(classpath)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-    Objects.requireNonNull(options);
-  }
+    public JavaCompileArgs {
+        sources = Objects.requireNonNull(sources).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+        classesDir = Objects.requireNonNull(classesDir).normalize().toAbsolutePath();
+        classpath = Objects.requireNonNull(classpath).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+        Objects.requireNonNull(options);
+    }
 }

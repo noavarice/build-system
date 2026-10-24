@@ -12,12 +12,11 @@ import java.util.Set;
  */
 public record JUnitTestTaskArgs(Set<Path> testClassesDirs) {
 
-  public JUnitTestTaskArgs {
-    testClassesDirs = Objects.requireNonNull(testClassesDirs)
-        .stream()
-        .map(Objects::requireNonNull)
-        .map(Path::normalize)
-        .map(Path::toAbsolutePath)
-        .collect(toUnmodifiableSet());
-  }
+    public JUnitTestTaskArgs {
+        testClassesDirs = Objects.requireNonNull(testClassesDirs).stream()
+                .map(Objects::requireNonNull)
+                .map(Path::normalize)
+                .map(Path::toAbsolutePath)
+                .collect(toUnmodifiableSet());
+    }
 }

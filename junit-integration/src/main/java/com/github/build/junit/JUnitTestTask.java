@@ -37,112 +37,94 @@ import org.slf4j.event.Level;
  */
 public final class JUnitTestTask implements Function<JUnitTestTaskArgs, TestResults> {
 
-  private static final Logger log = LoggerFactory.getLogger(JUnitTestTask.class);
+    private static final Logger log = LoggerFactory.getLogger(JUnitTestTask.class);
 
-  public static void main(final String[] args) {
-    try {
-      final var unixSocketPath = Path.of(args[0]);
-      final UnixSocketClient<JUnitEvent> client = UnixSocketClient.of(
-          unixSocketPath,
-          new JUnitEventJsonCodec()
-      );
-      final var testExecutionListener = new UnixSocketForwardingTestExecutionListener(client);
+    public static void main(final String[] args) {
+        try {
+            final var unixSocketPath = Path.of(args[0]);
+            final UnixSocketClient<JUnitEvent> client = UnixSocketClient.of(unixSocketPath, new JUnitEventJsonCodec());
+            final var testExecutionListener = new UnixSocketForwardingTestExecutionListener(client);
 
-      final Set<Path> testClassesDirs = Arrays.stream(args, 1, args.length)
-          .map(Path::of)
-          .collect(toUnmodifiableSet());
-      final var taskArgs = new JUnitTestTaskArgs(testClassesDirs);
-      runTests(taskArgs, testExecutionListener);
-    } catch (final Exception e) {
-      log.error("Test task failed", e);
-      System.exit(1);
-      return;
-    }
-
-    System.exit(0);
-  }
-
-  @Override
-  public TestResults apply(final JUnitTestTaskArgs args) {
-    final var summaryListener = new SummaryGeneratingListener();
-    runTests(args, summaryListener);
-
-    final TestExecutionSummary summary;
-    try {
-      summary = summaryListener.getSummary();
-    } catch (final PreconditionViolationException e) {
-      return TestResults.NO_TESTS_FOUND;
-    }
-
-    List<TestFailure> failures = summary.getFailures().stream()
-        .map(f -> {
-          Throwable t = f.getException();
-          return new TestFailure(
-              f.getTestIdentifier().getUniqueId(),
-              f.getTestIdentifier().getDisplayName(),
-              t.getClass().getName(),
-              t.getMessage(),
-              List.of(t.getStackTrace())
-          );
-        })
-        .toList();
-
-    return new TestResults(
-        summary.getTestsSucceededCount(),
-        summary.getTestsFailedCount(),
-        summary.getTestsSkippedCount(),
-        failures
-    );
-  }
-
-  // TODO: handle situation when no test engines can be found
-  private static void runTests(
-      final JUnitTestTaskArgs args,
-      final TestExecutionListener... testExecutionListeners
-  ) {
-    final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder
-        .request()
-        .selectors(selectClasspathRoots(args.testClassesDirs()))
-        .build();
-
-    try (final LauncherSession session = LauncherFactory.openSession()) {
-      final Launcher launcher = session.getLauncher();
-      if (testExecutionListeners != null) {
-        launcher.registerTestExecutionListeners(testExecutionListeners);
-      }
-
-      final TestPlan testPlan = launcher.discover(request);
-      if (!testPlan.containsTests()) {
-        log.warn("No tests found"); // TODO: add project ID correlation
-        return;
-      }
-
-      final TestExecutionListener executionListener = new TestExecutionListener() {
-        @Override
-        public void executionFinished(
-            final TestIdentifier testIdentifier,
-            final TestExecutionResult testExecutionResult
-        ) {
-          final Level level = switch (testExecutionResult.getStatus()) {
-            case SUCCESSFUL, ABORTED -> Level.DEBUG;
-            case FAILED -> Level.ERROR;
-          };
-          final Optional<Throwable> t = testExecutionResult.getThrowable();
-          if (t.isPresent()) {
-            log.atLevel(level).log("{} {}",
-                testIdentifier.getUniqueId(),
-                testExecutionResult.getStatus(),
-                t.get()
-            );
-          } else {
-            log.atLevel(level).log("{} {}",
-                testIdentifier.getUniqueId(),
-                testExecutionResult.getStatus()
-            );
-          }
+            final Set<Path> testClassesDirs =
+                    Arrays.stream(args, 1, args.length).map(Path::of).collect(toUnmodifiableSet());
+            final var taskArgs = new JUnitTestTaskArgs(testClassesDirs);
+            runTests(taskArgs, testExecutionListener);
+        } catch (final Exception e) {
+            log.error("Test task failed", e);
+            System.exit(1);
+            return;
         }
-      };
-      launcher.execute(testPlan, executionListener);
+
+        System.exit(0);
     }
-  }
+
+    @Override
+    public TestResults apply(final JUnitTestTaskArgs args) {
+        final var summaryListener = new SummaryGeneratingListener();
+        runTests(args, summaryListener);
+
+        final TestExecutionSummary summary;
+        try {
+            summary = summaryListener.getSummary();
+        } catch (final PreconditionViolationException e) {
+            return TestResults.NO_TESTS_FOUND;
+        }
+
+        List<TestFailure> failures = summary.getFailures().stream()
+                .map(f -> {
+                    Throwable t = f.getException();
+                    return new TestFailure(
+                            f.getTestIdentifier().getUniqueId(),
+                            f.getTestIdentifier().getDisplayName(),
+                            t.getClass().getName(),
+                            t.getMessage(),
+                            List.of(t.getStackTrace()));
+                })
+                .toList();
+
+        return new TestResults(
+                summary.getTestsSucceededCount(),
+                summary.getTestsFailedCount(),
+                summary.getTestsSkippedCount(),
+                failures);
+    }
+
+    // TODO: handle situation when no test engines can be found
+    private static void runTests(final JUnitTestTaskArgs args, final TestExecutionListener... testExecutionListeners) {
+        final LauncherDiscoveryRequest request = LauncherDiscoveryRequestBuilder.request()
+                .selectors(selectClasspathRoots(args.testClassesDirs()))
+                .build();
+
+        try (final LauncherSession session = LauncherFactory.openSession()) {
+            final Launcher launcher = session.getLauncher();
+            if (testExecutionListeners != null) {
+                launcher.registerTestExecutionListeners(testExecutionListeners);
+            }
+
+            final TestPlan testPlan = launcher.discover(request);
+            if (!testPlan.containsTests()) {
+                log.warn("No tests found"); // TODO: add project ID correlation
+                return;
+            }
+
+            final TestExecutionListener executionListener = new TestExecutionListener() {
+                @Override
+                public void executionFinished(
+                        final TestIdentifier testIdentifier, final TestExecutionResult testExecutionResult) {
+                    final Level level = switch (testExecutionResult.getStatus()) {
+                        case SUCCESSFUL, ABORTED -> Level.DEBUG;
+                        case FAILED -> Level.ERROR;
+                    };
+                    final Optional<Throwable> t = testExecutionResult.getThrowable();
+                    if (t.isPresent()) {
+                        log.atLevel(level)
+                                .log("{} {}", testIdentifier.getUniqueId(), testExecutionResult.getStatus(), t.get());
+                    } else {
+                        log.atLevel(level).log("{} {}", testIdentifier.getUniqueId(), testExecutionResult.getStatus());
+                    }
+                }
+            };
+            launcher.execute(testPlan, executionListener);
+        }
+    }
 }

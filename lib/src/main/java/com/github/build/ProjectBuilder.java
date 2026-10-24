@@ -8,16 +8,13 @@ import java.nio.file.Path;
  */
 public interface ProjectBuilder {
 
-  ProjectBuilder withVersion(String version);
+    ProjectBuilder withVersion(String version);
 
-  ProjectBuilder withPath(String path);
+    ProjectBuilder withPath(String path);
 
-  ProjectBuilder withPath(Path path);
+    ProjectBuilder withPath(Path path);
 
-  ProjectBuilder withSourceSets(
-      MainSourceSetArgs mainSourceSetArgs,
-      TestSourceSetArgs... testSourceSetArgsList
-  );
+    ProjectBuilder withSourceSets(MainSourceSetArgs mainSourceSetArgs, TestSourceSetArgs... testSourceSetArgsList);
 
-  ProjectBuilder withArtifactLayout(Project.ArtifactLayout artifactLayout);
+    ProjectBuilder withArtifactLayout(Project.ArtifactLayout artifactLayout);
 }

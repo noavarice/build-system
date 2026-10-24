@@ -59,7 +59,7 @@ Projects built have two independent output directories; do not confuse them:
 ## Conventions
 
 - Nullness is enforced via JSpecify; every package is `@NullMarked` (`package-info.java`). New code must carry JSpecify annotations.
-- Style is the IntelliJ formatter via `.editorconfig`: 2-space indent, 100-col limit, `final` locals. No formatter/lint plugin runs in the Maven build — match existing style manually.
+- Style is palantir-java-format (4-space indent, 120 cols), enforced by the Spotless Maven plugin: `spotless:check` is bound to `verify`, so `mvn clean install` (and `verify`) fails on unformatted Java, and `mvn spotless:apply` rewrites files in place. `.editorconfig` still describes the older IntelliJ 2-space settings, which are no longer what the Maven build enforces.
 - Fine-grained unit tests for non-critical code are forbidden for now; the project is in an early stage and such tests slow development. Integration tests that verify meaningful behavior are acceptable.
 - Put temporary/scratch files in the repo-local, gitignored `tmp/` directory, not the global `/tmp`.
 - There is no README and no CI; `AGENTS.md` and the `.run` configs are the only workflow documentation.

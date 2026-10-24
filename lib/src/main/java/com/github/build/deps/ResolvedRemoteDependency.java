@@ -12,9 +12,9 @@ import java.util.Objects;
  */
 public record ResolvedRemoteDependency(Path jarPath) {
 
-  public ResolvedRemoteDependency {
-    Objects.requireNonNull(jarPath);
-    PathUtils.checkAbsolute(jarPath);
-    jarPath = jarPath.normalize();
-  }
+    public ResolvedRemoteDependency {
+        Objects.requireNonNull(jarPath);
+        PathUtils.checkAbsolute(jarPath);
+        jarPath = jarPath.normalize();
+    }
 }

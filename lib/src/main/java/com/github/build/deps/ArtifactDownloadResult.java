@@ -12,7 +12,7 @@ import java.util.Objects;
  */
 public record ArtifactDownloadResult(InputStream stream) {
 
-  public ArtifactDownloadResult {
-    Objects.requireNonNull(stream);
-  }
+    public ArtifactDownloadResult {
+        Objects.requireNonNull(stream);
+    }
 }

@@ -7,9 +7,9 @@ import java.util.Optional;
  */
 public interface RemoteRepository {
 
-  Optional<ArtifactDownloadResult> download(GroupArtifactVersion dependency);
+    Optional<ArtifactDownloadResult> download(GroupArtifactVersion dependency);
 
-  Optional<Pom> getPom(GroupArtifactVersion gav);
+    Optional<Pom> getPom(GroupArtifactVersion gav);
 
-  Optional<String> findMax(GroupArtifact ga, MavenVersion.Range range);
+    Optional<String> findMax(GroupArtifact ga, MavenVersion.Range range);
 }

@@ -24,127 +24,117 @@ import org.slf4j.LoggerFactory;
  */
 public final class UnixSocketServer<T> implements AutoCloseable {
 
-  private static final Logger log = LoggerFactory.getLogger(UnixSocketServer.class);
+    private static final Logger log = LoggerFactory.getLogger(UnixSocketServer.class);
 
-  public static <T> UnixSocketServer<T> of(
-      final Path socketPath,
-      final EventCodec<T> codec,
-      final Consumer<T> handler,
-      final int bufferSizeBytes
-  ) {
-    final Path absoluteSocketPath = Objects.requireNonNull(socketPath).normalize().toAbsolutePath();
-    Objects.requireNonNull(codec);
-    Objects.requireNonNull(handler);
+    public static <T> UnixSocketServer<T> of(
+            final Path socketPath, final EventCodec<T> codec, final Consumer<T> handler, final int bufferSizeBytes) {
+        final Path absoluteSocketPath =
+                Objects.requireNonNull(socketPath).normalize().toAbsolutePath();
+        Objects.requireNonNull(codec);
+        Objects.requireNonNull(handler);
 
-    if (bufferSizeBytes < 1) {
-      throw new IllegalArgumentException("Buffer size must be positive");
-    }
-
-    final ServerSocketChannel socketChannel;
-    try {
-      socketChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    final var socketAddress = UnixDomainSocketAddress.of(absoluteSocketPath);
-    try {
-      socketChannel.bind(socketAddress);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-
-    return new UnixSocketServer<>(
-        absoluteSocketPath,
-        socketChannel,
-        codec,
-        handler,
-        bufferSizeBytes
-    );
-  }
-
-  private final Path socketPath;
-
-  private final ServerSocketChannel socketChannel;
-
-  /**
-   * For deserializing events from raw byte array.
-   */
-  private final EventCodec<T> codec;
-
-  /**
-   * Performs actual event handling.
-   */
-  private final Consumer<T> handler;
-
-  private final int bufferSizeBytes;
-
-  private final AtomicBoolean stopListening = new AtomicBoolean(false);
-
-  private UnixSocketServer(
-      final Path socketPath,
-      final ServerSocketChannel socketChannel,
-      final EventCodec<T> codec,
-      final Consumer<T> handler,
-      final int bufferSizeBytes
-  ) {
-    this.socketPath = Objects.requireNonNull(socketPath);
-    this.socketChannel = Objects.requireNonNull(socketChannel);
-    this.codec = Objects.requireNonNull(codec);
-    this.handler = Objects.requireNonNull(handler);
-    this.bufferSizeBytes = bufferSizeBytes;
-  }
-
-  public void listen() {
-    log.debug("Start listening for events over Unix socket {}", socketPath);
-    while (!stopListening.get()) {
-      final byte[] bytes;
-      try (final SocketChannel clientChannel = socketChannel.accept()) {
-        // TODO: value is random, consider some specific value
-        final var buffer = ByteBuffer.allocate(bufferSizeBytes);
-        int bytesRead = clientChannel.read(buffer);
-        if (bytesRead < 0) {
-          continue;
+        if (bufferSizeBytes < 1) {
+            throw new IllegalArgumentException("Buffer size must be positive");
         }
 
-        bytes = new byte[bytesRead];
-        buffer.flip();
-        buffer.get(bytes);
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      }
+        final ServerSocketChannel socketChannel;
+        try {
+            socketChannel = ServerSocketChannel.open(StandardProtocolFamily.UNIX);
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
 
-      final T event;
-      try {
-        event = codec.toValue(bytes);
-      } catch (final Exception e) {
-        log.warn("Failed to decode event", e);
-        continue;
-      }
+        final var socketAddress = UnixDomainSocketAddress.of(absoluteSocketPath);
+        try {
+            socketChannel.bind(socketAddress);
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
 
-      handler.accept(event);
+        return new UnixSocketServer<>(absoluteSocketPath, socketChannel, codec, handler, bufferSizeBytes);
     }
 
-    log.debug("Stopped listening for events over Unix socket {}", socketPath);
-  }
+    private final Path socketPath;
 
-  @Override
-  public void close() {
-    log.debug("Stop listening for events over Unix socket {}", socketPath);
-    stopListening.set(true);
+    private final ServerSocketChannel socketChannel;
 
-    log.debug("Closing channel for Unix socket {}", socketPath);
-    try {
-      socketChannel.close();
-    } catch (final IOException e) {
-      log.warn("Failed to close channel for Unix socket {}", socketPath, e);
+    /**
+     * For deserializing events from raw byte array.
+     */
+    private final EventCodec<T> codec;
+
+    /**
+     * Performs actual event handling.
+     */
+    private final Consumer<T> handler;
+
+    private final int bufferSizeBytes;
+
+    private final AtomicBoolean stopListening = new AtomicBoolean(false);
+
+    private UnixSocketServer(
+            final Path socketPath,
+            final ServerSocketChannel socketChannel,
+            final EventCodec<T> codec,
+            final Consumer<T> handler,
+            final int bufferSizeBytes) {
+        this.socketPath = Objects.requireNonNull(socketPath);
+        this.socketChannel = Objects.requireNonNull(socketChannel);
+        this.codec = Objects.requireNonNull(codec);
+        this.handler = Objects.requireNonNull(handler);
+        this.bufferSizeBytes = bufferSizeBytes;
     }
 
-    log.debug("Deleting Unix socket {}", socketPath);
-    try {
-      Files.deleteIfExists(socketPath);
-    } catch (final IOException e) {
-      log.warn("Failed to delete Unix socket {}", socketPath, e);
+    public void listen() {
+        log.debug("Start listening for events over Unix socket {}", socketPath);
+        while (!stopListening.get()) {
+            final byte[] bytes;
+            try (final SocketChannel clientChannel = socketChannel.accept()) {
+                // TODO: value is random, consider some specific value
+                final var buffer = ByteBuffer.allocate(bufferSizeBytes);
+                int bytesRead = clientChannel.read(buffer);
+                if (bytesRead < 0) {
+                    continue;
+                }
+
+                bytes = new byte[bytesRead];
+                buffer.flip();
+                buffer.get(bytes);
+            } catch (final IOException e) {
+                throw new UncheckedIOException(e);
+            }
+
+            final T event;
+            try {
+                event = codec.toValue(bytes);
+            } catch (final Exception e) {
+                log.warn("Failed to decode event", e);
+                continue;
+            }
+
+            handler.accept(event);
+        }
+
+        log.debug("Stopped listening for events over Unix socket {}", socketPath);
     }
-  }
+
+    @Override
+    public void close() {
+        log.debug("Stop listening for events over Unix socket {}", socketPath);
+        stopListening.set(true);
+
+        log.debug("Closing channel for Unix socket {}", socketPath);
+        try {
+            socketChannel.close();
+        } catch (final IOException e) {
+            log.warn("Failed to close channel for Unix socket {}", socketPath, e);
+        }
+
+        log.debug("Deleting Unix socket {}", socketPath);
+        try {
+            Files.deleteIfExists(socketPath);
+        } catch (final IOException e) {
+            log.warn("Failed to delete Unix socket {}", socketPath, e);
+        }
+    }
 }

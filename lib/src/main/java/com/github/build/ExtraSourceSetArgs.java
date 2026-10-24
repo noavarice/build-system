@@ -16,46 +16,51 @@ import java.util.Set;
  * @since 1.0.0
  */
 public record ExtraSourceSetArgs(
-    String id,
-    SourceRoots javaSourceRoots,
-    SourceRoots kotlinSourceRoots,
-    SourceRoots aspectjSourceRoots,
-    Set<Path> resourceDirectories,
-    List<ExtraSourceSetDependency> compileDependencies,
-    List<ExtraSourceSetDependency> runtimeDependencies,
-    DependencyConstraints dependencyConstraints
-) implements TestSourceSetDependency {
+        String id,
+        SourceRoots javaSourceRoots,
+        SourceRoots kotlinSourceRoots,
+        SourceRoots aspectjSourceRoots,
+        Set<Path> resourceDirectories,
+        List<ExtraSourceSetDependency> compileDependencies,
+        List<ExtraSourceSetDependency> runtimeDependencies,
+        DependencyConstraints dependencyConstraints)
+        implements TestSourceSetDependency {
 
-  public ExtraSourceSetArgs(
-      final String id,
-      final SourceRoots javaSourceRoots,
-      final Set<Path> resourceDirectories,
-      final List<ExtraSourceSetDependency> compileDependencies,
-      final List<ExtraSourceSetDependency> runtimeDependencies,
-      final DependencyConstraints dependencyConstraints
-  ) {
-    this(id, javaSourceRoots, SourceRoots.EMPTY, SourceRoots.EMPTY, resourceDirectories,
-        compileDependencies, runtimeDependencies, dependencyConstraints);
-  }
-
-  public ExtraSourceSetArgs {
-    Objects.requireNonNull(id);
-    Objects.requireNonNull(javaSourceRoots);
-    Objects.requireNonNull(kotlinSourceRoots);
-    Objects.requireNonNull(aspectjSourceRoots);
-    if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
-      throw new IllegalArgumentException("Source set must have at least one source root directory");
+    public ExtraSourceSetArgs(
+            final String id,
+            final SourceRoots javaSourceRoots,
+            final Set<Path> resourceDirectories,
+            final List<ExtraSourceSetDependency> compileDependencies,
+            final List<ExtraSourceSetDependency> runtimeDependencies,
+            final DependencyConstraints dependencyConstraints) {
+        this(
+                id,
+                javaSourceRoots,
+                SourceRoots.EMPTY,
+                SourceRoots.EMPTY,
+                resourceDirectories,
+                compileDependencies,
+                runtimeDependencies,
+                dependencyConstraints);
     }
 
-    resourceDirectories = resourceDirectories
-        .stream()
-        .peek(Objects::requireNonNull)
-        .peek(PathUtils::checkRelative)
-        .map(Path::normalize)
-        .collect(toUnmodifiableSet());
+    public ExtraSourceSetArgs {
+        Objects.requireNonNull(id);
+        Objects.requireNonNull(javaSourceRoots);
+        Objects.requireNonNull(kotlinSourceRoots);
+        Objects.requireNonNull(aspectjSourceRoots);
+        if (javaSourceRoots.isEmpty() && kotlinSourceRoots.isEmpty() && aspectjSourceRoots.isEmpty()) {
+            throw new IllegalArgumentException("Source set must have at least one source root directory");
+        }
 
-    compileDependencies = List.copyOf(compileDependencies);
-    runtimeDependencies = List.copyOf(runtimeDependencies);
-    Objects.requireNonNull(dependencyConstraints);
-  }
+        resourceDirectories = resourceDirectories.stream()
+                .peek(Objects::requireNonNull)
+                .peek(PathUtils::checkRelative)
+                .map(Path::normalize)
+                .collect(toUnmodifiableSet());
+
+        compileDependencies = List.copyOf(compileDependencies);
+        runtimeDependencies = List.copyOf(runtimeDependencies);
+        Objects.requireNonNull(dependencyConstraints);
+    }
 }

@@ -24,47 +24,47 @@ import org.slf4j.MDC;
  */
 public final class ProxyLogContext implements AutoCloseable {
 
-  /**
-   * Exposed repository ID MDC key.
-   */
-  public static final String REPOSITORY = "repo";
+    /**
+     * Exposed repository ID MDC key.
+     */
+    public static final String REPOSITORY = "repo";
 
-  /**
-   * Repository-relative artifact path MDC key.
-   */
-  public static final String PATH = "path";
+    /**
+     * Repository-relative artifact path MDC key.
+     */
+    public static final String PATH = "path";
 
-  /**
-   * Outgoing upstream request number MDC key.
-   */
-  public static final String REQUEST = "req";
+    /**
+     * Outgoing upstream request number MDC key.
+     */
+    public static final String REQUEST = "req";
 
-  private final Map<String, @Nullable String> previousValues;
+    private final Map<String, @Nullable String> previousValues;
 
-  private ProxyLogContext(final Map<String, String> values) {
-    this.previousValues = new LinkedHashMap<>(values.size());
-    values.forEach((key, value) -> {
-      previousValues.put(key, MDC.get(key));
-      MDC.put(key, value);
-    });
-  }
+    private ProxyLogContext(final Map<String, String> values) {
+        this.previousValues = new LinkedHashMap<>(values.size());
+        values.forEach((key, value) -> {
+            previousValues.put(key, MDC.get(key));
+            MDC.put(key, value);
+        });
+    }
 
-  public static ProxyLogContext request(final String repositoryId, final String artifactPath) {
-    return new ProxyLogContext(Map.of(REPOSITORY, repositoryId, PATH, artifactPath));
-  }
+    public static ProxyLogContext request(final String repositoryId, final String artifactPath) {
+        return new ProxyLogContext(Map.of(REPOSITORY, repositoryId, PATH, artifactPath));
+    }
 
-  public static ProxyLogContext outgoingRequest(final long requestNumber) {
-    return new ProxyLogContext(Map.of(REQUEST, Long.toString(requestNumber)));
-  }
+    public static ProxyLogContext outgoingRequest(final long requestNumber) {
+        return new ProxyLogContext(Map.of(REQUEST, Long.toString(requestNumber)));
+    }
 
-  @Override
-  public void close() {
-    previousValues.forEach((key, value) -> {
-      if (value == null) {
-        MDC.remove(key);
-      } else {
-        MDC.put(key, value);
-      }
-    });
-  }
+    @Override
+    public void close() {
+        previousValues.forEach((key, value) -> {
+            if (value == null) {
+                MDC.remove(key);
+            } else {
+                MDC.put(key, value);
+            }
+        });
+    }
 }

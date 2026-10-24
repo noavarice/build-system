@@ -25,54 +25,53 @@ import org.slf4j.MDC;
  */
 public final class LogContext implements AutoCloseable {
 
-  /**
-   * Project artifact ID MDC key.
-   */
-  public static final String PROJECT = "project";
+    /**
+     * Project artifact ID MDC key.
+     */
+    public static final String PROJECT = "project";
 
-  /**
-   * Source set ID MDC key.
-   */
-  public static final String SOURCE_SET = "ss";
+    /**
+     * Source set ID MDC key.
+     */
+    public static final String SOURCE_SET = "ss";
 
-  /**
-   * Process ID MDC key.
-   */
-  public static final String PROCESS_ID = "pid";
+    /**
+     * Process ID MDC key.
+     */
+    public static final String PROCESS_ID = "pid";
 
-  private final Map<String, @Nullable String> previousValues;
+    private final Map<String, @Nullable String> previousValues;
 
-  private LogContext(final Map<String, String> values) {
-    this.previousValues = new LinkedHashMap<>(values.size());
-    values.forEach((key, value) -> {
-      previousValues.put(key, MDC.get(key));
-      MDC.put(key, value);
-    });
-  }
+    private LogContext(final Map<String, String> values) {
+        this.previousValues = new LinkedHashMap<>(values.size());
+        values.forEach((key, value) -> {
+            previousValues.put(key, MDC.get(key));
+            MDC.put(key, value);
+        });
+    }
 
-  public static LogContext project(final Project project) {
-    return new LogContext(Map.of(PROJECT, project.artifactId()));
-  }
+    public static LogContext project(final Project project) {
+        return new LogContext(Map.of(PROJECT, project.artifactId()));
+    }
 
-  public static LogContext sourceSet(final Project project, final SourceSet.Id sourceSetId) {
-    return new LogContext(Map.of(
-        PROJECT, project.artifactId(),
-        SOURCE_SET, sourceSetId.value()
-    ));
-  }
+    public static LogContext sourceSet(final Project project, final SourceSet.Id sourceSetId) {
+        return new LogContext(Map.of(
+                PROJECT, project.artifactId(),
+                SOURCE_SET, sourceSetId.value()));
+    }
 
-  public static LogContext pid(final long pid) {
-    return new LogContext(Map.of(PROCESS_ID, Long.toString(pid)));
-  }
+    public static LogContext pid(final long pid) {
+        return new LogContext(Map.of(PROCESS_ID, Long.toString(pid)));
+    }
 
-  @Override
-  public void close() {
-    previousValues.forEach((key, value) -> {
-      if (value == null) {
-        MDC.remove(key);
-      } else {
-        MDC.put(key, value);
-      }
-    });
-  }
+    @Override
+    public void close() {
+        previousValues.forEach((key, value) -> {
+            if (value == null) {
+                MDC.remove(key);
+            } else {
+                MDC.put(key, value);
+            }
+        });
+    }
 }

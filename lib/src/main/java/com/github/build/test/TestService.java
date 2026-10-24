@@ -51,430 +51,379 @@ import org.slf4j.LoggerFactory;
  */
 public final class TestService {
 
-  private static final Logger log = LoggerFactory.getLogger(TestService.class);
+    private static final Logger log = LoggerFactory.getLogger(TestService.class);
 
-  private final RandomGenerator random;
+    private final RandomGenerator random;
 
-  private final ExecutorService processEventListenerExecutorService;
+    private final ExecutorService processEventListenerExecutorService;
 
-  private final DependencyService dependencyService;
+    private final DependencyService dependencyService;
 
-  private final BuildReport buildReport;
+    private final BuildReport buildReport;
 
-  public TestService(final DependencyService dependencyService) {
-    this(dependencyService, new BuildReport());
-  }
-
-  public TestService(final DependencyService dependencyService, final BuildReport buildReport) {
-    this(
-        new SecureRandom(),
-        Executors.newVirtualThreadPerTaskExecutor(),
-        dependencyService,
-        buildReport
-    );
-  }
-
-  public TestService(
-      final RandomGenerator random,
-      final ExecutorService processEventListenerExecutorService,
-      final DependencyService dependencyService,
-      final BuildReport buildReport
-  ) {
-    this.random = Objects.requireNonNull(random);
-    this.processEventListenerExecutorService = Objects.requireNonNull(
-        processEventListenerExecutorService
-    );
-    this.dependencyService = Objects.requireNonNull(dependencyService);
-    this.buildReport = Objects.requireNonNull(buildReport);
-  }
-
-  public TestResults withJUnit(
-      final Path workdir,
-      final Project project,
-      final JUnitTestArgs args
-  ) {
-    return withJUnit(workdir, project.testSourceSet(), args);
-  }
-
-  // TODO: handle failed tests
-  public TestResults withJUnit(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final JUnitTestArgs args
-  ) {
-    Objects.requireNonNull(workdir);
-    Objects.requireNonNull(sourceSet);
-    Objects.requireNonNull(args);
-
-    final Project project = sourceSet.project();
-    try (final var ignored = LogContext.sourceSet(project, sourceSet.id())) {
-      log.info("Test execution started");
-      final Instant startedAt = Instant.now();
-
-      final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
-
-      final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
-      try (final var classLoader = createModifiedClassLoader(
-          args.testRuntimeParentClassLoader(),
-          testRuntime.classpath()
-      )) {
-        // setting classpath for JUnit test engine search algorithm
-        Thread.currentThread().setContextClassLoader(classLoader);
-        @SuppressWarnings("unchecked")
-        final var taskType = (Class<Function<JUnitTestTaskArgs, TestResults>>) classLoader.loadClass(
-            "com.github.build.junit.JUnitTestTask"
-        );
-        final var taskConstructor = taskType.getDeclaredConstructor();
-        final var task = taskConstructor.newInstance();
-        final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDirs());
-        final TestResults results = task.apply(taskArgs);
-
-        final Duration duration = Duration.between(startedAt, Instant.now());
-        buildReport.testsFinished(project, sourceSet.id(), duration, results);
-        log.info("Test execution finished in {}", DurationUtils.format(duration));
-        return results;
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      } catch (final ReflectiveOperationException e) {
-        throw new IllegalStateException(e);
-      } finally {
-        Thread.currentThread().setContextClassLoader(originalClassLoader);
-      }
+    public TestService(final DependencyService dependencyService) {
+        this(dependencyService, new BuildReport());
     }
-  }
 
-  public TestResults withJUnitAsProcess(
-      final Path workdir,
-      final Project project,
-      final JUnitTestArgs args,
-      final List<JavaCommandBuilder.Agent> agents,
-      final List<String> systemProperties,
-      final Duration timeout
-  ) {
-    return withJUnitAsProcess(workdir, project.testSourceSet(), args, agents, systemProperties,
-        timeout);
-  }
+    public TestService(final DependencyService dependencyService, final BuildReport buildReport) {
+        this(new SecureRandom(), Executors.newVirtualThreadPerTaskExecutor(), dependencyService, buildReport);
+    }
 
-  // TODO: handle failed tests
-  // TODO: pass environment and other JVM properties
-  public TestResults withJUnitAsProcess(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final JUnitTestArgs args,
-      final List<JavaCommandBuilder.Agent> agents,
-      final List<String> systemProperties,
-      final Duration timeout
-  ) {
-    Objects.requireNonNull(workdir);
-    Objects.requireNonNull(sourceSet);
-    Objects.requireNonNull(args);
+    public TestService(
+            final RandomGenerator random,
+            final ExecutorService processEventListenerExecutorService,
+            final DependencyService dependencyService,
+            final BuildReport buildReport) {
+        this.random = Objects.requireNonNull(random);
+        this.processEventListenerExecutorService = Objects.requireNonNull(processEventListenerExecutorService);
+        this.dependencyService = Objects.requireNonNull(dependencyService);
+        this.buildReport = Objects.requireNonNull(buildReport);
+    }
 
-    final Project project = sourceSet.project();
-    final SourceSet.Id sourceSetId = sourceSet.id();
-    try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
-      log.info("Test execution started");
-      final Instant startedAt = Instant.now();
+    public TestResults withJUnit(final Path workdir, final Project project, final JUnitTestArgs args) {
+        return withJUnit(workdir, project.testSourceSet(), args);
+    }
 
-      final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
+    // TODO: handle failed tests
+    public TestResults withJUnit(final Path workdir, final SourceSet sourceSet, final JUnitTestArgs args) {
+        Objects.requireNonNull(workdir);
+        Objects.requireNonNull(sourceSet);
+        Objects.requireNonNull(args);
 
-      final Path unixSocketPath = getSocketPath();
-      final var taskArgs = new ArrayList<String>();
-      taskArgs.add(unixSocketPath.toString());
-      for (final Path classesDir : testRuntime.classesDirs()) {
-        taskArgs.add(classesDir.toString());
-      }
+        final Project project = sourceSet.project();
+        try (final var ignored = LogContext.sourceSet(project, sourceSet.id())) {
+            log.info("Test execution started");
+            final Instant startedAt = Instant.now();
 
-      // TODO: allow test JVM customization
-      final String currentJavaCommand = ProcessHandle.current().info().command().orElseThrow();
-      final var commandBuilder = JavaCommandBuilder
-          .builder()
-          .javaPath(currentJavaCommand)
-          .classpath(testRuntime.classpath())
-          .agents(agents)
-          .systemProperties(systemProperties)
-          .mainClass("com.github.build.junit.JUnitTestTask")
-          .args(taskArgs)
-          .build();
-      final ProcessBuilder processBuilder = new ProcessBuilder()
-          .command(commandBuilder.toCommand())
-          .directory(workdir.resolve(project.path()).toFile())
-          // TODO: handle child process logging
-          .redirectOutput(ProcessBuilder.Redirect.INHERIT)
-          .redirectError(ProcessBuilder.Redirect.INHERIT);
+            final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
 
-      final var testEventHandler = new AccumulateTestResults(project, sourceSetId);
-      final Process process;
-      try (final UnixSocketServer<JUnitEvent> eventServer = UnixSocketServer.of(
-          unixSocketPath,
-          new JUnitEventJsonCodec(),
-          testEventHandler,
-          8192
-      )) {
-        // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
-        log.debug("Receive test process events over Unix socket at {}", unixSocketPath);
+            final ClassLoader originalClassLoader = Thread.currentThread().getContextClassLoader();
+            try (final var classLoader =
+                    createModifiedClassLoader(args.testRuntimeParentClassLoader(), testRuntime.classpath())) {
+                // setting classpath for JUnit test engine search algorithm
+                Thread.currentThread().setContextClassLoader(classLoader);
+                @SuppressWarnings("unchecked")
+                final var taskType = (Class<Function<JUnitTestTaskArgs, TestResults>>)
+                        classLoader.loadClass("com.github.build.junit.JUnitTestTask");
+                final var taskConstructor = taskType.getDeclaredConstructor();
+                final var task = taskConstructor.newInstance();
+                final var taskArgs = new JUnitTestTaskArgs(testRuntime.classesDirs());
+                final TestResults results = task.apply(taskArgs);
 
-        processEventListenerExecutorService.submit(eventServer::listen);
-
-        // TODO: handle child process death when parent is being killed
-        process = processBuilder.start();
-        log.debug("Test process {} started", process.pid());
-
-        final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
-        if (!exited) {
-          log.error("Test process {} timed out, destroying", process.pid());
-          process.destroyForcibly();
-          throw new IllegalStateException();
+                final Duration duration = Duration.between(startedAt, Instant.now());
+                buildReport.testsFinished(project, sourceSet.id(), duration, results);
+                log.info("Test execution finished in {}", DurationUtils.format(duration));
+                return results;
+            } catch (final IOException e) {
+                throw new UncheckedIOException(e);
+            } catch (final ReflectiveOperationException e) {
+                throw new IllegalStateException(e);
+            } finally {
+                Thread.currentThread().setContextClassLoader(originalClassLoader);
+            }
         }
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      } catch (final InterruptedException e) {
-        Thread.currentThread().interrupt();
-        throw new IllegalStateException(e);
-      }
+    }
 
-      final TestResults results = testEventHandler.toTestResults();
+    public TestResults withJUnitAsProcess(
+            final Path workdir,
+            final Project project,
+            final JUnitTestArgs args,
+            final List<JavaCommandBuilder.Agent> agents,
+            final List<String> systemProperties,
+            final Duration timeout) {
+        return withJUnitAsProcess(workdir, project.testSourceSet(), args, agents, systemProperties, timeout);
+    }
 
-      final Duration duration = Duration.between(startedAt, Instant.now());
-      buildReport.testsFinished(project, sourceSetId, duration, results);
-      log.info("Test execution finished in {}", DurationUtils.format(duration));
+    // TODO: handle failed tests
+    // TODO: pass environment and other JVM properties
+    public TestResults withJUnitAsProcess(
+            final Path workdir,
+            final SourceSet sourceSet,
+            final JUnitTestArgs args,
+            final List<JavaCommandBuilder.Agent> agents,
+            final List<String> systemProperties,
+            final Duration timeout) {
+        Objects.requireNonNull(workdir);
+        Objects.requireNonNull(sourceSet);
+        Objects.requireNonNull(args);
 
-      if (!results.failures().isEmpty()) {
-        log.error("Test failures:");
-        for (var f : results.failures()) {
-          log.error("""
+        final Project project = sourceSet.project();
+        final SourceSet.Id sourceSetId = sourceSet.id();
+        try (final var ignored = LogContext.sourceSet(project, sourceSetId)) {
+            log.info("Test execution started");
+            final Instant startedAt = Instant.now();
+
+            final TestRuntime testRuntime = getTestRuntime(workdir, sourceSet, args);
+
+            final Path unixSocketPath = getSocketPath();
+            final var taskArgs = new ArrayList<String>();
+            taskArgs.add(unixSocketPath.toString());
+            for (final Path classesDir : testRuntime.classesDirs()) {
+                taskArgs.add(classesDir.toString());
+            }
+
+            // TODO: allow test JVM customization
+            final String currentJavaCommand =
+                    ProcessHandle.current().info().command().orElseThrow();
+            final var commandBuilder = JavaCommandBuilder.builder()
+                    .javaPath(currentJavaCommand)
+                    .classpath(testRuntime.classpath())
+                    .agents(agents)
+                    .systemProperties(systemProperties)
+                    .mainClass("com.github.build.junit.JUnitTestTask")
+                    .args(taskArgs)
+                    .build();
+            final ProcessBuilder processBuilder = new ProcessBuilder()
+                    .command(commandBuilder.toCommand())
+                    .directory(workdir.resolve(project.path()).toFile())
+                    // TODO: handle child process logging
+                    .redirectOutput(ProcessBuilder.Redirect.INHERIT)
+                    .redirectError(ProcessBuilder.Redirect.INHERIT);
+
+            final var testEventHandler = new AccumulateTestResults(project, sourceSetId);
+            final Process process;
+            try (final UnixSocketServer<JUnitEvent> eventServer =
+                    UnixSocketServer.of(unixSocketPath, new JUnitEventJsonCodec(), testEventHandler, 8192)) {
+                // TODO: cleanup open sockets if main process stops prematurely (e.g., via SIGINT)
+                log.debug("Receive test process events over Unix socket at {}", unixSocketPath);
+
+                processEventListenerExecutorService.submit(eventServer::listen);
+
+                // TODO: handle child process death when parent is being killed
+                process = processBuilder.start();
+                log.debug("Test process {} started", process.pid());
+
+                final boolean exited = process.waitFor(timeout.toMillis(), TimeUnit.MILLISECONDS);
+                if (!exited) {
+                    log.error("Test process {} timed out, destroying", process.pid());
+                    process.destroyForcibly();
+                    throw new IllegalStateException();
+                }
+            } catch (final IOException e) {
+                throw new UncheckedIOException(e);
+            } catch (final InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new IllegalStateException(e);
+            }
+
+            final TestResults results = testEventHandler.toTestResults();
+
+            final Duration duration = Duration.between(startedAt, Instant.now());
+            buildReport.testsFinished(project, sourceSetId, duration, results);
+            log.info("Test execution finished in {}", DurationUtils.format(duration));
+
+            if (!results.failures().isEmpty()) {
+                log.error("Test failures:");
+                for (var f : results.failures()) {
+                    log.error("""
                 {} ({})
                   {}: {}
               """, f.displayName(), f.testId(), f.exceptionType(), f.message());
+                }
+            }
+
+            if (process.exitValue() != 0) {
+                log.error("Test process {} exited with code {}", process.pid(), process.exitValue());
+                throw new IllegalStateException("Test process exited with code " + process.exitValue() + " ("
+                        + results.testsFailedCount() + " tests failed)");
+            }
+
+            return results;
         }
-      }
-
-      if (process.exitValue() != 0) {
-        log.error("Test process {} exited with code {}", process.pid(), process.exitValue());
-        throw new IllegalStateException("Test process exited with code " + process.exitValue()
-            + " (" + results.testsFailedCount() + " tests failed)");
-      }
-
-      return results;
-    }
-  }
-
-  private Path getSocketPath() {
-    final String runtimeDir = System.getenv("XDG_RUNTIME_DIR");
-    final Path socketDir = runtimeDir != null ? Path.of(runtimeDir) : Path.of("");
-    return socketDir
-        .normalize()
-        .resolve(".test-events-" + random.nextInt(0, Integer.MAX_VALUE) + ".sock")
-        .toAbsolutePath();
-  }
-
-  private TestRuntime getTestRuntime(
-      final Path workdir,
-      final SourceSet sourceSet,
-      final JUnitTestArgs args
-  ) {
-    final Project project = sourceSet.project();
-    final Path testClassesRoot = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().classesDir())
-        .resolve("test");
-    final Set<Path> testClassesDirs = classDirectories(testClassesRoot);
-    final Path testResources = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve(project.artifactLayout().resourcesDir())
-        .resolve("test");
-
-    final Map<GroupArtifactVersion, Path> runtimeClasspath = dependencyService
-        .resolveRuntimeClasspath(sourceSet);
-
-    final boolean missingLauncher = runtimeClasspath.keySet()
-        .stream()
-        .noneMatch(gav -> gav.groupArtifact().equals(JUNIT_LAUNCHER_GA));
-    // TODO: maybe it's better to add launcher when it's missing
-    if (missingLauncher) {
-      // TODO: use dedicated exception
-      throw new IllegalStateException(
-          "Test runtime classpath must include JUnit Platform Launcher"
-      );
     }
 
-    // adding build library runtime
-    final var testRuntimeClasspath = new ArrayList<>(args.buildRuntimeClasspath());
-
-    // adding user classes
-    testRuntimeClasspath.addAll(testClassesDirs);
-    testRuntimeClasspath.add(testResources);
-    testRuntimeClasspath.addAll(runtimeClasspath.values());
-
-    // adding local JARs explicitly
-    // TODO: handle this differently
-    for (final Dependency dependency : sourceSet.runtimeDependencies()) {
-      if (dependency instanceof Dependency.Jar jar) {
-        testRuntimeClasspath.add(jar.path());
-      }
+    private Path getSocketPath() {
+        final String runtimeDir = System.getenv("XDG_RUNTIME_DIR");
+        final Path socketDir = runtimeDir != null ? Path.of(runtimeDir) : Path.of("");
+        return socketDir
+                .normalize()
+                .resolve(".test-events-" + random.nextInt(0, Integer.MAX_VALUE) + ".sock")
+                .toAbsolutePath();
     }
 
-    final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
+    private TestRuntime getTestRuntime(final Path workdir, final SourceSet sourceSet, final JUnitTestArgs args) {
+        final Project project = sourceSet.project();
+        final Path testClassesRoot = workdir.resolve(project.path())
+                .resolve(project.artifactLayout().rootDir())
+                .resolve(project.artifactLayout().classesDir())
+                .resolve("test");
+        final Set<Path> testClassesDirs = classDirectories(testClassesRoot);
+        final Path testResources = workdir.resolve(project.path())
+                .resolve(project.artifactLayout().rootDir())
+                .resolve(project.artifactLayout().resourcesDir())
+                .resolve("test");
 
-    // TODO: figure out how we can configure logging when there's no SLF4J provider in the test classpath.
-    // Remember that logging should be configurable and compatible
-    // with how the rest of the build program logs its progress
-    if (!classpathContainsSlf4jProvider(testRuntimeClasspath)) {
-      final GroupArtifact fallbackGa = args.slf4jProviderFallback().groupArtifact();
-      final String constrainedVersion = constraints.getConstraint(fallbackGa);
-      final GroupArtifactVersion slf4jProviderFallback = constrainedVersion != null
-          ? fallbackGa.withVersion(constrainedVersion)
-          : args.slf4jProviderFallback();
-      log.debug("Test runtime classpath has no SLF4J provider, adding fallback provider {}",
-          slf4jProviderFallback
-      );
-      // FIXME: introduce resolveRuntimeClasspath for remote dependencies and use it here
-      final var gavs = dependencyService.resolveTransitive(args.slf4jProviderFallback());
-      final var jars = dependencyService.fetchToLocal(gavs);
-      testRuntimeClasspath.addAll(jars.values());
-    }
+        final Map<GroupArtifactVersion, Path> runtimeClasspath = dependencyService.resolveRuntimeClasspath(sourceSet);
 
-    if (log.isDebugEnabled()) {
-      final String prettyPrintedClasspath = testRuntimeClasspath
-          .stream()
-          .map(Object::toString)
-          .collect(joining(System.lineSeparator(), "[", "]"));
-      log.debug("Run tests with classpath {}", prettyPrintedClasspath);
-    }
-    return new TestRuntime(testClassesDirs, testRuntimeClasspath);
-  }
-
-  /**
-   * @return Language-specific class output directories under the given source set classes root
-   */
-  private static Set<Path> classDirectories(final Path classesRoot) {
-    if (!Files.isDirectory(classesRoot)) {
-      return Set.of();
-    }
-
-    try (final var entries = Files.list(classesRoot)) {
-      return entries
-          .filter(Files::isDirectory)
-          .collect(toUnmodifiableSet());
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-  }
-
-  private record TestRuntime(Set<Path> classesDirs, List<Path> classpath) {
-
-    private TestRuntime {
-      Objects.requireNonNull(classesDirs);
-      classpath = List.copyOf(classpath);
-    }
-  }
-
-  private boolean classpathContainsSlf4jProvider(final Collection<Path> classpath) {
-    final URL[] urls = classpath
-        .stream()
-        .map(path -> {
-          try {
-            return path.toUri().toURL();
-          } catch (final MalformedURLException e) {
-            throw new IllegalStateException(e);
-          }
-        })
-        .toArray(URL[]::new);
-    final ClassLoader parent = ClassLoader.getPlatformClassLoader();
-    try (final var classLoader = new URLClassLoader(urls, parent)) {
-      try {
-        classLoader.loadClass("org.slf4j.Logger");
-      } catch (final ClassNotFoundException e) {
-        // no SLF4J API at all
-        return false;
-      }
-
-      final Class<?> slf4jServiceProviderClass;
-      try {
-        slf4jServiceProviderClass = classLoader.loadClass("org.slf4j.spi.SLF4JServiceProvider");
-      } catch (final ClassNotFoundException e) {
-        // probably SLF4J up to version 1.7.x
-        return false;
-      }
-      final var serviceLoader = ServiceLoader.load(slf4jServiceProviderClass, classLoader);
-      return serviceLoader.iterator().hasNext();
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
-    }
-  }
-
-  private void addSourceSetRuntimeClasspath(
-      final Path workdir,
-      final Project project,
-      final SourceSet sourceSet,
-      final Collection<Path> classpath,
-      final List<GroupArtifactVersion> remoteDependencies
-  ) {
-
-    for (final Dependency dependency : sourceSet.runtimeDependencies()) {
-      switch (dependency) {
-        case Dependency.OnProject onProject -> {
-          final Project dependingProject = onProject.project();
-          final Path jarPath = workdir
-              .resolve(dependingProject.path())
-              .resolve(dependingProject.artifactLayout().rootDir())
-              // TODO: customize JAR path/filename
-              .resolve(dependingProject.artifactId() + ".jar");
-          classpath.add(jarPath);
+        final boolean missingLauncher = runtimeClasspath.keySet().stream()
+                .noneMatch(gav -> gav.groupArtifact().equals(JUNIT_LAUNCHER_GA));
+        // TODO: maybe it's better to add launcher when it's missing
+        if (missingLauncher) {
+            // TODO: use dedicated exception
+            throw new IllegalStateException("Test runtime classpath must include JUnit Platform Launcher");
         }
-        case Dependency.OnSourceSet onSourceSet -> {
-          final Path classesRoot = workdir
-              .resolve(project.path())
-              .resolve(project.artifactLayout().rootDir())
-              .resolve(project.artifactLayout().classesDir())
-              .resolve(onSourceSet.sourceSet().id().value());
-          final Path resourcesDir = workdir
-              .resolve(project.path())
-              .resolve(project.artifactLayout().rootDir())
-              .resolve(project.artifactLayout().resourcesDir())
-              .resolve(onSourceSet.sourceSet().id().value());
-          classpath.addAll(classDirectories(classesRoot));
-          classpath.add(resourcesDir);
-          addSourceSetRuntimeClasspath(
-              workdir, project, onSourceSet.sourceSet(), classpath, remoteDependencies
-          );
-        }
-        case Dependency.Jar file -> classpath.add(file.path());
-        case Dependency.Remote.WithVersion withVersion -> remoteDependencies.add(withVersion.gav());
-        case Dependency.Remote.WithoutVersion withoutVersion -> {
-          final DependencyConstraints constraints = sourceSet.dependencyConstraints();
-          @Nullable
-          final String version = constraints.getConstraint(withoutVersion.ga());
-          if (version == null) {
-            log.error("Dependency has no version and no associated source set-wise constraint");
-            throw new IllegalArgumentException();
-          }
 
-          remoteDependencies.add(withoutVersion.ga().withVersion(version));
+        // adding build library runtime
+        final var testRuntimeClasspath = new ArrayList<>(args.buildRuntimeClasspath());
+
+        // adding user classes
+        testRuntimeClasspath.addAll(testClassesDirs);
+        testRuntimeClasspath.add(testResources);
+        testRuntimeClasspath.addAll(runtimeClasspath.values());
+
+        // adding local JARs explicitly
+        // TODO: handle this differently
+        for (final Dependency dependency : sourceSet.runtimeDependencies()) {
+            if (dependency instanceof Dependency.Jar jar) {
+                testRuntimeClasspath.add(jar.path());
+            }
         }
-      }
+
+        final DependencyConstraints constraints = project.testSourceSet().dependencyConstraints();
+
+        // TODO: figure out how we can configure logging when there's no SLF4J provider in the test classpath.
+        // Remember that logging should be configurable and compatible
+        // with how the rest of the build program logs its progress
+        if (!classpathContainsSlf4jProvider(testRuntimeClasspath)) {
+            final GroupArtifact fallbackGa = args.slf4jProviderFallback().groupArtifact();
+            final String constrainedVersion = constraints.getConstraint(fallbackGa);
+            final GroupArtifactVersion slf4jProviderFallback = constrainedVersion != null
+                    ? fallbackGa.withVersion(constrainedVersion)
+                    : args.slf4jProviderFallback();
+            log.debug(
+                    "Test runtime classpath has no SLF4J provider, adding fallback provider {}", slf4jProviderFallback);
+            // FIXME: introduce resolveRuntimeClasspath for remote dependencies and use it here
+            final var gavs = dependencyService.resolveTransitive(args.slf4jProviderFallback());
+            final var jars = dependencyService.fetchToLocal(gavs);
+            testRuntimeClasspath.addAll(jars.values());
+        }
+
+        if (log.isDebugEnabled()) {
+            final String prettyPrintedClasspath = testRuntimeClasspath.stream()
+                    .map(Object::toString)
+                    .collect(joining(System.lineSeparator(), "[", "]"));
+            log.debug("Run tests with classpath {}", prettyPrintedClasspath);
+        }
+        return new TestRuntime(testClassesDirs, testRuntimeClasspath);
     }
-  }
 
-  private static URLClassLoader createModifiedClassLoader(
-      final ClassLoader parent,
-      final Collection<Path> paths
-  ) throws MalformedURLException {
-    final URL[] additionalTestClasspathEntries = paths
-        .stream()
-        .map(path -> {
-          try {
-            return path.toUri().toURL();
-          } catch (final MalformedURLException e) {
+    /**
+     * @return Language-specific class output directories under the given source set classes root
+     */
+    private static Set<Path> classDirectories(final Path classesRoot) {
+        if (!Files.isDirectory(classesRoot)) {
+            return Set.of();
+        }
+
+        try (final var entries = Files.list(classesRoot)) {
+            return entries.filter(Files::isDirectory).collect(toUnmodifiableSet());
+        } catch (final IOException e) {
             throw new UncheckedIOException(e);
-          }
-        })
-        .toArray(URL[]::new);
-    return new URLClassLoader(additionalTestClasspathEntries, parent);
-  }
+        }
+    }
 
-  private static final GroupArtifact JUNIT_LAUNCHER_GA = GroupArtifact.parse(
-      "org.junit.platform:junit-platform-launcher"
-  );
+    private record TestRuntime(Set<Path> classesDirs, List<Path> classpath) {
+
+        private TestRuntime {
+            Objects.requireNonNull(classesDirs);
+            classpath = List.copyOf(classpath);
+        }
+    }
+
+    private boolean classpathContainsSlf4jProvider(final Collection<Path> classpath) {
+        final URL[] urls = classpath.stream()
+                .map(path -> {
+                    try {
+                        return path.toUri().toURL();
+                    } catch (final MalformedURLException e) {
+                        throw new IllegalStateException(e);
+                    }
+                })
+                .toArray(URL[]::new);
+        final ClassLoader parent = ClassLoader.getPlatformClassLoader();
+        try (final var classLoader = new URLClassLoader(urls, parent)) {
+            try {
+                classLoader.loadClass("org.slf4j.Logger");
+            } catch (final ClassNotFoundException e) {
+                // no SLF4J API at all
+                return false;
+            }
+
+            final Class<?> slf4jServiceProviderClass;
+            try {
+                slf4jServiceProviderClass = classLoader.loadClass("org.slf4j.spi.SLF4JServiceProvider");
+            } catch (final ClassNotFoundException e) {
+                // probably SLF4J up to version 1.7.x
+                return false;
+            }
+            final var serviceLoader = ServiceLoader.load(slf4jServiceProviderClass, classLoader);
+            return serviceLoader.iterator().hasNext();
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
+    }
+
+    private void addSourceSetRuntimeClasspath(
+            final Path workdir,
+            final Project project,
+            final SourceSet sourceSet,
+            final Collection<Path> classpath,
+            final List<GroupArtifactVersion> remoteDependencies) {
+
+        for (final Dependency dependency : sourceSet.runtimeDependencies()) {
+            switch (dependency) {
+                case Dependency.OnProject onProject -> {
+                    final Project dependingProject = onProject.project();
+                    final Path jarPath = workdir.resolve(dependingProject.path())
+                            .resolve(dependingProject.artifactLayout().rootDir())
+                            // TODO: customize JAR path/filename
+                            .resolve(dependingProject.artifactId() + ".jar");
+                    classpath.add(jarPath);
+                }
+                case Dependency.OnSourceSet onSourceSet -> {
+                    final Path classesRoot = workdir.resolve(project.path())
+                            .resolve(project.artifactLayout().rootDir())
+                            .resolve(project.artifactLayout().classesDir())
+                            .resolve(onSourceSet.sourceSet().id().value());
+                    final Path resourcesDir = workdir.resolve(project.path())
+                            .resolve(project.artifactLayout().rootDir())
+                            .resolve(project.artifactLayout().resourcesDir())
+                            .resolve(onSourceSet.sourceSet().id().value());
+                    classpath.addAll(classDirectories(classesRoot));
+                    classpath.add(resourcesDir);
+                    addSourceSetRuntimeClasspath(
+                            workdir, project, onSourceSet.sourceSet(), classpath, remoteDependencies);
+                }
+                case Dependency.Jar file -> classpath.add(file.path());
+                case Dependency.Remote.WithVersion withVersion -> remoteDependencies.add(withVersion.gav());
+                case Dependency.Remote.WithoutVersion withoutVersion -> {
+                    final DependencyConstraints constraints = sourceSet.dependencyConstraints();
+                    @Nullable final String version = constraints.getConstraint(withoutVersion.ga());
+                    if (version == null) {
+                        log.error("Dependency has no version and no associated source set-wise constraint");
+                        throw new IllegalArgumentException();
+                    }
+
+                    remoteDependencies.add(withoutVersion.ga().withVersion(version));
+                }
+            }
+        }
+    }
+
+    private static URLClassLoader createModifiedClassLoader(final ClassLoader parent, final Collection<Path> paths)
+            throws MalformedURLException {
+        final URL[] additionalTestClasspathEntries = paths.stream()
+                .map(path -> {
+                    try {
+                        return path.toUri().toURL();
+                    } catch (final MalformedURLException e) {
+                        throw new UncheckedIOException(e);
+                    }
+                })
+                .toArray(URL[]::new);
+        return new URLClassLoader(additionalTestClasspathEntries, parent);
+    }
+
+    private static final GroupArtifact JUNIT_LAUNCHER_GA =
+            GroupArtifact.parse("org.junit.platform:junit-platform-launcher");
 }

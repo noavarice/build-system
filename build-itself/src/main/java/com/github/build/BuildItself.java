@@ -52,386 +52,316 @@ import org.xml.sax.SAXParseException;
 
 public class BuildItself {
 
-  private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
+    private static final Logger log = LoggerFactory.getLogger(BuildItself.class);
 
-  private static final BuildReport buildReport = new BuildReport();
+    private static final BuildReport buildReport = new BuildReport();
 
-  private static final DependencyService dependencyService = mavenArtifactResolver();
+    private static final DependencyService dependencyService = mavenArtifactResolver();
 
-  private static final TestService testService = new TestService(dependencyService, buildReport);
+    private static final TestService testService = new TestService(dependencyService, buildReport);
 
-  private static final BuildService buildService = new BuildService(
-      buildReport,
-      new JavaCompileService(),
-      dependencyService,
-      new JarService()
-  );
+    private static final BuildService buildService =
+            new BuildService(buildReport, new JavaCompileService(), dependencyService, new JarService());
 
-  private static final ProjectService projectService = new ProjectService();
+    private static final ProjectService projectService = new ProjectService();
 
-  public static void main(final String[] args) {
-    final Path workdir;
-    if (args.length == 0) {
-      workdir = Path.of("").toAbsolutePath();
-    } else {
-      workdir = Path.of(args[0]);
+    public static void main(final String[] args) {
+        final Path workdir;
+        if (args.length == 0) {
+            workdir = Path.of("").toAbsolutePath();
+        } else {
+            workdir = Path.of(args[0]);
+        }
+
+        final DependencyConstraints junitBom =
+                dependencyService.getConstraints(GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1"));
+
+        final JavaCompilerOptions java21 =
+                JavaCompilerOptions.builder().release("21").build();
+
+        final Project projectTestUtils = createProjectTestUtils(junitBom);
+        final Project projectLib = createProjectLib(junitBom, projectTestUtils);
+
+        buildService.clean(workdir, projectTestUtils);
+        buildService.clean(workdir, projectLib);
+
+        boolean success = true;
+        try {
+            success = buildTestUtils(workdir, projectTestUtils, java21) && buildLib(workdir, projectLib, java21);
+        } catch (final RuntimeException e) {
+            log.error("Build failed", e);
+            success = false;
+        }
+
+        buildReport.logSummary(success);
+        if (!success) {
+            System.exit(1);
+        }
     }
 
-    final DependencyConstraints junitBom = dependencyService.getConstraints(
-        GroupArtifactVersion.parse("org.junit:junit-bom:6.0.1")
-    );
-
-    final JavaCompilerOptions java21 = JavaCompilerOptions
-        .builder()
-        .release("21")
-        .build();
-
-    final Project projectTestUtils = createProjectTestUtils(junitBom);
-    final Project projectLib = createProjectLib(junitBom, projectTestUtils);
-
-    buildService.clean(workdir, projectTestUtils);
-    buildService.clean(workdir, projectLib);
-
-    boolean success = true;
-    try {
-      success = buildTestUtils(workdir, projectTestUtils, java21)
-          && buildLib(workdir, projectLib, java21);
-    } catch (final RuntimeException e) {
-      log.error("Build failed", e);
-      success = false;
+    private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                Set.of(Path.of("src", "main", "resources")),
+                List.of(
+                        GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
+                        GroupArtifactVersion.parse("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")),
+                List.of(GroupArtifactVersion.parse("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0")),
+                DependencyConstraints.EMPTY);
+        final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                List.of(),
+                List.of(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine")),
+                junitBom);
+        return projectService.create(
+                "com.github.build",
+                "build-system-test-utils",
+                "0.1.0",
+                builder -> builder.withPath(Path.of("test-utils")).withSourceSets(main, test));
     }
 
-    buildReport.logSummary(success);
-    if (!success) {
-      System.exit(1);
-    }
-  }
+    private static Project createProjectLib(final DependencyConstraints junitBom, final Project projectTestUtils) {
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(
+                        Set.of(Path.of("src", "main", "java"), Path.of("build", "generated-sources", "xjc"))),
+                Set.of(Path.of("src", "main", "resources")),
+                List.of(
+                        GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
+                        GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12"),
+                        GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
+                        GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
+                        GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"),
+                        GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"),
+                        GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"),
+                        GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"),
+                        GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4"),
+                        GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"),
+                        GroupArtifactVersion.parse("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21")),
+                List.of(
+                        GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
+                        GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12")),
+                DependencyConstraints.EMPTY);
 
-  private static Project createProjectTestUtils(final DependencyConstraints junitBom) {
-    final var main = new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
-        Set.of(Path.of("src", "main", "resources")),
-        List.of(
-            GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
-            GroupArtifactVersion.parse(
-                "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
-            )
-        ),
-        List.of(
-            GroupArtifactVersion.parse(
-                "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
-            )
-        ),
-        DependencyConstraints.EMPTY
-    );
-    final var test = new TestSourceSetArgs(
-        SourceSet.Id.TEST.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-        Set.of(Path.of("src", "test", "resources")),
-        List.of(),
-        List.of(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine")),
-        junitBom
-    );
-    return projectService.create(
-        "com.github.build", "build-system-test-utils", "0.1.0",
-        builder -> builder
-            .withPath(Path.of("test-utils"))
-            .withSourceSets(main, test)
-    );
-  }
+        final var testCompileAndRun = new ArrayList<TestSourceSetDependency>();
+        testCompileAndRun.add(main);
+        testCompileAndRun.add(projectTestUtils);
+        testCompileAndRun.add(GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"));
+        testCompileAndRun.add(GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"));
+        testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"));
+        testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"));
+        testCompileAndRun.add(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"));
+        testCompileAndRun.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"));
+        testCompileAndRun.add(
+                GroupArtifactVersion.parse("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"));
+        testCompileAndRun.add(GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"));
+        testCompileAndRun.add(GroupArtifactVersion.parse("org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21"));
 
-  private static Project createProjectLib(
-      final DependencyConstraints junitBom,
-      final Project projectTestUtils
-  ) {
-    final var main = new MainSourceSetArgs(
-        SourceSet.Id.MAIN.toString(),
-        SourceRoots.javaSources(Set.of(
-            Path.of("src", "main", "java"),
-            Path.of("build", "generated-sources", "xjc")
-        )),
-        Set.of(Path.of("src", "main", "resources")),
-        List.of(
-            GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
-            GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12"),
-            GroupArtifactVersion.parse("org.jspecify:jspecify:1.0.0"),
-            GroupArtifactVersion.parse("org.slf4j:slf4j-api:2.0.17"),
-            GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"),
-            GroupArtifactVersion.parse("org.apache.maven:maven-resolver-provider:3.9.9"),
-            GroupArtifactVersion.parse("org.apache.maven.resolver:maven-resolver-supplier:1.9.22"),
-            GroupArtifactVersion.parse("jakarta.xml.bind:jakarta.xml.bind-api:4.0.2"),
-            GroupArtifactVersion.parse("org.junit.platform:junit-platform-launcher:1.13.4"),
-            GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"),
-            GroupArtifactVersion.parse(
-                "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21"
-            )
-        ),
-        List.of(
-            GroupArtifactVersion.parse("org.apache.maven:maven-artifact:3.9.12"),
-            GroupArtifactVersion.parse("org.apache.maven:maven-model:3.9.12")
-        ),
-        DependencyConstraints.EMPTY
-    );
+        final var testRuntime = new ArrayList<TestSourceSetDependency>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
+        testRuntime.add(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"));
 
-    final var testCompileAndRun = new ArrayList<TestSourceSetDependency>();
-    testCompileAndRun.add(main);
-    testCompileAndRun.add(projectTestUtils);
-    testCompileAndRun.add(GroupArtifactVersion.parse(
-        "org.apache.maven:maven-resolver-provider:3.9.9"
-    ));
-    testCompileAndRun.add(GroupArtifactVersion.parse(
-        "org.apache.maven.resolver:maven-resolver-supplier:1.9.22"
-    ));
-    testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"));
-    testCompileAndRun.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"));
-    testCompileAndRun.add(GroupArtifactVersion.parse("org.assertj:assertj-core:3.27.3"));
-    testCompileAndRun.add(GroupArtifactVersion.parse("ch.qos.logback:logback-classic:1.5.21"));
-    testCompileAndRun.add(GroupArtifactVersion.parse(
-        "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.20.0"
-    ));
-    testCompileAndRun.add(GroupArtifactVersion.parse("org.aspectj:aspectjtools:1.9.25.1"));
-    testCompileAndRun.add(GroupArtifactVersion.parse(
-        "org.jetbrains.kotlin:kotlin-compiler-embeddable:2.2.21"
-    ));
-
-    final var testRuntime = new ArrayList<TestSourceSetDependency>(testCompileAndRun);
-    testRuntime.add(GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"));
-    testRuntime.add(GroupArtifactVersion.parse("com.sun.xml.bind:jaxb-impl:4.0.5"));
-
-    final var test = new TestSourceSetArgs(
-        SourceSet.Id.TEST.toString(),
-        SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-        Set.of(Path.of("src", "test", "resources")),
-        testCompileAndRun,
-        testRuntime,
-        junitBom
-    );
-    return projectService.create(
-        "com.github.build", "build-system-lib", "0.1.0",
-        builder -> builder
-            .withPath(Path.of("lib"))
-            .withSourceSets(main, test)
-    );
-  }
-
-  private static boolean buildTestUtils(
-      final Path workdir,
-      final Project project,
-      final JavaCompilerOptions compilerOptions
-  ) {
-    final CompilationResult mainCompiled = buildService.compileJava(
-        workdir, project.mainSourceSet(), compilerOptions
-    );
-
-    buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(
-        workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
-    );
-
-    final CompilationResult testCompiled = buildService.compileJava(
-        workdir, project.testSourceSet(), compilerOptions
-    );
-
-    buildService.copyResources(workdir, project, SourceSet.Id.TEST);
-    buildService.createJar(
-        workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null
-    );
-
-    final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-    final List<Path> buildRuntimePath = Stream
-        .of(buildRuntimePathStr.split(",", -1))
-        .map(Path::of)
-        .toList();
-    final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-    final TestResults results = testService.withJUnit(workdir, project, testArgs);
-    return results.testsFailedCount() <= 0;
-  }
-
-  private static boolean buildLib(
-      final Path workdir,
-      final Project project,
-      final JavaCompilerOptions compilerOptions
-  ) {
-    generateSourcesFromMavenXsd(workdir, project);
-    final CompilationResult mainCompiled = buildService.compileJava(
-        workdir, project.mainSourceSet(), compilerOptions
-    );
-
-    buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
-    buildService.createJar(
-        workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null
-    );
-
-    final CompilationResult testCompiled = buildService.compileJava(
-        workdir, project.testSourceSet(), compilerOptions
-    );
-
-    buildService.copyResources(workdir, project, SourceSet.Id.TEST);
-    buildService.createJar(
-        workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null
-    );
-
-    final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
-    final List<Path> buildRuntimePath = Stream
-        .of(buildRuntimePathStr.split(",", -1))
-        .map(Path::of)
-        .toList();
-    final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
-    final TestResults results = testService.withJUnit(workdir, project, testArgs);
-    return results.testsFailedCount() <= 0;
-  }
-
-  private static void generateSourcesFromMavenXsd(final Path workdir, final Project project) {
-    try (final var ignored = LogContext.project(project)) {
-      generateSourcesFromMavenXsdInternal(workdir, project);
-    }
-  }
-
-  private static void generateSourcesFromMavenXsdInternal(
-      final Path workdir,
-      final Project project
-  ) {
-    log.info("Generating Maven XSD sources with XJC");
-
-    final var errorReceiver = new LoggingErrorReceiver();
-    final var files = List.of(
-        workdir
-            .resolve(project.path())
-            .resolve("maven-schemas")
-            .resolve("repository-metadata-1.1.0.xsd")
-    );
-    final Path targetDir = workdir
-        .resolve(project.path())
-        .resolve(project.artifactLayout().rootDir())
-        .resolve("generated-sources")
-        .resolve("xjc");
-    try {
-      Files.createDirectories(targetDir);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
+        final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                testCompileAndRun,
+                testRuntime,
+                junitBom);
+        return projectService.create(
+                "com.github.build",
+                "build-system-lib",
+                "0.1.0",
+                builder -> builder.withPath(Path.of("lib")).withSourceSets(main, test));
     }
 
-    for (final Path xsdPath : files) {
-      final Options options;
-      {
-        options = new Options();
+    private static boolean buildTestUtils(
+            final Path workdir, final Project project, final JavaCompilerOptions compilerOptions) {
+        final CompilationResult mainCompiled =
+                buildService.compileJava(workdir, project.mainSourceSet(), compilerOptions);
 
-        final var inputSource = new InputSource();
-        inputSource.setSystemId(xsdPath.toString());
-        options.addGrammar(inputSource);
-        options.targetDir = targetDir.toFile();
-        options.encoding = StandardCharsets.UTF_8.name();
-        options.setSchemaLanguage(Language.XMLSCHEMA);
-      }
+        buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+        buildService.createJar(
+                workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
 
-      final Model model = ModelLoader.load(options, new JCodeModel(), errorReceiver);
-      if (model == null) {
-        throw new IllegalStateException();
-      }
+        final CompilationResult testCompiled =
+                buildService.compileJava(workdir, project.testSourceSet(), compilerOptions);
 
-      options.classNameReplacer.forEach(model.codeModel::addClassNameReplacer);
-      final Outline outline = model.generateCode(model.options, errorReceiver);
-      if (outline == null) {
-        throw new IllegalStateException();
-      }
+        buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+        buildService.createJar(
+                workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
 
-      final CodeWriter codeWriter;
-      try {
-        codeWriter = outline.getModel().options.createCodeWriter();
-      } catch (IOException e) {
-        throw new UncheckedIOException(e);
-      }
-
-      try {
-        outline.getModel().codeModel.build(new LoggingCodeWriter(codeWriter));
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      }
-    }
-  }
-
-  private static final class LoggingErrorReceiver extends ErrorReceiver {
-
-    @Override
-    public void error(final SAXParseException exception) throws AbortException {
-      log.error("Failed to parse Maven XSD", exception);
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final List<Path> buildRuntimePath =
+                Stream.of(buildRuntimePathStr.split(",", -1)).map(Path::of).toList();
+        final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
+        final TestResults results = testService.withJUnit(workdir, project, testArgs);
+        return results.testsFailedCount() <= 0;
     }
 
-    @Override
-    public void fatalError(final SAXParseException exception) throws AbortException {
-      log.error("Failed to parse Maven XSD", exception);
+    private static boolean buildLib(
+            final Path workdir, final Project project, final JavaCompilerOptions compilerOptions) {
+        generateSourcesFromMavenXsd(workdir, project);
+        final CompilationResult mainCompiled =
+                buildService.compileJava(workdir, project.mainSourceSet(), compilerOptions);
+
+        buildService.copyResources(workdir, project, SourceSet.Id.MAIN);
+        buildService.createJar(
+                workdir, project.mainSourceSet(), List.of(mainCompiled.outputDirectory()), Map.of(), null);
+
+        final CompilationResult testCompiled =
+                buildService.compileJava(workdir, project.testSourceSet(), compilerOptions);
+
+        buildService.copyResources(workdir, project, SourceSet.Id.TEST);
+        buildService.createJar(
+                workdir, project.testSourceSet(), List.of(testCompiled.outputDirectory()), Map.of(), null);
+
+        final String buildRuntimePathStr = System.getProperty("buildRuntimePath");
+        final List<Path> buildRuntimePath =
+                Stream.of(buildRuntimePathStr.split(",", -1)).map(Path::of).toList();
+        final var testArgs = new JUnitTestArgs(buildRuntimePath, ClassLoader.getSystemClassLoader());
+        final TestResults results = testService.withJUnit(workdir, project, testArgs);
+        return results.testsFailedCount() <= 0;
     }
 
-    @Override
-    public void warning(final SAXParseException exception) throws AbortException {
-      log.warn("Failed to parse Maven XSD", exception);
+    private static void generateSourcesFromMavenXsd(final Path workdir, final Project project) {
+        try (final var ignored = LogContext.project(project)) {
+            generateSourcesFromMavenXsdInternal(workdir, project);
+        }
     }
 
-    @Override
-    public void info(final SAXParseException exception) {
-      log.info("Failed to parse Maven XSD", exception);
+    private static void generateSourcesFromMavenXsdInternal(final Path workdir, final Project project) {
+        log.info("Generating Maven XSD sources with XJC");
+
+        final var errorReceiver = new LoggingErrorReceiver();
+        final var files = List.of(
+                workdir.resolve(project.path()).resolve("maven-schemas").resolve("repository-metadata-1.1.0.xsd"));
+        final Path targetDir = workdir.resolve(project.path())
+                .resolve(project.artifactLayout().rootDir())
+                .resolve("generated-sources")
+                .resolve("xjc");
+        try {
+            Files.createDirectories(targetDir);
+        } catch (final IOException e) {
+            throw new UncheckedIOException(e);
+        }
+
+        for (final Path xsdPath : files) {
+            final Options options;
+            {
+                options = new Options();
+
+                final var inputSource = new InputSource();
+                inputSource.setSystemId(xsdPath.toString());
+                options.addGrammar(inputSource);
+                options.targetDir = targetDir.toFile();
+                options.encoding = StandardCharsets.UTF_8.name();
+                options.setSchemaLanguage(Language.XMLSCHEMA);
+            }
+
+            final Model model = ModelLoader.load(options, new JCodeModel(), errorReceiver);
+            if (model == null) {
+                throw new IllegalStateException();
+            }
+
+            options.classNameReplacer.forEach(model.codeModel::addClassNameReplacer);
+            final Outline outline = model.generateCode(model.options, errorReceiver);
+            if (outline == null) {
+                throw new IllegalStateException();
+            }
+
+            final CodeWriter codeWriter;
+            try {
+                codeWriter = outline.getModel().options.createCodeWriter();
+            } catch (IOException e) {
+                throw new UncheckedIOException(e);
+            }
+
+            try {
+                outline.getModel().codeModel.build(new LoggingCodeWriter(codeWriter));
+            } catch (final IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
     }
-  }
 
-  private static final class LoggingCodeWriter extends FilterCodeWriter {
+    private static final class LoggingErrorReceiver extends ErrorReceiver {
 
-    public LoggingCodeWriter(final CodeWriter core) {
-      super(core);
+        @Override
+        public void error(final SAXParseException exception) throws AbortException {
+            log.error("Failed to parse Maven XSD", exception);
+        }
+
+        @Override
+        public void fatalError(final SAXParseException exception) throws AbortException {
+            log.error("Failed to parse Maven XSD", exception);
+        }
+
+        @Override
+        public void warning(final SAXParseException exception) throws AbortException {
+            log.warn("Failed to parse Maven XSD", exception);
+        }
+
+        @Override
+        public void info(final SAXParseException exception) {
+            log.info("Failed to parse Maven XSD", exception);
+        }
     }
 
-    @Override
-    public Writer openSource(final JPackage pkg, final String fileName) throws IOException {
-      log.debug("XJC writing source {} {}", pkg, fileName);
-      return super.openSource(pkg, fileName);
+    private static final class LoggingCodeWriter extends FilterCodeWriter {
+
+        public LoggingCodeWriter(final CodeWriter core) {
+            super(core);
+        }
+
+        @Override
+        public Writer openSource(final JPackage pkg, final String fileName) throws IOException {
+            log.debug("XJC writing source {} {}", pkg, fileName);
+            return super.openSource(pkg, fileName);
+        }
+
+        @Override
+        public OutputStream openBinary(final JPackage pkg, final String fileName) throws IOException {
+            log.debug("XJC writing binary {} {}", pkg, fileName);
+            return super.openBinary(pkg, fileName);
+        }
     }
 
-    @Override
-    public OutputStream openBinary(final JPackage pkg, final String fileName) throws IOException {
-      log.debug("XJC writing binary {} {}", pkg, fileName);
-      return super.openBinary(pkg, fileName);
+    private static DependencyService mavenArtifactResolver() {
+        final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
+        final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
+        session.setSystemProperty("java.version", "21");
+        // keep provided dependencies in the collected graph; resolveCompileClasspath
+        // only exposes them as direct dependencies of the compiled project
+        session.setDependencySelector(new AndDependencySelector(
+                new ScopeDependencySelector("test"),
+                new OptionalDependencySelector(),
+                new ExclusionDependencySelector()));
+
+        final Path localRepositoryBasePath;
+        final String configuredLocalRepository = System.getProperty("maven.repo.local");
+        if (configuredLocalRepository != null) {
+            localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
+        } else {
+            try {
+                localRepositoryBasePath = Files.createTempDirectory("build-local");
+            } catch (final IOException e) {
+                throw new UncheckedIOException(e);
+            }
+        }
+
+        final var localRepo = new org.eclipse.aether.repository.LocalRepository(localRepositoryBasePath.toFile());
+        final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
+        session.setLocalRepositoryManager(manager);
+
+        final String nexusHost = Objects.requireNonNullElse(System.getenv("NEXUS_HOST"), "localhost");
+        final List<org.eclipse.aether.repository.RemoteRepository> repositories =
+                List.of(new org.eclipse.aether.repository.RemoteRepository.Builder(
+                                "nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
+                        .build());
+        return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
     }
-  }
-
-  private static DependencyService mavenArtifactResolver() {
-    final RepositorySystem repoSystem = new RepositorySystemSupplier().get();
-    final DefaultRepositorySystemSession session = MavenRepositorySystemUtils.newSession();
-    session.setSystemProperty("java.version", "21");
-    // keep provided dependencies in the collected graph; resolveCompileClasspath
-    // only exposes them as direct dependencies of the compiled project
-    session.setDependencySelector(new AndDependencySelector(
-        new ScopeDependencySelector("test"),
-        new OptionalDependencySelector(),
-        new ExclusionDependencySelector()
-    ));
-
-    final Path localRepositoryBasePath;
-    final String configuredLocalRepository = System.getProperty("maven.repo.local");
-    if (configuredLocalRepository != null) {
-      localRepositoryBasePath = Path.of(configuredLocalRepository).toAbsolutePath();
-    } else {
-      try {
-        localRepositoryBasePath = Files.createTempDirectory("build-local");
-      } catch (final IOException e) {
-        throw new UncheckedIOException(e);
-      }
-    }
-
-    final var localRepo = new org.eclipse.aether.repository.LocalRepository(
-        localRepositoryBasePath.toFile()
-    );
-    final var manager = repoSystem.newLocalRepositoryManager(session, localRepo);
-    session.setLocalRepositoryManager(manager);
-
-    final String nexusHost = Objects.requireNonNullElse(
-        System.getenv("NEXUS_HOST"),
-        "localhost"
-    );
-    final List<org.eclipse.aether.repository.RemoteRepository> repositories = List.of(
-        new org.eclipse.aether.repository.RemoteRepository
-            .Builder("nexus", "default", "http://" + nexusHost + ":8081/repository/maven-central")
-            .build()
-    );
-    return new MavenArtifactResolverDependencyService(repoSystem, session, repositories);
-  }
 }
