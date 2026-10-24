@@ -8,12 +8,14 @@ while trying to build it, and what would unblock it.
 Currently built (for reference): `crypto`, `core`, `acl`, `data`, `web`, `messaging`,
 `access`, `aspects`, `cas`, `oauth2-core`, `oauth2-jose`, `oauth2-client`,
 `oauth2-resource-server`, `oauth2-authorization-server`, `rsocket`, `taglibs`,
-`kerberos-core` and `kerberos-test` with their full main and test source sets. The test source
-sets that other modules depend on (`core`, `web`, `oauth2-core`, `oauth2-jose`) are built as
-standalone `spring-security-<module>-tests` projects (their `src/test` sources are the project's
-main source set; see below). The remaining modules (`config`, `test`, `ldap`,
-`saml2-service-provider`, `webauthn`) build their **main source sets only** (their tests are
-deferred, see below).
+`kerberos-core`, `kerberos-test`, `kerberos-web` and `kerberos-client` with their full main and
+test source sets; `ldap` builds its main and test source sets. Test source sets that other
+modules depend on (`core`, `web`, `oauth2-core`, `oauth2-jose`) are built as standalone
+`spring-security-<module>-tests` projects (their `src/test` sources are the project's main
+source set; see below); `ldap`'s test sources are built the same way to break a project cycle.
+The remaining modules (`config`, `test`, `saml2-service-provider`, `webauthn`) build their
+**main source sets only** (their tests are deferred, see below). `ldap` and `config` still
+defer their `integration-test` source sets.
 
 Verification environment: run the self-hosted build with a full JDK 21. With JDK 25 the
 `web` tests fail inside Mockito's inline mock maker (`Java 25 (69) is not supported by the
@@ -22,8 +24,8 @@ This is unrelated to the modules below.
 
 ## Summary
 
-All modules below build their **main** source sets; only their test source sets (and the modules
-that are not registered at all) are blocked.
+All modules below build their **main** source sets; only their remaining source sets (and the
+modules that are not registered at all) are blocked.
 
 | Module | Blocking feature (test source set unless stated) |
 | --- | --- |
@@ -31,9 +33,7 @@ that are not registered at all) are blocked.
 | `test` | Depends on the `config` test source set and oauth2 test classes |
 | `saml2-service-provider` | (5): extra `opensaml5Test` source set |
 | `webauthn` | (2) Gradle-style highest-version conflict resolution (tools.jackson) |
-| `ldap` | (6) integration-test source set |
-| `kerberos-web` | Not registered yet; tests use the already-built `config` main |
-| `kerberos-client` | Not registered yet; tests use the already-built `config`/`test` main |
+| `ldap` | (6) `integration-test` source set only; main and test build |
 | `itest/context`, `itest/web`, `itest/ldap/*` | Not registered; integration-test projects depend on `config`/`test`/`ldap` |
 
 ## Feature gaps
@@ -135,6 +135,11 @@ while `config` tests -> `test` main), so the former source-set cycle blocker no 
 | `spring-security-web-tests` | `web` | `access` tests, `oauth2-client` tests, `cas` tests |
 | `spring-security-oauth2-core-tests` | `oauth2/oauth2-core` | `oauth2-client` tests |
 | `spring-security-oauth2-jose-tests` | `oauth2/oauth2-jose` | `oauth2-client` tests, `oauth2-resource-server` tests, `oauth2-authorization-server` tests |
+
+`spring-security-ldap-tests` (owning module `ldap`) is not consumed by anything; it exists to
+break a project cycle. `ldap`'s tests need `spring-security-test` main, which needs `config`
+main, which needs `ldap` main, so the tests cannot be built as `ldap`'s own test source set.
+Building them as a standalone project that sits after `spring-security-test` resolves the cycle.
 
 Each test project uses `src/test/java` + `src/test/resources` as its **main** source set, runs
 the tests against that main output, and shares the owning module's directory with a distinct
@@ -238,9 +243,10 @@ module's `build-system` output. The owning module keeps its main source set only
 - Test: `spring-security-core-tests`, `spring-security-test`, slf4j-api, assertj, junit, mockito,
   spring-test, jsonassert.
 - Source sets: `main`, `test`, `integration-test`.
-- Main builds.
-- Blocker (test source set): (6). Its tests depend on `spring-security-test` main and the
-  `spring-security-core-tests` project, both of which build.
+- Main and test build; the test sources are the standalone `spring-security-ldap-tests` project
+  (see "Cross-project test source sets"). It has to be standalone because `ldap` tests ->
+  `spring-security-test` main -> `config` main -> `ldap` main is a project cycle.
+- Blocker: (6) `integration-test` source set only. 106 tests pass.
 
 ### test
 
@@ -279,13 +285,12 @@ module's `build-system` output. The owning module keeps its main source set only
 ### kerberos-web / kerberos-client
 
 - `kerberos-web`: path `spring-security/kerberos/kerberos-web`; API `kerberos-core`, `web`,
-  jakarta.servlet-api; test depends on `config`.
+  jakarta.servlet-api; test depends on spring-test, `config`, junit, mockito, assertj.
 - `kerberos-client`: path `spring-security/kerberos/kerberos-client`; API `kerberos-core`,
-  `kerberos-web`, spring-web,
-  `httpclient5`; optional `ldap`; test depends on `kerberos-test`, spring-test, `config`,
-  mockwebserver.
-- Blockers: not registered yet; their tests use the already-built `config` main, and
-  `kerberos-client` also the `test` main.
+  `kerberos-web`, spring-web, `httpclient5`; optional `ldap`; test depends on `kerberos-test`,
+  spring-test, `config`, junit, mockito, assertj, mockwebserver.
+- Main and test build. Both were previously unregistered; their tests only use the already-built
+  `kerberos-core`/`kerberos-test`/`config` mains, so registering them was all that was needed.
 
 ### itest/context, itest/web, itest/ldap/*
 

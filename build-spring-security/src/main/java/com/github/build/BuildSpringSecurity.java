@@ -179,6 +179,12 @@ public final class BuildSpringSecurity {
                 oauth2Client,
                 oauth2ResourceServer,
                 config);
+        final Project kerberosWeb =
+                createProjectKerberosWeb(projectService, platform, artifactLayout, web, kerberosCore, config);
+        final Project kerberosClient = createProjectKerberosClient(
+                projectService, platform, artifactLayout, web, ldap, kerberosCore, kerberosWeb, kerberosTest, config);
+        final Project ldapTests =
+                createProjectLdapTests(projectService, platform, testArtifactLayout, ldap, coreTests, test);
         final List<Project> projects = List.of(
                 crypto,
                 core,
@@ -206,15 +212,18 @@ public final class BuildSpringSecurity {
                 rsocket,
                 webauthn,
                 config,
-                test);
+                test,
+                kerberosWeb,
+                kerberosClient,
+                ldapTests);
         // Source sets that used to be consumed as another project's test source set are now
         // standalone projects. Their main source set holds the test sources, so tests are run
         // against the main output instead of a dedicated test source set.
-        final Set<Project> testProjects = Set.of(coreTests, webTests, oauth2CoreTests, oauth2JoseTests);
+        final Set<Project> testProjects = Set.of(coreTests, webTests, oauth2CoreTests, oauth2JoseTests, ldapTests);
         // These modules currently build main source sets only: their test source sets need build
         // features the project does not support yet (generated sources, extra source sets,
         // Gradle-style highest-version conflict resolution). See BLOCKED_MODULES.md.
-        final Set<Project> projectsWithoutTests = Set.of(ldap, saml2, webauthn, config, test);
+        final Set<Project> projectsWithoutTests = Set.of(saml2, webauthn, config, test);
 
         projects.forEach(project -> service.clean(workdir, project));
 
@@ -1353,13 +1362,9 @@ public final class BuildSpringSecurity {
                 api,
                 platform);
 
-        final var test = new TestSourceSetArgs(
-                SourceSet.Id.TEST.toString(),
-                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
-                Set.of(Path.of("src", "test", "resources")),
-                List.of(main),
-                List.of(main),
-                platform);
+        // The test sources are built as a standalone project (see createProjectLdapTests): their
+        // dependency on spring-security-test main closes a project cycle (ldap test -> test main ->
+        // config main -> ldap main) that a built-in test source set cannot express.
         return projectService.create(
                 "org.springframework.security",
                 "spring-security-ldap",
@@ -1367,7 +1372,49 @@ public final class BuildSpringSecurity {
                 projectBuilder -> projectBuilder
                         .withPath(Path.of("ldap"))
                         .withArtifactLayout(artifactLayout)
-                        .withSourceSets(main, test));
+                        .withSourceSets(main));
+    }
+
+    /**
+     * Builds the {@code ldap} module's test sources as a standalone project. See
+     * {@link #createTestProject} for the rationale.
+     */
+    private static Project createProjectLdapTests(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout testArtifactLayout,
+            final Project ldap,
+            final Project coreTests,
+            final Project test) {
+        final List<MainSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                ldap,
+                coreTests,
+                test,
+                GroupArtifact.parse("org.slf4j:slf4j-api"),
+                GroupArtifact.parse("org.assertj:assertj-core"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-api"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-params"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter-engine"),
+                GroupArtifact.parse("org.mockito:mockito-core"),
+                GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+                GroupArtifact.parse("org.springframework:spring-test"),
+                GroupArtifact.parse("org.skyscreamer:jsonassert"),
+                GroupArtifact.parse("com.fasterxml.jackson.core:jackson-databind"),
+                GroupArtifact.parse("ldapsdk:ldapsdk"),
+                GroupArtifact.parse("com.unboundid:unboundid-ldapsdk"),
+                GroupArtifact.parse("tools.jackson.core:jackson-databind")));
+
+        final var testRuntime = new ArrayList<>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+        return createTestProject(
+                projectService,
+                platform,
+                testArtifactLayout,
+                "spring-security-ldap-tests",
+                Path.of("ldap"),
+                testCompileAndRun,
+                testRuntime);
     }
 
     private static Project createProjectSaml2(
@@ -2131,6 +2178,113 @@ public final class BuildSpringSecurity {
                 "7.0.0",
                 projectBuilder -> projectBuilder
                         .withPath(Path.of("kerberos", "kerberos-test"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main, test));
+    }
+
+    private static Project createProjectKerberosWeb(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout artifactLayout,
+            final Project web,
+            final Project kerberosCore,
+            final Project config) {
+        final List<MainSourceSetDependency> api =
+                List.of(kerberosCore, web, GroupArtifact.parse("jakarta.servlet:jakarta.servlet-api"));
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                Set.of(Path.of("src", "main", "resources")),
+                api,
+                api,
+                platform);
+
+        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                main,
+                // The test config XML relies on the spring-security namespace handlers at runtime.
+                config,
+                GroupArtifact.parse("org.springframework:spring-test"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter"),
+                GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+                GroupArtifact.parse("org.assertj:assertj-core")));
+
+        final var testRuntime = new ArrayList<>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+        final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                testCompileAndRun,
+                testRuntime,
+                platform);
+        return projectService.create(
+                "org.springframework.security",
+                "spring-security-kerberos-web",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("kerberos", "kerberos-web"))
+                        .withArtifactLayout(artifactLayout)
+                        .withSourceSets(main, test));
+    }
+
+    private static Project createProjectKerberosClient(
+            final ProjectService projectService,
+            final DependencyConstraints platform,
+            final Project.ArtifactLayout artifactLayout,
+            final Project web,
+            final Project ldap,
+            final Project kerberosCore,
+            final Project kerberosWeb,
+            final Project kerberosTest,
+            final Project config) {
+        final List<MainSourceSetDependency> api = List.of(
+                kerberosCore,
+                kerberosWeb,
+                GroupArtifact.parse("org.springframework:spring-web"),
+                GroupArtifact.parse("org.apache.httpcomponents.client5:httpclient5"));
+        final List<MainSourceSetDependency> optional = List.of(ldap);
+        final var mainCompileDependencies = new ArrayList<>(api);
+        mainCompileDependencies.addAll(optional);
+
+        final var main = new MainSourceSetArgs(
+                SourceSet.Id.MAIN.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "main", "java"))),
+                Set.of(Path.of("src", "main", "resources")),
+                mainCompileDependencies,
+                api,
+                platform);
+
+        final List<TestSourceSetDependency> testCompileAndRun = new ArrayList<>(List.of(
+                main,
+                kerberosTest,
+                // The test config XML relies on the spring-security namespace handlers at runtime.
+                config,
+                GroupArtifact.parse("org.springframework:spring-test"),
+                GroupArtifact.parse("org.junit.jupiter:junit-jupiter"),
+                GroupArtifact.parse("org.mockito:mockito-junit-jupiter"),
+                GroupArtifact.parse("org.assertj:assertj-core"),
+                GroupArtifact.parse("com.squareup.okhttp3:mockwebserver")));
+        for (final MainSourceSetDependency d : optional) {
+            addTestDependency(testCompileAndRun, d);
+        }
+
+        final var testRuntime = new ArrayList<>(testCompileAndRun);
+        testRuntime.add(GroupArtifact.parse("org.junit.platform:junit-platform-launcher"));
+
+        final var test = new TestSourceSetArgs(
+                SourceSet.Id.TEST.toString(),
+                SourceRoots.javaSources(Set.of(Path.of("src", "test", "java"))),
+                Set.of(Path.of("src", "test", "resources")),
+                testCompileAndRun,
+                testRuntime,
+                platform);
+        return projectService.create(
+                "org.springframework.security",
+                "spring-security-kerberos-client",
+                "7.0.0",
+                projectBuilder -> projectBuilder
+                        .withPath(Path.of("kerberos", "kerberos-client"))
                         .withArtifactLayout(artifactLayout)
                         .withSourceSets(main, test));
     }
