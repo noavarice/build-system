@@ -1,9 +1,17 @@
 server:
   port: 8080
 
+logging:
+  pattern:
+    # Renders the per-request MDC context (repository, artifact path, upstream request number).
+    console: "%d{HH:mm:ss.SSS} %-5level %X{repo:-} %X{path:-} %X{req:-} - %msg%n"
+
 repository-proxy:
   # Maven local repository the proxy stores proxied artifacts in. Defaults to the executing
   # user's ~/.m2/repository.
   local-repository: ${user.home}/.m2/repository
+  # Timeouts for requests the proxy issues to upstream repositories.
+  connect-timeout: 10s
+  request-timeout: 60s
   repositories:
     maven-central: https://repo1.maven.org/maven2

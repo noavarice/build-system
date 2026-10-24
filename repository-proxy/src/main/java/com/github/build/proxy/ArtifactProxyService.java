@@ -38,8 +38,6 @@ public final class ArtifactProxyService {
 
   private static final Duration NEGATIVE_CACHE_TTL = Duration.ofMinutes(1);
 
-  private static final Duration CONNECT_TIMEOUT = Duration.ofSeconds(10);
-
   private final LocalRepositoryStore store;
 
   private final Map<String, URI> upstreamRepositories;
@@ -51,8 +49,8 @@ public final class ArtifactProxyService {
   private final ConcurrentHashMap<String, Object> pathLocks = new ConcurrentHashMap<>();
 
   /**
-   * Monotonic counter of requests issued to upstream repositories, logged at INFO so the number of
-   * outgoing requests per run is directly visible.
+   * Monotonic counter of requests issued to upstream repositories, exposed through the logging MDC
+   * so the number of outgoing requests per run is directly visible.
    */
   private final AtomicLong outgoingRequests = new AtomicLong();
 
@@ -63,13 +61,17 @@ public final class ArtifactProxyService {
     final var repositoryProxyProperties = Objects.requireNonNull(properties);
     this.store = Objects.requireNonNull(store);
     this.upstreamRepositories = repositoryProxyProperties.repositories();
+    upstreamRepositories.forEach((id, uri) -> log.info("Remote repository '{}': {}", id, uri));
+
+    final var requestFactory = new JdkClientHttpRequestFactory(
+        HttpClient.newBuilder()
+            .followRedirects(HttpClient.Redirect.NORMAL)
+            .connectTimeout(repositoryProxyProperties.connectTimeout())
+            .build()
+    );
+    requestFactory.setReadTimeout(repositoryProxyProperties.requestTimeout());
     this.restClient = RestClient.builder()
-        .requestFactory(new JdkClientHttpRequestFactory(
-            HttpClient.newBuilder()
-                .followRedirects(HttpClient.Redirect.NORMAL)
-                .connectTimeout(CONNECT_TIMEOUT)
-                .build()
-        ))
+        .requestFactory(requestFactory)
         .build();
   }
 
@@ -94,66 +96,70 @@ public final class ArtifactProxyService {
       throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Missing artifact path");
     }
 
-    final Path local;
-    try {
-      local = store.path(repositoryId, artifactPath);
-    } catch (final IllegalArgumentException e) {
-      throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
-    }
+    try (final var logContext = ProxyLogContext.request(repositoryId, artifactPath)) {
+      final Path local;
+      try {
+        local = store.path(repositoryId, artifactPath);
+      } catch (final IllegalArgumentException e) {
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, e.getMessage(), e);
+      }
 
-    final String key = repositoryId + '/' + artifactPath;
-    final boolean cacheable = isCacheable(artifactPath);
-    if (cacheable && store.present(local)) {
-      log.info("Serving {} from local repository", key);
-      return new FileSystemResource(local);
-    }
-
-    if (isNegativelyCached(key)) {
-      throw notFound(key);
-    }
-
-    final Object lock = pathLocks.computeIfAbsent(key, ignored -> new Object());
-    synchronized (lock) {
-      // another request may have resolved the artifact while this one was waiting for the lock
+      final String key = repositoryId + '/' + artifactPath;
+      final boolean cacheable = isCacheable(artifactPath);
       if (cacheable && store.present(local)) {
-        log.info("Serving {} from local repository", key);
+        log.info("Serving from local repository");
         return new FileSystemResource(local);
       }
+
       if (isNegativelyCached(key)) {
         throw notFound(key);
       }
 
-      final URI uri = appendPath(upstream, artifactPath);
-      final long requestNumber = outgoingRequests.incrementAndGet();
-      log.info("Outgoing request #{}: GET {} ({})", requestNumber, uri, key);
+      final Object lock = pathLocks.computeIfAbsent(key, ignored -> new Object());
+      synchronized (lock) {
+        // another request may have resolved the artifact while this one was waiting for the lock
+        if (cacheable && store.present(local)) {
+          log.info("Serving from local repository");
+          return new FileSystemResource(local);
+        }
+        if (isNegativelyCached(key)) {
+          throw notFound(key);
+        }
 
-      final HttpStatusCode status;
-      try {
-        status = fetch(uri, local);
-      } catch (final RestClientException e) {
-        log.warn("Failed to fetch {} from {}", key, upstream, e);
-        throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Upstream fetch failed", e);
-      } catch (final UncheckedIOException e) {
-        throw new ResponseStatusException(
-            HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store artifact", e
-        );
+        final URI uri = appendPath(upstream, artifactPath);
+        try (final var requestIgnored = ProxyLogContext.outgoingRequest(
+            outgoingRequests.incrementAndGet())) {
+          log.info("GET {}", uri);
+
+          final HttpStatusCode status;
+          try {
+            status = fetch(uri, local);
+          } catch (final RestClientException e) {
+            log.warn("GET {} failed", uri, e);
+            throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, "Upstream fetch failed", e);
+          } catch (final UncheckedIOException e) {
+            throw new ResponseStatusException(
+                HttpStatus.INTERNAL_SERVER_ERROR, "Failed to store artifact", e
+            );
+          }
+
+          if (status.is2xxSuccessful()) {
+            negativeCache.remove(key);
+            log.debug("Stored at {}", local);
+            return new FileSystemResource(local);
+          }
+
+          if (status.value() == 404 || status.value() == 410) {
+            negativeCache.put(key, Instant.now().plus(NEGATIVE_CACHE_TTL));
+            throw notFound(key);
+          }
+
+          log.warn("GET {} -> {}", uri, status.value());
+          throw new ResponseStatusException(
+              HttpStatus.BAD_GATEWAY, "Upstream returned " + status.value()
+          );
+        }
       }
-
-      if (status.is2xxSuccessful()) {
-        negativeCache.remove(key);
-        log.debug("Fetched {} from {} and stored at {}", key, upstream, local);
-        return new FileSystemResource(local);
-      }
-
-      if (status.value() == 404 || status.value() == 410) {
-        negativeCache.put(key, Instant.now().plus(NEGATIVE_CACHE_TTL));
-        throw notFound(key);
-      }
-
-      log.warn("Upstream {} returned {} for {}", upstream, status, key);
-      throw new ResponseStatusException(
-          HttpStatus.BAD_GATEWAY, "Upstream returned " + status.value()
-      );
     }
   }
 

@@ -22,6 +22,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.SequencedCollection;
 import java.util.Set;
+import org.eclipse.aether.ConfigurationProperties;
+import org.eclipse.aether.DefaultRepositorySystemSession;
 import org.eclipse.aether.RepositorySystem;
 import org.eclipse.aether.RepositorySystemSession;
 import org.eclipse.aether.artifact.Artifact;
@@ -58,6 +60,17 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
   private static final Logger log =
       LoggerFactory.getLogger(MavenArtifactResolverDependencyService.class);
 
+  /**
+   * Timeout for opening a connection to a remote repository, in milliseconds.
+   */
+  private static final int CONNECT_TIMEOUT_MILLIS = 10_000;
+
+  /**
+   * Timeout for reading a response from a remote repository, in milliseconds. Overrides the Aether
+   * default of 30 minutes, which lets a stalled download hang a build for far too long.
+   */
+  private static final int REQUEST_TIMEOUT_MILLIS = 60_000;
+
   private final RepositorySystem repositorySystem;
 
   private final RepositorySystemSession repositorySystemSession;
@@ -70,7 +83,13 @@ public final class MavenArtifactResolverDependencyService implements DependencyS
       final List<RemoteRepository> repositories
   ) {
     this.repositorySystem = Objects.requireNonNull(repositorySystem);
-    this.repositorySystemSession = Objects.requireNonNull(repositorySystemSession);
+    // copy the session so client timeouts are applied without mutating the caller's session
+    final var session = new DefaultRepositorySystemSession(
+        Objects.requireNonNull(repositorySystemSession)
+    );
+    session.setConfigProperty(ConfigurationProperties.CONNECT_TIMEOUT, CONNECT_TIMEOUT_MILLIS);
+    session.setConfigProperty(ConfigurationProperties.REQUEST_TIMEOUT, REQUEST_TIMEOUT_MILLIS);
+    this.repositorySystemSession = session;
     this.repositories = List.copyOf(repositories);
   }
 

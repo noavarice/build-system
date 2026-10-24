@@ -1,9 +1,6 @@
 package com.github.build;
 
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.net.URI;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Objects;
@@ -52,20 +49,32 @@ public final class RepositoryProxySupport {
     }
 
     try {
-      final Path localRepository = Files.createTempDirectory("repository-proxy-local");
       final Object proxy = launcher
           .getMethod("start", Path.class, Map.class)
-          .invoke(null, localRepository, Map.of(MAVEN_CENTRAL_ID, MAVEN_CENTRAL));
+          .invoke(null, mavenLocalRepository(), Map.of(MAVEN_CENTRAL_ID, MAVEN_CENTRAL));
       Runtime.getRuntime().addShutdownHook(new Thread(() -> close(proxy)));
 
       return (URI) launcher
           .getMethod("repositoryUri", String.class)
           .invoke(proxy, MAVEN_CENTRAL_ID);
-    } catch (final IOException e) {
-      throw new UncheckedIOException(e);
     } catch (final ReflectiveOperationException e) {
       throw new IllegalStateException("Failed to start the embedded repository proxy", e);
     }
+  }
+
+  /**
+   * Resolves the Maven local repository the proxy caches proxied artifacts in. Reusing the real
+   * local repository keeps artifacts across runs instead of re-downloading them every time.
+   *
+   * @return Maven local repository path, never null
+   */
+  private static Path mavenLocalRepository() {
+    final String configured = System.getProperty("maven.repo.local");
+    if (configured != null) {
+      return Path.of(configured).toAbsolutePath();
+    }
+
+    return Path.of(System.getProperty("user.home"), ".m2", "repository").toAbsolutePath();
   }
 
   private static URI externalMavenCentralUri() {
